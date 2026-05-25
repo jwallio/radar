@@ -30,6 +30,38 @@ const REGIONAL_PACKS: RegionalPack[] = [
   { id: 'mid-atlantic', label: 'Mid-Atlantic (VA/MD/NC/SC)', areas: ['VA', 'MD', 'NC', 'SC'] },
 ]
 
+const US_STATE_CODES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+]
+
+const CUSTOM_PACK_STORAGE_KEY = 'wallcloud.customRegionalPacks'
+
+type CustomRegionalPack = RegionalPack
+
+function loadCustomRegionalPacks(): CustomRegionalPack[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_PACK_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as Array<{ id?: string; label?: string; areas?: string[] }>
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item) => item.id && item.label && Array.isArray(item.areas) && item.areas.length > 0)
+      .map((item) => ({ id: item.id!, label: item.label!, areas: item.areas!.map((a) => a.toUpperCase()) }))
+  } catch {
+    return []
+  }
+}
+
+function saveCustomRegionalPacks(packs: CustomRegionalPack[]): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(CUSTOM_PACK_STORAGE_KEY, JSON.stringify(packs))
+}
+
 function formatTime(value: string | null | undefined): string {
   if (!value) return 'Unknown'
   const date = new Date(value)
@@ -38,8 +70,13 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
+  const [customPacks, setCustomPacks] = useState<CustomRegionalPack[]>(() => loadCustomRegionalPacks())
   const [regionalPackId, setRegionalPackId] = useState<string>(REGIONAL_PACKS[0].id)
-  const selectedPack = REGIONAL_PACKS.find((pack) => pack.id === regionalPackId) ?? REGIONAL_PACKS[0]
+  const [customSelectedAreas, setCustomSelectedAreas] = useState<string[]>(['TX', 'OK', 'KS'])
+
+  const allPacks = useMemo(() => [...REGIONAL_PACKS, ...customPacks], [customPacks])
+  const selectedPack = allPacks.find((pack) => pack.id === regionalPackId) ?? REGIONAL_PACKS[0]
+  const selectedAreas = selectedPack.id === 'custom-builder' ? customSelectedAreas : selectedPack.areas
 
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000, refetchInterval: 120_000 })
   const alertCounts = useQuery({ queryKey: ['nws-alert-counts'], queryFn: fetchNwsAlertCounts, staleTime: 60_000, refetchInterval: 120_000 })
@@ -47,10 +84,11 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const severeThunderstormWarnings = useQuery({ queryKey: ['nws-alerts-severe-thunderstorm-warning'], queryFn: () => fetchNwsAlertsByEvent('Severe Thunderstorm Warning'), staleTime: 60_000, refetchInterval: 120_000 })
   const flashFloodWarnings = useQuery({ queryKey: ['nws-alerts-flash-flood-warning'], queryFn: () => fetchNwsAlertsByEvent('Flash Flood Warning'), staleTime: 60_000, refetchInterval: 120_000 })
   const regionalAlerts = useQuery({
-    queryKey: ['nws-alerts-regional-pack', selectedPack.id],
-    queryFn: () => fetchNwsAlertsByAreas(selectedPack.areas),
+    queryKey: ['nws-alerts-regional-pack', selectedPack.id, selectedAreas.join(',')],
+    queryFn: () => fetchNwsAlertsByAreas(selectedAreas),
     staleTime: 60_000,
     refetchInterval: 120_000,
+    enabled: selectedAreas.length > 0,
   })
   const reports = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120_000, refetchInterval: 180_000 })
   const outlook = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180_000, refetchInterval: 240_000 })
@@ -64,7 +102,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const regionalSevereCount = (regionalAlerts.data?.alerts ?? []).filter((a) => a.severity === 'Severe' || a.severity === 'Extreme').length
 
   const aiSummary = useQuery({
-    queryKey: ['ops-ai-summary', alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures, selectedPack.id, regionalAlertsCount, regionalSevereCount],
+    queryKey: ['ops-ai-summary', alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures, selectedPack.id, selectedAreas.join(','), regionalAlertsCount, regionalSevereCount],
     queryFn: () => fetchOpsAiSummary({
       alertCount: alertItems.length,
       severeCount: severeCount + regionalSevereCount,
@@ -103,7 +141,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         headline: `${regionalAlertsCount} active regional alerts • ${regionalSevereCount} severe/extreme`,
         summary: regionalAlerts.data?.error
           ? `Feed issue: ${regionalAlerts.data.error.kind} (${regionalAlerts.data.error.message})`
-          : `Area filters: ${selectedPack.areas.join(', ')} • merged live area feeds with de-duplication.`,
+          : `Area filters: ${selectedAreas.join(', ')} • merged live area feeds with de-duplication.`,
         updated: regionalAlerts.data?.updated ?? null,
         priority: 2,
       },
@@ -176,7 +214,8 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     regionalSevereCount,
     alertItems.length,
     alerts.data,
-    selectedPack,
+    selectedPack.label,
+    selectedAreas,
     regionalAlertsCount,
     regionalAlerts.data,
     alertCounts.data,
@@ -200,19 +239,74 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     || outlook.isLoading
     || aiSummary.isLoading
 
+  function toggleCustomArea(area: string): void {
+    setCustomSelectedAreas((prev) => (prev.includes(area) ? prev.filter((entry) => entry !== area) : [...prev, area]))
+  }
+
+  function saveCurrentCustomPack(): void {
+    if (customSelectedAreas.length === 0) return
+    const name = window.prompt('Name this regional pack:', `Custom (${customSelectedAreas.join('/')})`)
+    if (!name) return
+    const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
+    const next = [
+      ...customPacks.filter((pack) => pack.id !== id),
+      { id, label: name.trim(), areas: [...customSelectedAreas].sort() },
+    ]
+    setCustomPacks(next)
+    saveCustomRegionalPacks(next)
+    setRegionalPackId(id)
+  }
+
+  function deleteCustomPack(id: string): void {
+    const next = customPacks.filter((pack) => pack.id !== id)
+    setCustomPacks(next)
+    saveCustomRegionalPacks(next)
+    if (regionalPackId === id) setRegionalPackId(REGIONAL_PACKS[0].id)
+  }
+
   const content = (
     <div className="workspace-module-body weather-news-panel">
       <h3>Integrated Live Weather Feed</h3>
       <p className="weather-news-meta">Sources: NWS national + regional packs + event filters, SPC reports/outlook, LLM ops summary</p>
       <p className="weather-news-meta">Auto refresh: NWS 2m • SPC 3-4m • AI summary 2m</p>
+
       <label className="weather-news-pack-selector">
         Regional pack
         <select value={selectedPack.id} onChange={(event) => setRegionalPackId(event.target.value)}>
           {REGIONAL_PACKS.map((pack) => (
             <option key={pack.id} value={pack.id}>{pack.label}</option>
           ))}
+          {customPacks.map((pack) => (
+            <option key={pack.id} value={pack.id}>{pack.label} (Saved)</option>
+          ))}
+          <option value="custom-builder">Custom pack builder</option>
         </select>
       </label>
+
+      {selectedPack.id === 'custom-builder' && (
+        <div className="weather-news-custom-pack">
+          <div className="weather-news-custom-pack-actions">
+            <button type="button" onClick={saveCurrentCustomPack} disabled={customSelectedAreas.length === 0}>Save custom pack</button>
+            <span className="weather-news-meta">Selected: {customSelectedAreas.length} states</span>
+          </div>
+          <div className="weather-news-state-grid">
+            {US_STATE_CODES.map((code) => (
+              <label key={code} className="weather-news-state-option">
+                <input type="checkbox" checked={customSelectedAreas.includes(code)} onChange={() => toggleCustomArea(code)} />
+                <span>{code}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedPack.id.startsWith('custom-') && (
+        <div className="weather-news-custom-pack-actions">
+          <span className="weather-news-meta">Saved custom pack: {selectedPack.label}</span>
+          <button type="button" onClick={() => deleteCustomPack(selectedPack.id)}>Delete custom pack</button>
+        </div>
+      )}
+
       {loading && <p className="weather-news-meta">Refreshing feeds...</p>}
       <div className="weather-news-live-list">
         {cards.map((card) => (

@@ -6,6 +6,8 @@ import type { AlertSeverity } from '../types/weather'
 
 const severityOrder: AlertSeverity[] = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown']
 
+interface NwsAlertsPanelProps { embedded?: boolean }
+
 function formatTime(value: string | null): string {
   if (!value) return 'Unknown'
   const time = new Date(value)
@@ -13,7 +15,7 @@ function formatTime(value: string | null): string {
   return time.toLocaleString()
 }
 
-export function NwsAlertsPanel() {
+export function NwsAlertsPanel({ embedded = false }: NwsAlertsPanelProps) {
   const selectedAlertId = useMapStore((s) => s.selectedAlertId)
   const selectAlert = useMapStore((s) => s.selectAlert)
   const requestZoomToAlert = useMapStore((s) => s.requestZoomToAlert)
@@ -24,8 +26,8 @@ export function NwsAlertsPanel() {
   const error = alerts.data?.error
   const counts = severityOrder.map((severity) => ({ severity, count: list.filter((item) => item.severity === severity).length }))
 
-  return (
-    <section className="side-panel left-panel">
+  const content = (
+    <>
       <h2>NWS Alerts ({filteredList.length})</h2>
       {alerts.data?.updated && <p className="panel-meta">Updated: {formatTime(alerts.data.updated)}</p>}
       {alerts.isLoading && <p>Loading alerts feed...</p>}
@@ -51,6 +53,8 @@ export function NwsAlertsPanel() {
           </div>
         </>
       )}
-    </section>
+    </>
   )
+
+  return embedded ? <div className="workspace-module-body">{content}</div> : <section className="side-panel left-panel">{content}</section>
 }

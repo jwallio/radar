@@ -1,8 +1,10 @@
 import { LIVE_CONTEXT_MODULES } from '../config/liveContext'
 
-export function LiveContextRail() {
-  return (
-    <aside className="operator-rail right-rail">
+interface LiveContextRailProps { embedded?: boolean }
+
+export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
+  const content = (
+    <>
       <h2>Live Context</h2>
       {LIVE_CONTEXT_MODULES.map((module) => (
         <section key={module.id} className="context-card">
@@ -19,6 +21,8 @@ export function LiveContextRail() {
           )}
         </section>
       ))}
-    </aside>
+    </>
   )
+
+  return embedded ? <div className="workspace-module-body">{content}</div> : <aside className="operator-rail right-rail">{content}</aside>
 }

@@ -28,3 +28,25 @@ export interface SpcOutlookState { sourceUrl: string; fetchedAt: string; feature
 export type LiveContextModuleType = 'cams' | 'chasers' | 'spotters' | 'news' | 'scanner'
 export interface LiveContextItem { id: string; label: string; url?: string; description?: string; location?: string }
 export interface LiveContextModule { id: string; title: string; type: LiveContextModuleType; items: LiveContextItem[]; emptyMessage: string }
+
+export type WorkspaceModuleId = 'alerts' | 'radar' | 'spc' | 'liveContext' | 'cameras' | 'scanners' | 'weatherNews' | 'sourceHealth' | 'legendTime'
+export type WorkspaceZoneId = 'leftRail' | 'rightRail' | 'bottomDock' | 'mapOverlay' | 'focusPanel'
+export type WorkspaceModuleCategory = 'alerts' | 'radar' | 'convective' | 'operations' | 'media' | 'reference' | 'status'
+export type WorkspaceModuleSize = 'compact' | 'standard' | 'wide'
+
+export interface WorkspaceModuleDefinition {
+  id: WorkspaceModuleId
+  title: string
+  description: string
+  category: WorkspaceModuleCategory
+  defaultZone: WorkspaceZoneId
+  defaultSize: WorkspaceModuleSize
+  defaultVisible: boolean
+  requiresMap?: boolean
+  isLive?: boolean
+  isExternalLinkOnly?: boolean
+  isPlaceholder?: boolean
+}
+
+export interface WorkspaceModulePreference { visible: boolean; zone: WorkspaceZoneId }
+export type WorkspacePreferences = Record<WorkspaceModuleId, WorkspaceModulePreference>

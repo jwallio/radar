@@ -1,14 +1,28 @@
+import { useMemo, useState } from 'react'
 import { WORKSPACE_MODULES, WORKSPACE_ZONES } from '../config/workspaceModules'
+import { WORKSPACE_PRESETS } from '../config/workspacePresets'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import type { WorkspaceModuleCategory } from '../types/weather'
+import type { WorkspaceModuleCategory, WorkspacePresetId } from '../types/weather'
 
 const categories: WorkspaceModuleCategory[] = ['alerts', 'radar', 'convective', 'operations', 'media', 'reference', 'status']
 
 export function WorkspacePanel() {
+  const [query, setQuery] = useState('')
   const preferences = useWorkspaceStore((state) => state.preferences)
+  const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
+  const applyPreset = useWorkspaceStore((state) => state.applyPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
+  const filteredModules = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return WORKSPACE_MODULES
+    return WORKSPACE_MODULES.filter((module) => (
+      module.title.toLowerCase().includes(needle)
+      || module.description.toLowerCase().includes(needle)
+      || module.category.toLowerCase().includes(needle)
+    ))
+  }, [query])
 
   return (
     <aside className="workspace-panel" aria-label="Workspace modules">
@@ -19,9 +33,38 @@ export function WorkspacePanel() {
         </div>
         <button type="button" onClick={resetWorkspace}>Reset</button>
       </div>
-      <p className="workspace-panel-copy">Choose which modules are visible and where they dock around the map.</p>
+      <p className="workspace-panel-copy">Customize your weather monitoring workspace.</p>
+      <label className="workspace-search">
+        <span>Search modules</span>
+        <input
+          value={query}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder="alerts, radar, source..."
+        />
+      </label>
+      <section className="workspace-preset-list">
+        <h2>Presets</h2>
+        <select
+          data-workspace-preset-select
+          value={currentPresetId ?? ''}
+          onChange={(event) => {
+            if (event.currentTarget.value) applyPreset(event.currentTarget.value as WorkspacePresetId)
+          }}
+        >
+          <option value="">Custom workspace</option>
+          {WORKSPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.title}</option>)}
+        </select>
+        <div className="workspace-preset-buttons">
+          {WORKSPACE_PRESETS.map((preset) => (
+            <button key={preset.id} type="button" data-workspace-preset={preset.id} onClick={() => applyPreset(preset.id)}>
+              {preset.title}
+            </button>
+          ))}
+        </div>
+      </section>
       {categories.map((category) => {
-        const modules = WORKSPACE_MODULES.filter((module) => module.category === category)
+        const modules = filteredModules.filter((module) => module.category === category)
         if (modules.length === 0) return null
         return (
           <section key={category} className="workspace-library-group">

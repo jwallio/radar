@@ -50,3 +50,10 @@ export interface WorkspaceModuleDefinition {
 
 export interface WorkspaceModulePreference { visible: boolean; zone: WorkspaceZoneId }
 export type WorkspacePreferences = Record<WorkspaceModuleId, WorkspaceModulePreference>
+export type WorkspacePresetId = 'severeNowcast' | 'tornadoOutbreak' | 'cleanRadar' | 'localOps' | 'sourceHealth'
+export interface WorkspacePresetDefinition {
+  id: WorkspacePresetId
+  title: string
+  description: string
+  preferences: WorkspacePreferences
+}

@@ -1,3 +1,4 @@
+import { useState, type DragEvent } from 'react'
 import { NwsAlertsPanel } from './NwsAlertsPanel'
 import { SpcPanel } from './SpcPanel'
 import { RadarPanel } from './RadarPanel'
@@ -10,6 +11,7 @@ import { useWorkspaceStore } from '../state/workspaceStore'
 import type { WorkspaceModuleDefinition, WorkspaceModuleId, WorkspaceZoneId } from '../types/weather'
 import { WorkspaceModuleFrame } from './WorkspaceModuleFrame'
 import { WorkspacePanel } from './WorkspacePanel'
+import { CommandBar } from './CommandBar'
 
 const zoneLabels: Record<WorkspaceZoneId, string> = {
   leftRail: 'Left rail',
@@ -45,13 +47,34 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
   return module ? <PlaceholderModule module={module} /> : null
 }
 
-function WorkspaceZone({ zone }: { zone: WorkspaceZoneId }) {
+function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: WorkspaceZoneId; activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void }) {
   const preferences = useWorkspaceStore((state) => state.preferences)
+  const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
   const modules = WORKSPACE_MODULES.filter((module) => preferences[module.id]?.visible && preferences[module.id]?.zone === zone)
-  if (modules.length === 0) return null
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setActiveDropZone(zone)
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault()
+    const moduleId = event.dataTransfer.getData('text/plain') as WorkspaceModuleId
+    if (WORKSPACE_MODULES.some((module) => module.id === moduleId)) setModuleZone(moduleId, zone)
+    setActiveDropZone(null)
+  }
 
   return (
-    <aside className={`workspace-zone workspace-zone-${zone} ${zoneClassNames[zone]}`} aria-label={zoneLabels[zone]}>
+    <aside
+      className={`workspace-zone workspace-zone-${zone} ${zoneClassNames[zone]} ${activeDropZone === zone ? 'drop-active' : ''} ${modules.length === 0 ? 'empty' : ''}`}
+      aria-label={zoneLabels[zone]}
+      data-workspace-zone-target={zone}
+      onDragOver={handleDragOver}
+      onDragLeave={() => setActiveDropZone(null)}
+      onDrop={handleDrop}
+    >
+      {modules.length === 0 && <p className="workspace-empty-zone">Drop modules here</p>}
       {modules.map((module) => (
         <WorkspaceModuleFrame key={module.id} moduleId={module.id}>
           <ModuleContent moduleId={module.id} />
@@ -62,17 +85,21 @@ function WorkspaceZone({ zone }: { zone: WorkspaceZoneId }) {
 }
 
 export function AppShell() {
+  const [workspacePanelOpen, setWorkspacePanelOpen] = useState(true)
+  const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
+
   return (
     <div className="app-shell">
       <MapView />
+      <CommandBar workspacePanelOpen={workspacePanelOpen} onToggleWorkspacePanel={() => setWorkspacePanelOpen((open) => !open)} />
       <div className="operator-layout">
-        <WorkspaceZone zone="leftRail" />
-        <WorkspaceZone zone="rightRail" />
-        <WorkspaceZone zone="bottomDock" />
-        <WorkspaceZone zone="mapOverlay" />
-        <WorkspaceZone zone="focusPanel" />
+        <WorkspaceZone zone="leftRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
+        <WorkspaceZone zone="rightRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
+        <WorkspaceZone zone="bottomDock" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
+        <WorkspaceZone zone="mapOverlay" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
+        <WorkspaceZone zone="focusPanel" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
       </div>
-      <WorkspacePanel />
+      {workspacePanelOpen && <WorkspacePanel />}
       <WeatherLayerPanel />
       <PresetBar />
     </div>

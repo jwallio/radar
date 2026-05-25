@@ -4,10 +4,7 @@ type Bounds = [[number, number], [number, number]]
 
 function extendBounds(bounds: Bounds | null, lon: number, lat: number): Bounds {
   if (!bounds) return [[lon, lat], [lon, lat]]
-  return [
-    [Math.min(bounds[0][0], lon), Math.min(bounds[0][1], lat)],
-    [Math.max(bounds[1][0], lon), Math.max(bounds[1][1], lat)],
-  ]
+  return [[Math.min(bounds[0][0], lon), Math.min(bounds[0][1], lat)], [Math.max(bounds[1][0], lon), Math.max(bounds[1][1], lat)]]
 }
 
 function coordinatesBounds(coordinates: number[][][] | number[][][][]): Bounds | null {
@@ -29,42 +26,15 @@ export function boundsFromGeometry(geometry: GeoJSON.Geometry | null): Bounds | 
 }
 
 export function featureCollectionFromAlerts(alerts: WeatherAlert[]): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = alerts
-    .filter((alert) => alert.geometryStatus === 'mapped' && alert.geometry)
-    .map((alert) => ({
-      type: 'Feature',
-      geometry: alert.geometry as GeoJSON.Geometry,
-      properties: {
-        id: alert.id,
-        event: alert.event,
-        severity: alert.severity,
-      },
-    }))
-
   return {
     type: 'FeatureCollection',
-    features,
+    features: alerts.filter((a) => a.geometryStatus === 'mapped' && a.geometry).map((a) => ({ type: 'Feature', geometry: a.geometry as GeoJSON.Geometry, properties: { id: a.id, event: a.event, severity: a.severity, urgency: a.urgency ?? '', certainty: a.certainty ?? '', areaDesc: a.areaDesc, headline: a.headline, expires: a.expires ?? '', effective: a.effective ?? '' } })),
   }
 }
 
 export function featureCollectionFromSpcReports(reports: SpcStormReport[]): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = reports.map((report) => ({
-    type: 'Feature',
-    geometry: {
-      type: 'Point',
-      coordinates: [report.lon, report.lat],
-    },
-    properties: {
-      id: report.id,
-      type: report.type,
-      location: report.location,
-      state: report.state,
-      magnitude: report.magnitude ?? '',
-    },
-  }))
-
   return {
     type: 'FeatureCollection',
-    features,
+    features: reports.map((r) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] }, properties: { id: r.id, type: r.type, location: r.location, state: r.state, magnitude: r.magnitude ?? '' } })),
   }
 }

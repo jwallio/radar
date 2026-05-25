@@ -4,13 +4,17 @@ import { RadarPanel } from './RadarPanel'
 import { MapView } from './MapView'
 import { WeatherLayerPanel } from './WeatherLayerPanel'
 import { PresetBar } from './PresetBar'
+import { LiveContextRail } from './LiveContextRail'
 
 export function AppShell() {
   return (
     <div className="app-shell">
       <MapView />
-      <NwsAlertsPanel />
-      <aside className="side-panel right-panel">
+      <div className="operator-layout">
+        <NwsAlertsPanel />
+        <LiveContextRail />
+      </div>
+      <aside className="operator-dock">
         <SpcPanel />
         <RadarPanel />
       </aside>
@@ -19,4 +23,3 @@ export function AppShell() {
     </div>
   )
 }
-

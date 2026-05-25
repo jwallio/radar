@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { fetchNwsAlerts } from '../services/nws'
 import { useMapStore } from '../state/mapStore'
 import type { AlertSeverity } from '../types/weather'
@@ -13,24 +14,19 @@ function formatTime(value: string | null): string {
 }
 
 export function NwsAlertsPanel() {
-  const selectedAlertId = useMapStore((state) => state.selectedAlertId)
-  const selectAlert = useMapStore((state) => state.selectAlert)
-  const alerts = useQuery({
-    queryKey: ['nws-alerts'],
-    queryFn: fetchNwsAlerts,
-    staleTime: 60_000,
-  })
-
-  const list = alerts.data?.alerts ?? []
+  const selectedAlertId = useMapStore((s) => s.selectedAlertId)
+  const selectAlert = useMapStore((s) => s.selectAlert)
+  const requestZoomToAlert = useMapStore((s) => s.requestZoomToAlert)
+  const [severityFilter, setSeverityFilter] = useState<AlertSeverity | 'All'>('All')
+  const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000 })
+  const list = useMemo(() => alerts.data?.alerts ?? [], [alerts.data?.alerts])
+  const filteredList = useMemo(() => (severityFilter === 'All' ? list : list.filter((i) => i.severity === severityFilter)), [list, severityFilter])
   const error = alerts.data?.error
-  const counts = severityOrder.map((severity) => ({
-    severity,
-    count: list.filter((item) => item.severity === severity).length,
-  }))
+  const counts = severityOrder.map((severity) => ({ severity, count: list.filter((item) => item.severity === severity).length }))
 
   return (
     <section className="side-panel left-panel">
-      <h2>NWS Alerts ({list.length})</h2>
+      <h2>NWS Alerts ({filteredList.length})</h2>
       {alerts.data?.updated && <p className="panel-meta">Updated: {formatTime(alerts.data.updated)}</p>}
       {alerts.isLoading && <p>Loading alerts feed...</p>}
       {error && <p>Feed status: {error.kind} ({error.message})</p>}
@@ -38,31 +34,19 @@ export function NwsAlertsPanel() {
       {list.length > 0 && (
         <>
           <div className="severity-chips">
+            <button type="button" className={`severity-filter ${severityFilter === 'All' ? 'active' : ''}`} onClick={() => setSeverityFilter('All')}>All: {list.length}</button>
             {counts.map((entry) => (
-              <span key={entry.severity} className={`severity-chip severity-${entry.severity.toLowerCase()}`}>
-                {entry.severity}: {entry.count}
-              </span>
+              <button key={entry.severity} type="button" className={`severity-filter severity-${entry.severity.toLowerCase()} ${severityFilter === entry.severity ? 'active' : ''}`} onClick={() => setSeverityFilter(entry.severity)}>{entry.severity}: {entry.count}</button>
             ))}
           </div>
           <div className="alert-list">
-            {list.map((alert) => (
-              <button
-                key={alert.id}
-                type="button"
-                className={`alert-card ${selectedAlertId === alert.id ? 'selected' : ''}`}
-                onClick={() => selectAlert(selectedAlertId === alert.id ? null : alert.id)}
-              >
-                <div className="alert-card-top">
-                  <strong>{alert.event}</strong>
-                  <span className={`severity-badge severity-${alert.severity.toLowerCase()}`}>{alert.severity}</span>
-                </div>
-                <p>{alert.areaDesc}</p>
-                <p className="alert-headline">{alert.headline}</p>
-                <p>Expires: {formatTime(alert.expires)}</p>
-                <span className={`mapped-chip ${alert.geometryStatus}`}>
-                  {alert.geometryStatus === 'mapped' ? 'Mapped' : 'Unmapped'}
-                </span>
-              </button>
+            {filteredList.map((alert) => (
+              <div key={alert.id} className={`alert-card ${selectedAlertId === alert.id ? 'selected' : ''}`} role="button" tabIndex={0} onClick={() => selectAlert(selectedAlertId === alert.id ? null : alert.id)}>
+                <div className="alert-card-top"><strong>{alert.event}</strong><span className={`severity-badge severity-${alert.severity.toLowerCase()}`}>{alert.severity}</span></div>
+                <p>{alert.areaDesc}</p><p className="alert-headline">{alert.headline}</p><p>Expires: {formatTime(alert.expires)}</p>
+                <span className={`mapped-chip ${alert.geometryStatus}`}>{alert.geometryStatus === 'mapped' ? 'Mapped' : 'Unmapped'}</span>
+                {alert.geometryStatus === 'mapped' && <button type="button" className="alert-zoom-action" onClick={(e) => { e.stopPropagation(); requestZoomToAlert(alert.id) }}>Zoom to alert</button>}
+              </div>
             ))}
           </div>
         </>

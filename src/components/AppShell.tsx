@@ -13,6 +13,7 @@ import { WorkspaceModuleFrame } from './WorkspaceModuleFrame'
 import { WorkspacePanel } from './WorkspacePanel'
 import { CommandBar } from './CommandBar'
 import { SourceHealthPanel } from './SourceHealthPanel'
+import { LegendTimePanel } from './LegendTimePanel'
 import { CommandPalette, type CommandPaletteAction } from './CommandPalette'
 import { useMapStore } from '../state/mapStore'
 
@@ -61,6 +62,7 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
   if (moduleId === 'spc') return <SpcPanel />
   if (moduleId === 'radar') return <RadarPanel />
   if (moduleId === 'sourceHealth') return <SourceHealthPanel />
+  if (moduleId === 'legendTime') return <LegendTimePanel />
   const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
   return module ? <PlaceholderModule module={module} /> : null
 }

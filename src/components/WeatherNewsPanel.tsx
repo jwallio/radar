@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchNwsAlerts } from '../services/nws'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
+import { fetchOpsAiSummary } from '../services/aiSummary'
 
 interface WeatherNewsPanelProps {
   embedded?: boolean
@@ -23,41 +24,40 @@ function formatTime(value: string | null | undefined): string {
   return date.toLocaleString()
 }
 
-function buildAiSummary(alertCount: number, severeCount: number, reportCount: number, tornadoCount: number, outlookCount: number): string {
-  const lead = severeCount > 0
-    ? `High-impact pattern: ${severeCount} severe/extreme alerts are active.`
-    : `No severe/extreme alert concentration right now.`
-
-  const convective = tornadoCount > 0
-    ? `${tornadoCount} tornado reports are in the SPC feed, indicating active tornadic risk.`
-    : `Tornado report count is currently low; monitor trend changes.`
-
-  return `${lead} Total active alerts: ${alertCount}. SPC reports: ${reportCount}. Day 1 outlook features: ${outlookCount}. ${convective}`
-}
 
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000, refetchInterval: 120_000 })
   const reports = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120_000, refetchInterval: 180_000 })
   const outlook = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180_000, refetchInterval: 240_000 })
 
+  const alertItems = alerts.data?.alerts ?? []
+  const severeCount = alertItems.filter((a) => a.severity === 'Severe' || a.severity === 'Extreme').length
+  const reportsData = reports.data?.reports ?? []
+  const tornadoCount = reportsData.filter((r) => r.type === 'tornado').length
+  const outlookFeatures = outlook.data?.featureCollection.features.length ?? 0
+
+  const aiSummary = useQuery({
+    queryKey: ['ops-ai-summary', alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures],
+    queryFn: () => fetchOpsAiSummary({
+      alertCount: alertItems.length,
+      severeCount,
+      reportCount: reportsData.length,
+      tornadoCount,
+      outlookFeatureCount: outlookFeatures,
+    }),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    enabled: !!alerts.data && !!reports.data && !!outlook.data,
+  })
+
   const cards = useMemo<NewsCard[]>(() => {
-    const alertItems = alerts.data?.alerts ?? []
-    const severeCount = alertItems.filter((a) => a.severity === 'Severe' || a.severity === 'Extreme').length
-
-    const reportsData = reports.data?.reports ?? []
-    const tornadoCount = reportsData.filter((r) => r.type === 'tornado').length
-
-    const outlookFeatures = outlook.data?.featureCollection.features.length ?? 0
-
-    const aiSummary = buildAiSummary(alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures)
-
     const next: NewsCard[] = [
       {
         id: 'ai-ops-summary',
-        source: 'AI Ops Summary',
+        source: aiSummary.data?.model ? `AI Ops Summary (${aiSummary.data.model})` : 'AI Ops Summary',
         headline: severeCount > 0 ? 'Severe-weather escalation detected' : 'Baseline weather operations posture',
-        summary: aiSummary,
-        updated: new Date().toISOString(),
+        summary: aiSummary.data?.summary ?? 'Generating AI summary...',
+        updated: aiSummary.data?.generatedAt ?? null,
         priority: 0,
       },
       {
@@ -93,9 +93,9 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     ]
 
     return next.sort((a, b) => a.priority - b.priority)
-  }, [alerts.data, reports.data, outlook.data])
+  }, [aiSummary.data, alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures, alerts.data, reports.data, outlook.data])
 
-  const loading = alerts.isLoading || reports.isLoading || outlook.isLoading
+  const loading = alerts.isLoading || reports.isLoading || outlook.isLoading || aiSummary.isLoading
 
   const content = (
     <div className="workspace-module-body weather-news-panel">

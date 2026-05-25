@@ -30,10 +30,25 @@ interface NwsAlertsResponse {
   features?: NwsAlertFeature[]
 }
 
+interface NwsAlertCountsResponse {
+  total?: number
+  land?: number
+  marine?: number
+}
+
 export interface NwsAlertsResult {
   alerts: WeatherAlert[]
   updated: string | null
   sourceUrl: string
+  error?: SafeFetchError
+}
+
+export interface NwsAlertCountsResult {
+  sourceUrl: string
+  fetchedAt: string
+  total: number
+  land: number
+  marine: number
   error?: SafeFetchError
 }
 
@@ -90,10 +105,7 @@ function toAlert(feature: NwsAlertFeature, fallbackId: string, sourceUrl: string
   }
 }
 
-export async function fetchNwsAlerts(): Promise<NwsAlertsResult> {
-  const url = SOURCE_LINKS.find((link) => link.id === 'nws-alerts')?.url
-  if (!url) throw new Error('NWS alerts URL missing')
-
+async function fetchNwsAlertsFromUrl(url: string): Promise<NwsAlertsResult> {
   const result = await fetchJsonSafe<NwsAlertsResponse>(url, {
     headers: {
       Accept: 'application/geo+json, application/json',
@@ -119,3 +131,31 @@ export async function fetchNwsAlerts(): Promise<NwsAlertsResult> {
   }
 }
 
+export async function fetchNwsAlerts(): Promise<NwsAlertsResult> {
+  const url = SOURCE_LINKS.find((link) => link.id === 'nws-alerts')?.url
+  if (!url) throw new Error('NWS alerts URL missing')
+  return fetchNwsAlertsFromUrl(url)
+}
+
+export async function fetchNwsAlertsByEvent(event: string): Promise<NwsAlertsResult> {
+  const url = `https://api.weather.gov/alerts/active?status=actual&message_type=alert&event=${encodeURIComponent(event)}`
+  return fetchNwsAlertsFromUrl(url)
+}
+
+export async function fetchNwsAlertCounts(): Promise<NwsAlertCountsResult> {
+  const sourceUrl = 'https://api.weather.gov/alerts/active/count'
+  const fetchedAt = new Date().toISOString()
+  const result = await fetchJsonSafe<NwsAlertCountsResponse>(sourceUrl, {
+    headers: { Accept: 'application/ld+json, application/json' },
+  })
+
+  if (result.error) return { sourceUrl, fetchedAt, total: 0, land: 0, marine: 0, error: result.error }
+
+  return {
+    sourceUrl,
+    fetchedAt,
+    total: Number(result.data?.total ?? 0),
+    land: Number(result.data?.land ?? 0),
+    marine: Number(result.data?.marine ?? 0),
+  }
+}

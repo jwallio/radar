@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchNwsAlerts } from '../services/nws'
+import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByEvent } from '../services/nws'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchOpsAiSummary } from '../services/aiSummary'
 
@@ -24,9 +24,12 @@ function formatTime(value: string | null | undefined): string {
   return date.toLocaleString()
 }
 
-
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000, refetchInterval: 120_000 })
+  const alertCounts = useQuery({ queryKey: ['nws-alert-counts'], queryFn: fetchNwsAlertCounts, staleTime: 60_000, refetchInterval: 120_000 })
+  const tornadoWarnings = useQuery({ queryKey: ['nws-alerts-tornado-warning'], queryFn: () => fetchNwsAlertsByEvent('Tornado Warning'), staleTime: 60_000, refetchInterval: 120_000 })
+  const severeThunderstormWarnings = useQuery({ queryKey: ['nws-alerts-severe-thunderstorm-warning'], queryFn: () => fetchNwsAlertsByEvent('Severe Thunderstorm Warning'), staleTime: 60_000, refetchInterval: 120_000 })
+  const flashFloodWarnings = useQuery({ queryKey: ['nws-alerts-flash-flood-warning'], queryFn: () => fetchNwsAlertsByEvent('Flash Flood Warning'), staleTime: 60_000, refetchInterval: 120_000 })
   const reports = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120_000, refetchInterval: 180_000 })
   const outlook = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180_000, refetchInterval: 240_000 })
 
@@ -71,6 +74,46 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         priority: 1,
       },
       {
+        id: 'nws-alert-counts',
+        source: 'NWS Active Count Feed',
+        headline: `National active alerts: ${alertCounts.data?.total ?? 0}`,
+        summary: alertCounts.data?.error
+          ? `Feed issue: ${alertCounts.data.error.kind} (${alertCounts.data.error.message})`
+          : `Land: ${alertCounts.data?.land ?? 0} • Marine: ${alertCounts.data?.marine ?? 0}`,
+        updated: alertCounts.data?.fetchedAt ?? null,
+        priority: 2,
+      },
+      {
+        id: 'nws-tornado-warning-feed',
+        source: 'NWS Tornado Warning Feed',
+        headline: `${tornadoWarnings.data?.alerts.length ?? 0} active tornado warnings`,
+        summary: tornadoWarnings.data?.error
+          ? `Feed issue: ${tornadoWarnings.data.error.kind} (${tornadoWarnings.data.error.message})`
+          : 'Event-filtered alert feed focused on tornado warnings.',
+        updated: tornadoWarnings.data?.updated ?? null,
+        priority: 3,
+      },
+      {
+        id: 'nws-severe-thunderstorm-warning-feed',
+        source: 'NWS Severe Thunderstorm Warning Feed',
+        headline: `${severeThunderstormWarnings.data?.alerts.length ?? 0} active severe thunderstorm warnings`,
+        summary: severeThunderstormWarnings.data?.error
+          ? `Feed issue: ${severeThunderstormWarnings.data.error.kind} (${severeThunderstormWarnings.data.error.message})`
+          : 'Event-filtered feed for severe thunderstorm warning volume tracking.',
+        updated: severeThunderstormWarnings.data?.updated ?? null,
+        priority: 4,
+      },
+      {
+        id: 'nws-flash-flood-warning-feed',
+        source: 'NWS Flash Flood Warning Feed',
+        headline: `${flashFloodWarnings.data?.alerts.length ?? 0} active flash flood warnings`,
+        summary: flashFloodWarnings.data?.error
+          ? `Feed issue: ${flashFloodWarnings.data.error.kind} (${flashFloodWarnings.data.error.message})`
+          : 'Event-filtered feed for flash flood warning monitoring.',
+        updated: flashFloodWarnings.data?.updated ?? null,
+        priority: 5,
+      },
+      {
         id: 'spc-reports-live',
         source: 'SPC Reports Feed',
         headline: `${reportsData.length} reports today • ${tornadoCount} tornado`,
@@ -78,7 +121,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${reports.data.error.kind} (${reports.data.error.message})`
           : 'Raw tornado/wind/hail reports parsed live from SPC daily report feed.',
         updated: reports.data?.fetchedAt ?? null,
-        priority: 2,
+        priority: 6,
       },
       {
         id: 'spc-outlook-live',
@@ -88,19 +131,41 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${outlook.data.error.kind} (${outlook.data.error.message})`
           : 'GeoJSON convective outlook polygons are active and map-wired.',
         updated: outlook.data?.fetchedAt ?? null,
-        priority: 3,
+        priority: 7,
       },
     ]
 
     return next.sort((a, b) => a.priority - b.priority)
-  }, [aiSummary.data, alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures, alerts.data, reports.data, outlook.data])
+  }, [
+    aiSummary.data,
+    severeCount,
+    alertItems.length,
+    alerts.data,
+    alertCounts.data,
+    tornadoWarnings.data,
+    severeThunderstormWarnings.data,
+    flashFloodWarnings.data,
+    reportsData.length,
+    tornadoCount,
+    reports.data,
+    outlookFeatures,
+    outlook.data,
+  ])
 
-  const loading = alerts.isLoading || reports.isLoading || outlook.isLoading || aiSummary.isLoading
+  const loading = alerts.isLoading
+    || alertCounts.isLoading
+    || tornadoWarnings.isLoading
+    || severeThunderstormWarnings.isLoading
+    || flashFloodWarnings.isLoading
+    || reports.isLoading
+    || outlook.isLoading
+    || aiSummary.isLoading
 
   const content = (
     <div className="workspace-module-body weather-news-panel">
       <h3>Integrated Live Weather Feed</h3>
-      <p className="weather-news-meta">Auto refresh: Alerts 2m • SPC reports 3m • Outlook 4m</p>
+      <p className="weather-news-meta">Sources: NWS national + event filters, SPC reports/outlook, LLM ops summary</p>
+      <p className="weather-news-meta">Auto refresh: NWS 2m • SPC 3-4m • AI summary 2m</p>
       {loading && <p className="weather-news-meta">Refreshing feeds...</p>}
       <div className="weather-news-live-list">
         {cards.map((card) => (

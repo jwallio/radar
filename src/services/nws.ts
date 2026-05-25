@@ -142,6 +142,57 @@ export async function fetchNwsAlertsByEvent(event: string): Promise<NwsAlertsRes
   return fetchNwsAlertsFromUrl(url)
 }
 
+export async function fetchNwsAlertsByAreas(areas: string[]): Promise<NwsAlertsResult> {
+  const normalized = Array.from(new Set(areas.map((area) => area.trim().toUpperCase()).filter(Boolean)))
+  if (normalized.length === 0) {
+    return {
+      alerts: [],
+      updated: null,
+      sourceUrl: 'https://api.weather.gov/alerts/active?status=actual&message_type=alert',
+    }
+  }
+
+  const queries = normalized.map((area) => {
+    const url = `https://api.weather.gov/alerts/active?status=actual&message_type=alert&area=${encodeURIComponent(area)}`
+    return fetchNwsAlertsFromUrl(url)
+  })
+
+  const results = await Promise.all(queries)
+  const merged = new Map<string, WeatherAlert>()
+  let updated: string | null = null
+  const errors: SafeFetchError[] = []
+
+  for (const result of results) {
+    if (result.updated && (!updated || Date.parse(result.updated) > Date.parse(updated))) {
+      updated = result.updated
+    }
+    if (result.error) {
+      errors.push(result.error)
+      continue
+    }
+    for (const alert of result.alerts) merged.set(alert.id, alert)
+  }
+
+  const alerts = Array.from(merged.values())
+  alerts.sort((a, b) => {
+    const severityDelta = severityOrder[a.severity] - severityOrder[b.severity]
+    if (severityDelta !== 0) return severityDelta
+    return toTime(a.expires) - toTime(b.expires)
+  })
+
+  return {
+    alerts,
+    updated,
+    sourceUrl: `https://api.weather.gov/alerts/active?status=actual&message_type=alert&area=${normalized.join(',')}`,
+    error: errors.length > 0
+      ? {
+          kind: 'network',
+          message: `${errors.length} regional feed request(s) failed while merging area packs.`,
+        }
+      : undefined,
+  }
+}
+
 export async function fetchNwsAlertCounts(): Promise<NwsAlertCountsResult> {
   const sourceUrl = 'https://api.weather.gov/alerts/active/count'
   const fetchedAt = new Date().toISOString()

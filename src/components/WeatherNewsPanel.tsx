@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByEvent } from '../services/nws'
+import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByAreas, fetchNwsAlertsByEvent } from '../services/nws'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchOpsAiSummary } from '../services/aiSummary'
 
@@ -17,6 +17,19 @@ interface NewsCard {
   priority: number
 }
 
+interface RegionalPack {
+  id: string
+  label: string
+  areas: string[]
+}
+
+const REGIONAL_PACKS: RegionalPack[] = [
+  { id: 'southern-plains', label: 'Southern Plains (TX/OK/KS)', areas: ['TX', 'OK', 'KS'] },
+  { id: 'midwest', label: 'Midwest (IA/IL/IN/MO)', areas: ['IA', 'IL', 'IN', 'MO'] },
+  { id: 'southeast', label: 'Southeast (AL/GA/MS/TN)', areas: ['AL', 'GA', 'MS', 'TN'] },
+  { id: 'mid-atlantic', label: 'Mid-Atlantic (VA/MD/NC/SC)', areas: ['VA', 'MD', 'NC', 'SC'] },
+]
+
 function formatTime(value: string | null | undefined): string {
   if (!value) return 'Unknown'
   const date = new Date(value)
@@ -25,11 +38,20 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
+  const [regionalPackId, setRegionalPackId] = useState<string>(REGIONAL_PACKS[0].id)
+  const selectedPack = REGIONAL_PACKS.find((pack) => pack.id === regionalPackId) ?? REGIONAL_PACKS[0]
+
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000, refetchInterval: 120_000 })
   const alertCounts = useQuery({ queryKey: ['nws-alert-counts'], queryFn: fetchNwsAlertCounts, staleTime: 60_000, refetchInterval: 120_000 })
   const tornadoWarnings = useQuery({ queryKey: ['nws-alerts-tornado-warning'], queryFn: () => fetchNwsAlertsByEvent('Tornado Warning'), staleTime: 60_000, refetchInterval: 120_000 })
   const severeThunderstormWarnings = useQuery({ queryKey: ['nws-alerts-severe-thunderstorm-warning'], queryFn: () => fetchNwsAlertsByEvent('Severe Thunderstorm Warning'), staleTime: 60_000, refetchInterval: 120_000 })
   const flashFloodWarnings = useQuery({ queryKey: ['nws-alerts-flash-flood-warning'], queryFn: () => fetchNwsAlertsByEvent('Flash Flood Warning'), staleTime: 60_000, refetchInterval: 120_000 })
+  const regionalAlerts = useQuery({
+    queryKey: ['nws-alerts-regional-pack', selectedPack.id],
+    queryFn: () => fetchNwsAlertsByAreas(selectedPack.areas),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  })
   const reports = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120_000, refetchInterval: 180_000 })
   const outlook = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180_000, refetchInterval: 240_000 })
 
@@ -38,19 +60,21 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const reportsData = reports.data?.reports ?? []
   const tornadoCount = reportsData.filter((r) => r.type === 'tornado').length
   const outlookFeatures = outlook.data?.featureCollection.features.length ?? 0
+  const regionalAlertsCount = regionalAlerts.data?.alerts.length ?? 0
+  const regionalSevereCount = (regionalAlerts.data?.alerts ?? []).filter((a) => a.severity === 'Severe' || a.severity === 'Extreme').length
 
   const aiSummary = useQuery({
-    queryKey: ['ops-ai-summary', alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures],
+    queryKey: ['ops-ai-summary', alertItems.length, severeCount, reportsData.length, tornadoCount, outlookFeatures, selectedPack.id, regionalAlertsCount, regionalSevereCount],
     queryFn: () => fetchOpsAiSummary({
       alertCount: alertItems.length,
-      severeCount,
+      severeCount: severeCount + regionalSevereCount,
       reportCount: reportsData.length,
       tornadoCount,
       outlookFeatureCount: outlookFeatures,
     }),
     staleTime: 60_000,
     refetchInterval: 120_000,
-    enabled: !!alerts.data && !!reports.data && !!outlook.data,
+    enabled: !!alerts.data && !!reports.data && !!outlook.data && !!regionalAlerts.data,
   })
 
   const cards = useMemo<NewsCard[]>(() => {
@@ -58,7 +82,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
       {
         id: 'ai-ops-summary',
         source: aiSummary.data?.model ? `AI Ops Summary (${aiSummary.data.model})` : 'AI Ops Summary',
-        headline: severeCount > 0 ? 'Severe-weather escalation detected' : 'Baseline weather operations posture',
+        headline: severeCount > 0 || regionalSevereCount > 0 ? 'Severe-weather escalation detected' : 'Baseline weather operations posture',
         summary: aiSummary.data?.summary ?? 'Generating AI summary...',
         updated: aiSummary.data?.generatedAt ?? null,
         priority: 0,
@@ -74,6 +98,16 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         priority: 1,
       },
       {
+        id: 'nws-regional-pack',
+        source: `NWS Regional Pack: ${selectedPack.label}`,
+        headline: `${regionalAlertsCount} active regional alerts • ${regionalSevereCount} severe/extreme`,
+        summary: regionalAlerts.data?.error
+          ? `Feed issue: ${regionalAlerts.data.error.kind} (${regionalAlerts.data.error.message})`
+          : `Area filters: ${selectedPack.areas.join(', ')} • merged live area feeds with de-duplication.`,
+        updated: regionalAlerts.data?.updated ?? null,
+        priority: 2,
+      },
+      {
         id: 'nws-alert-counts',
         source: 'NWS Active Count Feed',
         headline: `National active alerts: ${alertCounts.data?.total ?? 0}`,
@@ -81,7 +115,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${alertCounts.data.error.kind} (${alertCounts.data.error.message})`
           : `Land: ${alertCounts.data?.land ?? 0} • Marine: ${alertCounts.data?.marine ?? 0}`,
         updated: alertCounts.data?.fetchedAt ?? null,
-        priority: 2,
+        priority: 3,
       },
       {
         id: 'nws-tornado-warning-feed',
@@ -91,7 +125,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${tornadoWarnings.data.error.kind} (${tornadoWarnings.data.error.message})`
           : 'Event-filtered alert feed focused on tornado warnings.',
         updated: tornadoWarnings.data?.updated ?? null,
-        priority: 3,
+        priority: 4,
       },
       {
         id: 'nws-severe-thunderstorm-warning-feed',
@@ -101,7 +135,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${severeThunderstormWarnings.data.error.kind} (${severeThunderstormWarnings.data.error.message})`
           : 'Event-filtered feed for severe thunderstorm warning volume tracking.',
         updated: severeThunderstormWarnings.data?.updated ?? null,
-        priority: 4,
+        priority: 5,
       },
       {
         id: 'nws-flash-flood-warning-feed',
@@ -111,7 +145,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${flashFloodWarnings.data.error.kind} (${flashFloodWarnings.data.error.message})`
           : 'Event-filtered feed for flash flood warning monitoring.',
         updated: flashFloodWarnings.data?.updated ?? null,
-        priority: 5,
+        priority: 6,
       },
       {
         id: 'spc-reports-live',
@@ -121,7 +155,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${reports.data.error.kind} (${reports.data.error.message})`
           : 'Raw tornado/wind/hail reports parsed live from SPC daily report feed.',
         updated: reports.data?.fetchedAt ?? null,
-        priority: 6,
+        priority: 7,
       },
       {
         id: 'spc-outlook-live',
@@ -131,7 +165,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           ? `Feed issue: ${outlook.data.error.kind} (${outlook.data.error.message})`
           : 'GeoJSON convective outlook polygons are active and map-wired.',
         updated: outlook.data?.fetchedAt ?? null,
-        priority: 7,
+        priority: 8,
       },
     ]
 
@@ -139,8 +173,12 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   }, [
     aiSummary.data,
     severeCount,
+    regionalSevereCount,
     alertItems.length,
     alerts.data,
+    selectedPack,
+    regionalAlertsCount,
+    regionalAlerts.data,
     alertCounts.data,
     tornadoWarnings.data,
     severeThunderstormWarnings.data,
@@ -154,6 +192,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
 
   const loading = alerts.isLoading
     || alertCounts.isLoading
+    || regionalAlerts.isLoading
     || tornadoWarnings.isLoading
     || severeThunderstormWarnings.isLoading
     || flashFloodWarnings.isLoading
@@ -164,8 +203,16 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const content = (
     <div className="workspace-module-body weather-news-panel">
       <h3>Integrated Live Weather Feed</h3>
-      <p className="weather-news-meta">Sources: NWS national + event filters, SPC reports/outlook, LLM ops summary</p>
+      <p className="weather-news-meta">Sources: NWS national + regional packs + event filters, SPC reports/outlook, LLM ops summary</p>
       <p className="weather-news-meta">Auto refresh: NWS 2m • SPC 3-4m • AI summary 2m</p>
+      <label className="weather-news-pack-selector">
+        Regional pack
+        <select value={selectedPack.id} onChange={(event) => setRegionalPackId(event.target.value)}>
+          {REGIONAL_PACKS.map((pack) => (
+            <option key={pack.id} value={pack.id}>{pack.label}</option>
+          ))}
+        </select>
+      </label>
       {loading && <p className="weather-news-meta">Refreshing feeds...</p>}
       <div className="weather-news-live-list">
         {cards.map((card) => (

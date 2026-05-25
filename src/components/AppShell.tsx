@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { NwsAlertsPanel } from './NwsAlertsPanel'
 import { SpcPanel } from './SpcPanel'
 import { RadarPanel } from './RadarPanel'
@@ -13,6 +13,8 @@ import { WorkspaceModuleFrame } from './WorkspaceModuleFrame'
 import { WorkspacePanel } from './WorkspacePanel'
 import { CommandBar } from './CommandBar'
 import { SourceHealthPanel } from './SourceHealthPanel'
+import { CommandPalette, type CommandPaletteAction } from './CommandPalette'
+import { useMapStore } from '../state/mapStore'
 
 const zoneLabels: Record<WorkspaceZoneId, string> = {
   leftRail: 'Left rail',
@@ -45,7 +47,7 @@ function UtilityHelpPanel() {
   return (
     <section className="utility-help-panel">
       <h3>Help & Shortcuts</h3>
-      <p>Esc closes the current utility panel.</p>
+      <p>Ctrl/Cmd+K opens command palette. Esc closes palette or utility panel.</p>
       <p>Use Edit Mode to move/hide modules; switch back to Operate Mode for live monitoring.</p>
       <p>Layer shortcuts: 1 alerts, 2 radar, 3 SPC outlook, 4 reports.</p>
       <p>Preset shortcuts: S severe-weather, C clean-map.</p>
@@ -106,11 +108,47 @@ function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: Work
 export function AppShell() {
   const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
   const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  const toggleLayer = useMapStore((state) => state.toggleLayer)
+  const applyLayerPreset = useMapStore((state) => state.applyPreset)
+  const applyWorkspacePreset = useWorkspaceStore((state) => state.applyPreset)
+  const setLayoutMode = useWorkspaceStore((state) => state.setLayoutMode)
+  const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
+
+  const commandPaletteActions = useMemo<CommandPaletteAction[]>(() => [
+    { id: 'utility-workspace', label: 'Open workspace panel', detail: 'Utility: Workspace', run: () => setActiveUtilityTab('workspace') },
+    { id: 'utility-layers', label: 'Open layers panel', detail: 'Utility: Layers', run: () => setActiveUtilityTab('layers') },
+    { id: 'utility-help', label: 'Open help panel', detail: 'Utility: Help', run: () => setActiveUtilityTab('help') },
+    { id: 'layout-operate', label: 'Switch to Operate mode', detail: 'Workspace layout', run: () => setLayoutMode('operate') },
+    { id: 'layout-edit', label: 'Switch to Edit mode', detail: 'Workspace layout', run: () => setLayoutMode('edit') },
+    { id: 'workspace-preset-severe', label: 'Workspace preset: Severe Weather Nowcast', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('severeNowcast') },
+    { id: 'workspace-preset-clean', label: 'Workspace preset: Clean Radar Mode', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('cleanRadar') },
+    { id: 'workspace-reset', label: 'Reset workspace to defaults', detail: 'Workspace reset', run: () => resetWorkspace() },
+    { id: 'layer-preset-severe', label: 'Layer preset: Severe Weather', detail: 'Map layers', run: () => applyLayerPreset('severe-weather') },
+    { id: 'layer-preset-clean', label: 'Layer preset: Clean Map', detail: 'Map layers', run: () => applyLayerPreset('clean-map') },
+    { id: 'toggle-alerts', label: 'Toggle layer: Alerts', detail: 'Shortcut 1', run: () => toggleLayer('nwsAlerts') },
+    { id: 'toggle-radar', label: 'Toggle layer: Radar', detail: 'Shortcut 2', run: () => toggleLayer('radar') },
+    { id: 'toggle-spc', label: 'Toggle layer: SPC outlook', detail: 'Shortcut 3', run: () => toggleLayer('spcOutlook') },
+    { id: 'toggle-reports', label: 'Toggle layer: Storm reports', detail: 'Shortcut 4', run: () => toggleLayer('stormReports') },
+  ], [applyLayerPreset, applyWorkspacePreset, resetWorkspace, setLayoutMode, toggleLayer])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
-      if (key === 'escape') setActiveUtilityTab(null)
+      const metaK = (event.metaKey || event.ctrlKey) && key === 'k'
+
+      if (metaK) {
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+        return
+      }
+
+      if (key === 'escape') {
+        if (paletteOpen) setPaletteOpen(false)
+        else setActiveUtilityTab(null)
+      }
+
       if (event.shiftKey && key === 'l') {
         event.preventDefault()
         setActiveUtilityTab((tab) => (tab === 'layers' ? null : 'layers'))
@@ -119,7 +157,7 @@ export function AppShell() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [paletteOpen])
 
   return (
     <div className="app-shell">
@@ -128,6 +166,7 @@ export function AppShell() {
         activeUtilityTab={activeUtilityTab}
         onToggleUtilityTab={(tab) => setActiveUtilityTab((current) => (current === tab ? null : tab))}
         onCloseUtility={() => setActiveUtilityTab(null)}
+        onOpenCommandPalette={() => setPaletteOpen(true)}
       />
       <div className="operator-layout">
         <WorkspaceZone zone="leftRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
@@ -144,6 +183,8 @@ export function AppShell() {
           {activeUtilityTab === 'help' && <UtilityHelpPanel />}
         </aside>
       )}
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={commandPaletteActions} />
 
       <PresetBar />
     </div>

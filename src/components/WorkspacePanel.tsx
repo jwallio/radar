@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { WORKSPACE_MODULES, WORKSPACE_ZONES } from '../config/workspaceModules'
 import { WORKSPACE_PRESETS } from '../config/workspacePresets'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import type { WorkspaceModuleCategory, WorkspacePresetId } from '../types/weather'
+import type { WorkspaceModuleCategory } from '../types/weather'
 
 const categories: WorkspaceModuleCategory[] = ['alerts', 'radar', 'convective', 'operations', 'media', 'reference', 'status']
 const helpStorageKey = 'wallcloud-weather-dashboard-workspace-help-dismissed'
@@ -28,6 +28,9 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
+  const userPresets = useWorkspaceStore((state) => state.userPresets)
+  const saveCurrentAsPreset = useWorkspaceStore((state) => state.saveCurrentAsPreset)
+  const deleteUserPreset = useWorkspaceStore((state) => state.deleteUserPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
 
   const filteredModules = useMemo(() => {
@@ -102,19 +105,44 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
           data-workspace-preset-select
           value={currentPresetId ?? ''}
           onChange={(event) => {
-            if (event.currentTarget.value) applyPreset(event.currentTarget.value as WorkspacePresetId)
+            if (event.currentTarget.value) applyPreset(event.currentTarget.value)
           }}
         >
           <option value="">Custom workspace</option>
           {WORKSPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.title}</option>)}
+          {userPresets.map((preset) => <option key={preset.id} value={preset.id}>★ {preset.title}</option>)}
         </select>
         <div className="workspace-preset-buttons">
+          <button
+            type="button"
+            onClick={() => {
+              const name = window.prompt('Save current workspace as preset:', 'My workspace')
+              if (name) saveCurrentAsPreset(name)
+            }}
+          >
+            Save current preset
+          </button>
           {WORKSPACE_PRESETS.map((preset) => (
             <button key={preset.id} type="button" data-workspace-preset={preset.id} onClick={() => applyPreset(preset.id)}>
               {preset.title}
             </button>
           ))}
+          {userPresets.map((preset) => (
+            <button key={preset.id} type="button" onClick={() => applyPreset(preset.id)}>
+              ★ {preset.title}
+            </button>
+          ))}
         </div>
+        {userPresets.length > 0 && (
+          <div className="workspace-user-presets">
+            {userPresets.map((preset) => (
+              <div key={preset.id} className="workspace-user-preset-row">
+                <span>{preset.title}</span>
+                <button type="button" onClick={() => deleteUserPreset(preset.id)}>Delete</button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       {categories.map((category) => {
         const modules = filteredModules.filter((module) => module.category === category)

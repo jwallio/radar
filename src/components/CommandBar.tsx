@@ -9,18 +9,22 @@ interface CommandBarProps {
   activeUtilityTab: UtilityTab | null
   onToggleUtilityTab: (tab: UtilityTab) => void
   onCloseUtility: () => void
+  onOpenCommandPalette: () => void
 }
 
-export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtility }: CommandBarProps) {
+export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtility, onOpenCommandPalette }: CommandBarProps) {
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000 })
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const toggleLayoutMode = useWorkspaceStore((state) => state.toggleLayoutMode)
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
+  const userPresets = useWorkspaceStore((state) => state.userPresets)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
   const alertList = alerts.data?.alerts ?? []
   const severeCount = alertList.filter((alert) => alert.severity === 'Extreme' || alert.severity === 'Severe').length
-  const presetLabel = WORKSPACE_PRESETS.find((preset) => preset.id === currentPresetId)?.title ?? 'Custom workspace'
+  const presetLabel = WORKSPACE_PRESETS.find((preset) => preset.id === currentPresetId)?.title
+    ?? userPresets.find((preset) => preset.id === currentPresetId)?.title
+    ?? 'Custom workspace'
 
   return (
     <header className="command-bar">
@@ -39,14 +43,16 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
         <select
           value={currentPresetId ?? ''}
           onChange={(event) => {
-            if (event.currentTarget.value) applyPreset(event.currentTarget.value as Parameters<typeof applyPreset>[0])
+            if (event.currentTarget.value) applyPreset(event.currentTarget.value)
           }}
         >
           <option value="">Custom</option>
           {WORKSPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.title}</option>)}
+          {userPresets.map((preset) => <option key={preset.id} value={preset.id}>★ {preset.title}</option>)}
         </select>
       </label>
       <div className="command-actions">
+        <button type="button" onClick={onOpenCommandPalette}>⌘/Ctrl+K</button>
         <button type="button" onClick={() => onToggleUtilityTab('workspace')} className={activeUtilityTab === 'workspace' ? 'active' : ''}>Workspace</button>
         <button type="button" onClick={() => onToggleUtilityTab('layers')} className={activeUtilityTab === 'layers' ? 'active' : ''}>Layers</button>
         <button type="button" onClick={() => onToggleUtilityTab('help')} className={activeUtilityTab === 'help' ? 'active' : ''}>Help</button>

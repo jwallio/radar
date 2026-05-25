@@ -12,17 +12,21 @@ interface WorkspaceModuleFrameProps {
 
 export function WorkspaceModuleFrame({ moduleId, children, className = '' }: WorkspaceModuleFrameProps) {
   const module = WORKSPACE_MODULE_BY_ID.get(moduleId)
+  const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
 
   if (!module) return null
 
+  const editing = layoutMode === 'edit'
+
   return (
     <section
-      className={`workspace-module-frame module-size-${module.defaultSize} ${className}`}
+      className={`workspace-module-frame module-size-${module.defaultSize} ${className} ${editing ? 'editing' : 'operating'}`}
       data-module-id={module.id}
-      draggable
+      draggable={editing}
       onDragStart={(event) => {
+        if (!editing) return
         event.dataTransfer.setData('text/plain', module.id)
         event.dataTransfer.effectAllowed = 'move'
       }}
@@ -33,19 +37,21 @@ export function WorkspaceModuleFrame({ moduleId, children, className = '' }: Wor
           <h2>{module.title}</h2>
         </div>
         <div className="workspace-module-actions">
-          <span className="workspace-drag-handle" title="Drag module to another zone">Move</span>
+          {editing && <span className="workspace-drag-handle" title="Drag module to another zone">Move</span>}
           {module.isLive && <span className="workspace-module-badge live">Live</span>}
           {module.isPlaceholder && <span className="workspace-module-badge placeholder">Placeholder</span>}
-          <button type="button" onClick={() => setModuleVisible(module.id, false)}>Hide</button>
+          {editing && <button type="button" onClick={() => setModuleVisible(module.id, false)}>Hide</button>}
         </div>
       </header>
-      <div className="workspace-frame-move-controls" aria-label={`Move ${module.title}`}>
-        {WORKSPACE_ZONES.map((zone) => (
-          <button key={zone.id} type="button" onClick={() => setModuleZone(module.id, zone.id as WorkspaceZoneId)}>
-            {zone.label}
-          </button>
-        ))}
-      </div>
+      {editing && (
+        <div className="workspace-frame-move-controls" aria-label={`Move ${module.title}`}>
+          {WORKSPACE_ZONES.map((zone) => (
+            <button key={zone.id} type="button" onClick={() => setModuleZone(module.id, zone.id as WorkspaceZoneId)}>
+              {zone.label}
+            </button>
+          ))}
+        </div>
+      )}
       {children}
     </section>
   )

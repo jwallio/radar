@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent } from 'react'
 import { NwsAlertsPanel } from './NwsAlertsPanel'
 import { SpcPanel } from './SpcPanel'
 import { RadarPanel } from './RadarPanel'
@@ -30,12 +30,26 @@ const zoneClassNames: Record<WorkspaceZoneId, string> = {
   focusPanel: '',
 }
 
+type UtilityTab = 'workspace' | 'layers' | 'help'
+
 function PlaceholderModule({ module }: { module: WorkspaceModuleDefinition }) {
   return (
     <div className="workspace-module-body">
       <p>{module.description}</p>
       <p className="workspace-placeholder-note">Placeholder module. This build provides configuration only; no embedded live feed is active.</p>
     </div>
+  )
+}
+
+function UtilityHelpPanel() {
+  return (
+    <section className="utility-help-panel">
+      <h3>Help & Shortcuts</h3>
+      <p>Esc closes the current utility panel.</p>
+      <p>Use Edit Mode to move/hide modules; switch back to Operate Mode for live monitoring.</p>
+      <p>Layer shortcuts: 1 alerts, 2 radar, 3 SPC outlook, 4 reports.</p>
+      <p>Preset shortcuts: S severe-weather, C clean-map.</p>
+    </section>
   )
 }
 
@@ -51,16 +65,19 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
 
 function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: WorkspaceZoneId; activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void }) {
   const preferences = useWorkspaceStore((state) => state.preferences)
+  const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
   const modules = WORKSPACE_MODULES.filter((module) => preferences[module.id]?.visible && preferences[module.id]?.zone === zone)
 
   function handleDragOver(event: DragEvent<HTMLElement>) {
+    if (layoutMode !== 'edit') return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setActiveDropZone(zone)
   }
 
   function handleDrop(event: DragEvent<HTMLElement>) {
+    if (layoutMode !== 'edit') return
     event.preventDefault()
     const moduleId = event.dataTransfer.getData('text/plain') as WorkspaceModuleId
     if (WORKSPACE_MODULES.some((module) => module.id === moduleId)) setModuleZone(moduleId, zone)
@@ -87,13 +104,31 @@ function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: Work
 }
 
 export function AppShell() {
-  const [workspacePanelOpen, setWorkspacePanelOpen] = useState(true)
   const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
+  const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+      if (key === 'escape') setActiveUtilityTab(null)
+      if (event.shiftKey && key === 'l') {
+        event.preventDefault()
+        setActiveUtilityTab((tab) => (tab === 'layers' ? null : 'layers'))
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <div className="app-shell">
       <MapView />
-      <CommandBar workspacePanelOpen={workspacePanelOpen} onToggleWorkspacePanel={() => setWorkspacePanelOpen((open) => !open)} />
+      <CommandBar
+        activeUtilityTab={activeUtilityTab}
+        onToggleUtilityTab={(tab) => setActiveUtilityTab((current) => (current === tab ? null : tab))}
+        onCloseUtility={() => setActiveUtilityTab(null)}
+      />
       <div className="operator-layout">
         <WorkspaceZone zone="leftRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
         <WorkspaceZone zone="rightRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
@@ -101,8 +136,15 @@ export function AppShell() {
         <WorkspaceZone zone="mapOverlay" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
         <WorkspaceZone zone="focusPanel" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
       </div>
-      {workspacePanelOpen && <WorkspacePanel />}
-      <WeatherLayerPanel />
+
+      {activeUtilityTab && (
+        <aside className="utility-drawer" aria-label="Utility drawer">
+          {activeUtilityTab === 'workspace' && <WorkspacePanel embedded />}
+          {activeUtilityTab === 'layers' && <WeatherLayerPanel embedded />}
+          {activeUtilityTab === 'help' && <UtilityHelpPanel />}
+        </aside>
+      )}
+
       <PresetBar />
     </div>
   )

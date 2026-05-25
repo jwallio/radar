@@ -7,6 +7,8 @@ const STORAGE_KEY = 'wallcloud-weather-dashboard-workspace-v1'
 const moduleIds = new Set<WorkspaceModuleId>(WORKSPACE_MODULES.map((module) => module.id))
 const zoneIds = new Set<WorkspaceZoneId>(['leftRail', 'rightRail', 'bottomDock', 'mapOverlay', 'focusPanel'])
 
+type LayoutMode = 'operate' | 'edit'
+
 function defaultPreferences(): WorkspacePreferences {
   return WORKSPACE_MODULES.reduce((preferences, module) => {
     preferences[module.id] = { visible: module.defaultVisible, zone: module.defaultZone }
@@ -23,32 +25,39 @@ function normalizePreference(moduleId: WorkspaceModuleId, value: unknown): Works
   }
 }
 
-function readWorkspacePreferences(): WorkspacePreferences {
-  const defaults = defaultPreferences()
+function readWorkspaceBlob(): Record<string, unknown> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaults
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    for (const module of WORKSPACE_MODULES) {
-      defaults[module.id] = normalizePreference(module.id, parsed[module.id])
-    }
-    return defaults
+    return raw ? JSON.parse(raw) as Record<string, unknown> : {}
   } catch {
-    return defaults
+    return {}
   }
+}
+
+function readWorkspacePreferences(): WorkspacePreferences {
+  const defaults = defaultPreferences()
+  const parsed = readWorkspaceBlob()
+  for (const module of WORKSPACE_MODULES) {
+    defaults[module.id] = normalizePreference(module.id, parsed[module.id])
+  }
+  return defaults
 }
 
 function readPresetId(raw: unknown): WorkspacePresetId | null {
   return typeof raw === 'string' && WORKSPACE_PRESET_BY_ID.has(raw as WorkspacePresetId) ? raw as WorkspacePresetId : null
 }
 
-function writeWorkspacePreferences(preferences: WorkspacePreferences, currentPresetId?: WorkspacePresetId | null): void {
+function readLayoutMode(raw: unknown): LayoutMode {
+  return raw === 'edit' ? 'edit' : 'operate'
+}
+
+function writeWorkspaceState(preferences: WorkspacePreferences, currentPresetId: WorkspacePresetId | null, layoutMode: LayoutMode): void {
   try {
     const knownOnly = Object.entries(preferences).reduce((output, [id, preference]) => {
       if (moduleIds.has(id as WorkspaceModuleId)) output[id as WorkspaceModuleId] = preference
       return output
     }, {} as WorkspacePreferences)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...knownOnly, currentPresetId: currentPresetId ?? null }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...knownOnly, currentPresetId: currentPresetId ?? null, layoutMode }))
   } catch {
     // Local storage can be blocked; the in-memory store still works for this session.
   }
@@ -57,42 +66,50 @@ function writeWorkspacePreferences(preferences: WorkspacePreferences, currentPre
 interface WorkspaceState {
   preferences: WorkspacePreferences
   currentPresetId: WorkspacePresetId | null
+  layoutMode: LayoutMode
+  setLayoutMode: (mode: LayoutMode) => void
+  toggleLayoutMode: () => void
   setModuleVisible: (moduleId: WorkspaceModuleId, visible: boolean) => void
   setModuleZone: (moduleId: WorkspaceModuleId, zone: WorkspaceZoneId) => void
   applyPreset: (presetId: WorkspacePresetId) => void
   resetWorkspace: () => void
 }
 
+const initialBlob = readWorkspaceBlob()
+
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   preferences: readWorkspacePreferences(),
-  currentPresetId: (() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? readPresetId((JSON.parse(raw) as { currentPresetId?: unknown }).currentPresetId) : null
-    } catch {
-      return null
-    }
-  })(),
+  currentPresetId: readPresetId(initialBlob.currentPresetId),
+  layoutMode: readLayoutMode(initialBlob.layoutMode),
+  setLayoutMode: (mode) => set((state) => {
+    writeWorkspaceState(state.preferences, state.currentPresetId, mode)
+    return { layoutMode: mode }
+  }),
+  toggleLayoutMode: () => set((state) => {
+    const layoutMode: LayoutMode = state.layoutMode === 'edit' ? 'operate' : 'edit'
+    writeWorkspaceState(state.preferences, state.currentPresetId, layoutMode)
+    return { layoutMode }
+  }),
   setModuleVisible: (moduleId, visible) => set((state) => {
     const next = { ...state.preferences, [moduleId]: { ...state.preferences[moduleId], visible } }
-    writeWorkspacePreferences(next, state.currentPresetId)
+    writeWorkspaceState(next, state.currentPresetId, state.layoutMode)
     return { preferences: next, currentPresetId: state.currentPresetId }
   }),
   setModuleZone: (moduleId, zone) => set((state) => {
     if (!zoneIds.has(zone)) return state
     const next = { ...state.preferences, [moduleId]: { ...state.preferences[moduleId], zone } }
-    writeWorkspacePreferences(next, state.currentPresetId)
+    writeWorkspaceState(next, state.currentPresetId, state.layoutMode)
     return { preferences: next, currentPresetId: state.currentPresetId }
   }),
-  applyPreset: (presetId) => set(() => {
+  applyPreset: (presetId) => set((state) => {
     const preset = WORKSPACE_PRESET_BY_ID.get(presetId)
     if (!preset) return {}
-    writeWorkspacePreferences(preset.preferences, presetId)
+    writeWorkspaceState(preset.preferences, presetId, state.layoutMode)
     return { preferences: preset.preferences, currentPresetId: presetId }
   }),
-  resetWorkspace: () => set(() => {
+  resetWorkspace: () => set((state) => {
     const next = defaultPreferences()
-    writeWorkspacePreferences(next, null)
+    writeWorkspaceState(next, null, state.layoutMode)
     return { preferences: next, currentPresetId: null }
   }),
 }))

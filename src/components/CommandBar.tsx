@@ -3,14 +3,19 @@ import { WORKSPACE_PRESETS } from '../config/workspacePresets'
 import { fetchNwsAlerts } from '../services/nws'
 import { useWorkspaceStore } from '../state/workspaceStore'
 
+type UtilityTab = 'workspace' | 'layers' | 'help'
+
 interface CommandBarProps {
-  workspacePanelOpen: boolean
-  onToggleWorkspacePanel: () => void
+  activeUtilityTab: UtilityTab | null
+  onToggleUtilityTab: (tab: UtilityTab) => void
+  onCloseUtility: () => void
 }
 
-export function CommandBar({ workspacePanelOpen, onToggleWorkspacePanel }: CommandBarProps) {
+export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtility }: CommandBarProps) {
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000 })
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
+  const layoutMode = useWorkspaceStore((state) => state.layoutMode)
+  const toggleLayoutMode = useWorkspaceStore((state) => state.toggleLayoutMode)
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
   const alertList = alerts.data?.alerts ?? []
@@ -42,7 +47,11 @@ export function CommandBar({ workspacePanelOpen, onToggleWorkspacePanel }: Comma
         </select>
       </label>
       <div className="command-actions">
-        <button type="button" onClick={onToggleWorkspacePanel}>{workspacePanelOpen ? 'Hide Workspace' : 'Workspace'}</button>
+        <button type="button" onClick={() => onToggleUtilityTab('workspace')} className={activeUtilityTab === 'workspace' ? 'active' : ''}>Workspace</button>
+        <button type="button" onClick={() => onToggleUtilityTab('layers')} className={activeUtilityTab === 'layers' ? 'active' : ''}>Layers</button>
+        <button type="button" onClick={() => onToggleUtilityTab('help')} className={activeUtilityTab === 'help' ? 'active' : ''}>Help</button>
+        {activeUtilityTab && <button type="button" onClick={onCloseUtility}>Close Panel</button>}
+        <button type="button" onClick={toggleLayoutMode}>{layoutMode === 'edit' ? 'Edit Mode' : 'Operate Mode'}</button>
         <button type="button" onClick={resetWorkspace}>Reset</button>
       </div>
     </header>

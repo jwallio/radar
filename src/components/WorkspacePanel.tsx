@@ -15,15 +15,21 @@ function readHelpDismissed(): boolean {
   }
 }
 
-export function WorkspacePanel() {
+interface WorkspacePanelProps {
+  embedded?: boolean
+}
+
+export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const [query, setQuery] = useState('')
   const [helpDismissed, setHelpDismissed] = useState(readHelpDismissed)
   const preferences = useWorkspaceStore((state) => state.preferences)
+  const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
+
   const filteredModules = useMemo(() => {
     const needle = query.trim().toLowerCase()
     if (!needle) return WORKSPACE_MODULES
@@ -34,8 +40,10 @@ export function WorkspacePanel() {
     ))
   }, [query])
 
-  return (
-    <aside className="workspace-panel" aria-label="Workspace modules">
+  const hiddenModules = useMemo(() => WORKSPACE_MODULES.filter((module) => !preferences[module.id]?.visible), [preferences])
+
+  const content = (
+    <>
       <div className="workspace-panel-top">
         <div>
           <p className="workspace-module-kicker">wall.cloud</p>
@@ -48,7 +56,7 @@ export function WorkspacePanel() {
         <section className="workspace-help-card">
           <div>
             <h2>First run guide</h2>
-            <p>Apply a preset to start fast, drag module boxes between zones, or use each module&apos;s Move buttons and zone selector for precise placement.</p>
+            <p>Use Edit Mode to move and hide modules. Switch back to Operate Mode for a cleaner live workflow.</p>
           </div>
           <button
             type="button"
@@ -65,6 +73,20 @@ export function WorkspacePanel() {
           </button>
         </section>
       )}
+
+      {hiddenModules.length > 0 && (
+        <section className="workspace-hidden-tray">
+          <h2>Hidden modules</h2>
+          <div className="workspace-hidden-buttons">
+            {hiddenModules.map((module) => (
+              <button key={module.id} type="button" onClick={() => setModuleVisible(module.id, true)}>
+                Show {module.title}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <label className="workspace-search">
         <span>Search modules</span>
         <input
@@ -118,18 +140,23 @@ export function WorkspacePanel() {
                   </div>
                   <p>{module.description}</p>
                   {module.isPlaceholder && <p className="workspace-placeholder-note">Placeholder: no embedded live feed is claimed yet.</p>}
-                  <label className="workspace-zone-picker">
-                    <span>Zone</span>
-                    <select data-workspace-zone={module.id} value={preference.zone} onChange={(event) => setModuleZone(module.id, event.currentTarget.value as typeof preference.zone)}>
-                      {WORKSPACE_ZONES.map((zone) => <option key={zone.id} value={zone.id}>{zone.label}</option>)}
-                    </select>
-                  </label>
+                  {layoutMode === 'edit' && (
+                    <label className="workspace-zone-picker">
+                      <span>Zone</span>
+                      <select data-workspace-zone={module.id} value={preference.zone} onChange={(event) => setModuleZone(module.id, event.currentTarget.value as typeof preference.zone)}>
+                        {WORKSPACE_ZONES.map((zone) => <option key={zone.id} value={zone.id}>{zone.label}</option>)}
+                      </select>
+                    </label>
+                  )}
                 </article>
               )
             })}
           </section>
         )
       })}
-    </aside>
+    </>
   )
+
+  if (embedded) return <div className="workspace-panel embedded">{content}</div>
+  return <aside className="workspace-panel" aria-label="Workspace modules">{content}</aside>
 }

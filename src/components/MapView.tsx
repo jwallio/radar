@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { fetchNwsAlerts } from '../services/nws'
+import { fetchNwsAlerts, fetchNwsAlertsByAreas } from '../services/nws'
 import { fetchRainViewerMetadata } from '../services/rainviewer'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchJsonSafe } from '../services/fetchJson'
@@ -29,6 +29,7 @@ export function MapView() {
   const radarTileRef = useRef<string | null>(null)
   const pulseRef = useRef(0.45)
   const zoomNonceRef = useRef(0)
+  const regionalFocusNonceRef = useRef('')
   const zoneGeometryCacheRef = useRef<Map<string, GeoJSON.Geometry | null>>(new Map())
   const [hoveredAlertId, setHoveredAlertId] = useState<string | null>(null)
   const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; notes?: string } | null>(null)
@@ -40,8 +41,16 @@ export function MapView() {
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
   const alertViewMode = s.alertViewMode
   const setSelectedLiveStreamerId = s.setSelectedLiveStreamerId
+  const regionalFocusPackId = s.regionalFocusPackId
+  const regionalFocusAreas = s.regionalFocusAreas
 
   const alertsQ = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60000 })
+  const regionalFocusQ = useQuery({
+    queryKey: ['nws-alerts-regional-focus', regionalFocusPackId, regionalFocusAreas.join(',')],
+    queryFn: () => fetchNwsAlertsByAreas(regionalFocusAreas),
+    staleTime: 60_000,
+    enabled: regionalFocusAreas.length > 0,
+  })
   const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000 })
   const reportsQ = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120000 })
   const outlookQ = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180000 })
@@ -156,6 +165,24 @@ export function MapView() {
 
     zoomToAlert().catch(() => undefined)
   }, [alertsEnabled, alertsQ.data, s.selectedAlertId, s.zoomRequestAlertId, s.zoomRequestNonce])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !alertsEnabled || !regionalFocusPackId || regionalFocusAreas.length === 0 || !regionalFocusQ.data) return
+
+    const focusKey = `${regionalFocusPackId}:${regionalFocusAreas.join(',')}`
+    if (regionalFocusNonceRef.current === focusKey) return
+
+    const regionalGeometries = regionalFocusQ.data.alerts
+      .filter((alert) => alert.geometryStatus === 'mapped')
+      .map((alert) => alert.geometry)
+
+    const regionalBounds = boundsFromGeometries(regionalGeometries)
+    if (!regionalBounds) return
+
+    regionalFocusNonceRef.current = focusKey
+    map.fitBounds(regionalBounds, { padding: 52, duration: 720, maxZoom: 8.75 })
+  }, [alertsEnabled, regionalFocusPackId, regionalFocusAreas, regionalFocusQ.data])
 
   useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!radarEnabled){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); radarTileRef.current=null; return } const frames=radarQ.data?.frames??[]; const active=s.selectedRadarFrameTime? frames.find((f)=>f.time===s.selectedRadarFrameTime)??frames[frames.length-1]:frames[frames.length-1]; if(!active){return} const src=map.getSource(ids.radarSource) as maplibregl.RasterTileSource|undefined; if(!src || radarTileRef.current!==active.tileUrlTemplate){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); map.addSource(ids.radarSource,{type:'raster',tiles:[active.tileUrlTemplate],tileSize:256}); const before=map.getLayer(ids.outlookFill)?ids.outlookFill:map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; map.addLayer({id:ids.radarLayer,type:'raster',source:ids.radarSource,paint:{'raster-opacity':radarOpacityRef.current}},before); radarTileRef.current=active.tileUrlTemplate }}; map.isStyleLoaded()?run():map.once('load',run)},[radarEnabled,radarQ.data,s.selectedRadarFrameTime])
   useEffect(()=>{ const map=mapRef.current; if(map?.getLayer(ids.radarLayer)) map.setPaintProperty(ids.radarLayer,'raster-opacity',s.radarOpacity)},[s.radarOpacity])

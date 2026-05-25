@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByAreas, fetchNwsAlertsByEvent } from '../services/nws'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchOpsAiSummary } from '../services/aiSummary'
+import { useMapStore } from '../state/mapStore'
 
 interface WeatherNewsPanelProps {
   embedded?: boolean
@@ -70,13 +71,19 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
+  const setRegionalFocus = useMapStore((state) => state.setRegionalFocus)
   const [customPacks, setCustomPacks] = useState<CustomRegionalPack[]>(() => loadCustomRegionalPacks())
   const [regionalPackId, setRegionalPackId] = useState<string>(REGIONAL_PACKS[0].id)
   const [customSelectedAreas, setCustomSelectedAreas] = useState<string[]>(['TX', 'OK', 'KS'])
 
   const allPacks = useMemo(() => [...REGIONAL_PACKS, ...customPacks], [customPacks])
+  const isCustomBuilder = regionalPackId === 'custom-builder'
   const selectedPack = allPacks.find((pack) => pack.id === regionalPackId) ?? REGIONAL_PACKS[0]
-  const selectedAreas = selectedPack.id === 'custom-builder' ? customSelectedAreas : selectedPack.areas
+  const selectedAreas = isCustomBuilder ? customSelectedAreas : selectedPack.areas
+
+  useEffect(() => {
+    setRegionalFocus(isCustomBuilder ? 'custom-builder' : selectedPack.id, selectedAreas)
+  }, [isCustomBuilder, selectedPack.id, selectedAreas, setRegionalFocus])
 
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000, refetchInterval: 120_000 })
   const alertCounts = useQuery({ queryKey: ['nws-alert-counts'], queryFn: fetchNwsAlertCounts, staleTime: 60_000, refetchInterval: 120_000 })
@@ -272,7 +279,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
 
       <label className="weather-news-pack-selector">
         Regional pack
-        <select value={selectedPack.id} onChange={(event) => setRegionalPackId(event.target.value)}>
+        <select value={regionalPackId} onChange={(event) => setRegionalPackId(event.target.value)}>
           {REGIONAL_PACKS.map((pack) => (
             <option key={pack.id} value={pack.id}>{pack.label}</option>
           ))}
@@ -283,7 +290,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         </select>
       </label>
 
-      {selectedPack.id === 'custom-builder' && (
+      {isCustomBuilder && (
         <div className="weather-news-custom-pack">
           <div className="weather-news-custom-pack-actions">
             <button type="button" onClick={saveCurrentCustomPack} disabled={customSelectedAreas.length === 0}>Save custom pack</button>
@@ -300,10 +307,10 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         </div>
       )}
 
-      {selectedPack.id.startsWith('custom-') && (
+      {regionalPackId.startsWith('custom-') && (
         <div className="weather-news-custom-pack-actions">
           <span className="weather-news-meta">Saved custom pack: {selectedPack.label}</span>
-          <button type="button" onClick={() => deleteCustomPack(selectedPack.id)}>Delete custom pack</button>
+          <button type="button" onClick={() => deleteCustomPack(regionalPackId)}>Delete custom pack</button>
         </div>
       )}
 

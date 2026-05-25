@@ -25,6 +25,17 @@ export function boundsFromGeometry(geometry: GeoJSON.Geometry | null): Bounds | 
   return null
 }
 
+export function boundsFromGeometries(geometries: Array<GeoJSON.Geometry | null | undefined>): Bounds | null {
+  let bounds: Bounds | null = null
+  for (const geometry of geometries) {
+    const current = boundsFromGeometry(geometry ?? null)
+    if (!current) continue
+    bounds = extendBounds(bounds, current[0][0], current[0][1])
+    bounds = extendBounds(bounds, current[1][0], current[1][1])
+  }
+  return bounds
+}
+
 export function featureCollectionFromAlerts(alerts: WeatherAlert[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',

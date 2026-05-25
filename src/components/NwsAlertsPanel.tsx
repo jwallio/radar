@@ -46,8 +46,16 @@ export function NwsAlertsPanel({ embedded = false }: NwsAlertsPanelProps) {
               <div key={alert.id} className={`alert-card ${selectedAlertId === alert.id ? 'selected' : ''}`} role="button" tabIndex={0} onClick={() => selectAlert(selectedAlertId === alert.id ? null : alert.id)}>
                 <div className="alert-card-top"><strong>{alert.event}</strong><span className={`severity-badge severity-${alert.severity.toLowerCase()}`}>{alert.severity}</span></div>
                 <p>{alert.areaDesc}</p><p className="alert-headline">{alert.headline}</p><p>Expires: {formatTime(alert.expires)}</p>
-                <span className={`mapped-chip ${alert.geometryStatus}`}>{alert.geometryStatus === 'mapped' ? 'Mapped' : 'Unmapped'}</span>
-                {alert.geometryStatus === 'mapped' && <button type="button" className="alert-zoom-action" onClick={(e) => { e.stopPropagation(); requestZoomToAlert(alert.id) }}>Zoom to alert</button>}
+                <span className={`mapped-chip ${alert.geometryStatus}`}>{alert.geometryStatus === 'mapped' ? 'Mapped' : 'Zone fallback'}</span>
+                {(alert.geometryStatus === 'mapped' || alert.affectedZones.length > 0) && (
+                  <button
+                    type="button"
+                    className="alert-zoom-action"
+                    onClick={(e) => { e.stopPropagation(); requestZoomToAlert(alert.id) }}
+                  >
+                    {alert.geometryStatus === 'mapped' ? 'Zoom to alert' : 'Zoom to impacted zones'}
+                  </button>
+                )}
               </div>
             ))}
           </div>

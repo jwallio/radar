@@ -6,8 +6,9 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { fetchNwsAlerts } from '../services/nws'
 import { fetchRainViewerMetadata } from '../services/rainviewer'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
+import { fetchJsonSafe } from '../services/fetchJson'
 import { useMapStore } from '../state/mapStore'
-import { boundsFromGeometry, featureCollectionFromAlerts, featureCollectionFromSpcReports } from '../utils/geojson'
+import { boundsFromGeometries, boundsFromGeometry, featureCollectionFromAlerts, featureCollectionFromSpcReports } from '../utils/geojson'
 import { SPOTTER_NETWORK_LOCATIONS } from '../config/liveStreamers'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
@@ -28,6 +29,7 @@ export function MapView() {
   const radarTileRef = useRef<string | null>(null)
   const pulseRef = useRef(0.45)
   const zoomNonceRef = useRef(0)
+  const zoneGeometryCacheRef = useRef<Map<string, GeoJSON.Geometry | null>>(new Map())
   const [hoveredAlertId, setHoveredAlertId] = useState<string | null>(null)
   const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; notes?: string } | null>(null)
 
@@ -52,7 +54,7 @@ export function MapView() {
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: { version: 8, sources: { basemap: { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }] },
-      center: conusCenter, zoom: 3.7, minZoom: 2, maxZoom: 12,
+      center: conusCenter, zoom: 3.7, minZoom: 2, maxZoom: 16,
     })
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')
     mapRef.current = map
@@ -109,7 +111,51 @@ export function MapView() {
 
   useEffect(()=>{ const map=mapRef.current; if(!map||!alertsEnabled||!map.getLayer(ids.alertsPulse)) return; let t=0; const timer=setInterval(()=>{ t+=0.28; const o=0.25+((Math.sin(t)+1)/2)*0.6; pulseRef.current=o; map.getLayer(ids.alertsPulse)&&map.setPaintProperty(ids.alertsPulse,'line-opacity',o)},150); return ()=>clearInterval(timer)},[alertsEnabled,alertsQ.data])
 
-  useEffect(()=>{ const map=mapRef.current; if(!map||!alertsEnabled) return; let target=s.selectedAlertId; if(s.zoomRequestAlertId && s.zoomRequestNonce!==zoomNonceRef.current){target=s.zoomRequestAlertId; zoomNonceRef.current=s.zoomRequestNonce} if(!target) return; const a=alertsQ.data?.alerts.find((x)=>x.id===target); const b=boundsFromGeometry(a?.geometry??null); if(!a||!b) return; map.fitBounds(b,{padding:44,duration:560,maxZoom:8.5}) },[alertsEnabled,alertsQ.data,s.selectedAlertId,s.zoomRequestAlertId,s.zoomRequestNonce])
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !alertsEnabled) return
+
+    let target = s.selectedAlertId
+    if (s.zoomRequestAlertId && s.zoomRequestNonce !== zoomNonceRef.current) {
+      target = s.zoomRequestAlertId
+      zoomNonceRef.current = s.zoomRequestNonce
+    }
+    if (!target) return
+
+    const alert = alertsQ.data?.alerts.find((x) => x.id === target)
+    if (!alert) return
+
+    const zoomToAlert = async () => {
+      const directBounds = boundsFromGeometry(alert.geometry)
+      if (directBounds) {
+        map.fitBounds(directBounds, { padding: 44, duration: 560, maxZoom: 12.5 })
+        return
+      }
+
+      const zoneUrls = alert.affectedZones.filter(Boolean)
+      if (!zoneUrls.length) return
+
+      const geometries: Array<GeoJSON.Geometry | null> = []
+      for (const zoneUrl of zoneUrls) {
+        if (zoneGeometryCacheRef.current.has(zoneUrl)) {
+          geometries.push(zoneGeometryCacheRef.current.get(zoneUrl) ?? null)
+          continue
+        }
+        const result = await fetchJsonSafe<{ geometry?: GeoJSON.Geometry | null }>(zoneUrl, {
+          headers: { Accept: 'application/geo+json, application/json' },
+        })
+        const geometry = result.data?.geometry ?? null
+        zoneGeometryCacheRef.current.set(zoneUrl, geometry)
+        geometries.push(geometry)
+      }
+
+      const fallbackBounds = boundsFromGeometries(geometries)
+      if (!fallbackBounds) return
+      map.fitBounds(fallbackBounds, { padding: 44, duration: 560, maxZoom: 11.5 })
+    }
+
+    zoomToAlert().catch(() => undefined)
+  }, [alertsEnabled, alertsQ.data, s.selectedAlertId, s.zoomRequestAlertId, s.zoomRequestNonce])
 
   useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!radarEnabled){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); radarTileRef.current=null; return } const frames=radarQ.data?.frames??[]; const active=s.selectedRadarFrameTime? frames.find((f)=>f.time===s.selectedRadarFrameTime)??frames[frames.length-1]:frames[frames.length-1]; if(!active){return} const src=map.getSource(ids.radarSource) as maplibregl.RasterTileSource|undefined; if(!src || radarTileRef.current!==active.tileUrlTemplate){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); map.addSource(ids.radarSource,{type:'raster',tiles:[active.tileUrlTemplate],tileSize:256}); const before=map.getLayer(ids.outlookFill)?ids.outlookFill:map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; map.addLayer({id:ids.radarLayer,type:'raster',source:ids.radarSource,paint:{'raster-opacity':radarOpacityRef.current}},before); radarTileRef.current=active.tileUrlTemplate }}; map.isStyleLoaded()?run():map.once('load',run)},[radarEnabled,radarQ.data,s.selectedRadarFrameTime])
   useEffect(()=>{ const map=mapRef.current; if(map?.getLayer(ids.radarLayer)) map.setPaintProperty(ids.radarLayer,'raster-opacity',s.radarOpacity)},[s.radarOpacity])

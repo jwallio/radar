@@ -16,6 +16,7 @@ interface MapState {
   radarOpacity: number
   radarPlaying: boolean
   radarFrameIntervalMs: number
+  selectedLiveStreamerId: string | null
   toggleLayer: (layerId: LayerId) => void
   setAlertViewMode: (mode: 'all' | 'warnings' | 'watches') => void
   applyPreset: (presetId: string) => void
@@ -26,6 +27,7 @@ interface MapState {
   setRadarPlaying: (playing: boolean) => void
   toggleRadarPlaying: () => void
   setRadarFrameIntervalMs: (intervalMs: number) => void
+  setSelectedLiveStreamerId: (streamerId: string | null) => void
 }
 
 const defaultLayers = WEATHER_LAYERS.filter((layer) => layer.defaultEnabled).map((layer) => layer.id)
@@ -41,6 +43,7 @@ export const useMapStore = create<MapState>((set) => ({
   radarOpacity: 0.65,
   radarPlaying: false,
   radarFrameIntervalMs: 750,
+  selectedLiveStreamerId: null,
   toggleLayer: (layerId) => set((state) => {
     const enabled = state.enabledLayers.includes(layerId)
     const enabledLayers = enabled ? state.enabledLayers.filter((id) => id !== layerId) : [...state.enabledLayers, layerId]
@@ -61,4 +64,5 @@ export const useMapStore = create<MapState>((set) => ({
   setRadarPlaying: (playing) => set(() => ({ radarPlaying: playing })),
   toggleRadarPlaying: () => set((state) => ({ radarPlaying: !state.radarPlaying })),
   setRadarFrameIntervalMs: (intervalMs) => set(() => ({ radarFrameIntervalMs: Math.max(250, Math.min(2500, intervalMs)) })),
+  setSelectedLiveStreamerId: (streamerId) => set(() => ({ selectedLiveStreamerId: streamerId })),
 }))

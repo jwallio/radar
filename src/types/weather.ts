@@ -29,6 +29,27 @@ export type LiveContextModuleType = 'cams' | 'chasers' | 'spotters' | 'news' | '
 export interface LiveContextItem { id: string; label: string; url?: string; description?: string; location?: string }
 export interface LiveContextModule { id: string; title: string; type: LiveContextModuleType; items: LiveContextItem[]; emptyMessage: string }
 
+export interface LiveStreamer {
+  id: string
+  label: string
+  youtubeChannelUrl: string
+  youtubeEmbedUrl: string
+  region?: string
+  isLiveByDefault?: boolean
+}
+
+export interface SpotterNetworkLocation {
+  id: string
+  callsign: string
+  lat: number
+  lon: number
+  region: string
+  status: 'active' | 'idle'
+  notes?: string
+  streamerId?: string
+  hasLiveCam?: boolean
+}
+
 export type WeatherNewsSourceType = 'official' | 'forecast-discussion' | 'outlook' | 'operations'
 export interface WeatherNewsItem {
   id: string

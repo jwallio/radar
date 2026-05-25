@@ -8,6 +8,7 @@ import { fetchRainViewerMetadata } from '../services/rainviewer'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { useMapStore } from '../state/mapStore'
 import { boundsFromGeometry, featureCollectionFromAlerts, featureCollectionFromSpcReports } from '../utils/geojson'
+import { SPOTTER_NETWORK_LOCATIONS } from '../config/liveStreamers'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
 const ids = {
@@ -15,6 +16,7 @@ const ids = {
   radarSource: 'rainviewer-radar-source', radarLayer: 'rainviewer-radar-layer',
   reportsSource: 'spc-reports-source', reportsLayer: 'spc-reports-layer',
   outlookSource: 'spc-day1-outlook-source', outlookFill: 'spc-day1-outlook-fill', outlookLine: 'spc-day1-outlook-line',
+  spotterSource: 'spotter-network-source', spotterLayer: 'spotter-network-layer', spotterCamLayer: 'spotter-cam-layer',
 }
 
 function fmt(v: string | null) { if (!v) return 'Unknown'; const d=new Date(v); return Number.isNaN(d.getTime()) ? v : d.toLocaleString() }
@@ -27,6 +29,7 @@ export function MapView() {
   const pulseRef = useRef(0.45)
   const zoomNonceRef = useRef(0)
   const [hoveredAlertId, setHoveredAlertId] = useState<string | null>(null)
+  const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; notes?: string } | null>(null)
 
   const s = useMapStore()
   const alertsEnabled = s.enabledLayers.includes('nwsAlerts')
@@ -34,6 +37,7 @@ export function MapView() {
   const stormReportsEnabled = s.enabledLayers.includes('stormReports')
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
   const alertViewMode = s.alertViewMode
+  const setSelectedLiveStreamerId = s.setSelectedLiveStreamerId
 
   const alertsQ = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60000 })
   const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000 })
@@ -114,6 +118,74 @@ export function MapView() {
 
   useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!stormReportsEnabled){ map.getLayer(ids.reportsLayer)&&map.removeLayer(ids.reportsLayer); map.getSource(ids.reportsSource)&&map.removeSource(ids.reportsSource); return } const fc=featureCollectionFromSpcReports(reportsQ.data?.reports??[]); const src=map.getSource(ids.reportsSource) as maplibregl.GeoJSONSource|undefined; if(!src) map.addSource(ids.reportsSource,{type:'geojson',data:fc}); else src.setData(fc); if(!map.getLayer(ids.reportsLayer)) map.addLayer({id:ids.reportsLayer,type:'circle',source:ids.reportsSource,paint:{'circle-color':['match',['get','type'],'tornado','#ff5f7f','wind','#58c4ff','hail','#75e65d','#b8bec9'],'circle-radius':4.2,'circle-opacity':0.9,'circle-stroke-color':'#0b1220','circle-stroke-width':1}})}; map.isStyleLoaded()?run():map.once('load',run)},[stormReportsEnabled,reportsQ.data])
 
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const spotterFc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: SPOTTER_NETWORK_LOCATIONS.map((spotter) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [spotter.lon, spotter.lat] },
+        properties: {
+          id: spotter.id,
+          callsign: spotter.callsign,
+          region: spotter.region,
+          status: spotter.status,
+          notes: spotter.notes ?? '',
+          hasLiveCam: spotter.hasLiveCam ? 1 : 0,
+          streamerId: spotter.streamerId ?? '',
+        },
+      })),
+    }
+
+    const run = () => {
+      const src = map.getSource(ids.spotterSource) as maplibregl.GeoJSONSource | undefined
+      if (!src) map.addSource(ids.spotterSource, { type: 'geojson', data: spotterFc })
+      else src.setData(spotterFc)
+
+      if (!map.getLayer(ids.spotterLayer)) map.addLayer({ id: ids.spotterLayer, type: 'circle', source: ids.spotterSource, paint: { 'circle-color': ['match', ['get', 'status'], 'active', '#8ce99a', '#9fb5d8'], 'circle-radius': 5, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1 } })
+      if (!map.getLayer(ids.spotterCamLayer)) map.addLayer({ id: ids.spotterCamLayer, type: 'symbol', source: ids.spotterSource, filter: ['==', ['get', 'hasLiveCam'], 1], layout: { 'text-field': '📹', 'text-size': 13, 'text-offset': [0, -1.1], 'text-allow-overlap': true } })
+    }
+
+    const onMove = (event: maplibregl.MapMouseEvent) => {
+      const layers = [ids.spotterCamLayer, ids.spotterLayer].filter((id) => map.getLayer(id))
+      if (!layers.length) return
+      const features = map.queryRenderedFeatures(event.point, { layers })
+      const props = features[0]?.properties
+      if (!props) {
+        setHoveredSpotter(null)
+        map.getCanvas().style.cursor = ''
+        return
+      }
+      setHoveredSpotter({ callsign: String(props.callsign ?? 'Unknown'), region: String(props.region ?? 'Unknown region'), notes: String(props.notes ?? '') })
+      map.getCanvas().style.cursor = 'pointer'
+    }
+
+    const onOut = () => {
+      setHoveredSpotter(null)
+      map.getCanvas().style.cursor = ''
+    }
+
+    const onClick = (event: maplibregl.MapMouseEvent) => {
+      const layers = [ids.spotterCamLayer, ids.spotterLayer].filter((id) => map.getLayer(id))
+      if (!layers.length) return
+      const features = map.queryRenderedFeatures(event.point, { layers })
+      const streamerId = String(features[0]?.properties?.streamerId ?? '')
+      if (streamerId) setSelectedLiveStreamerId(streamerId)
+    }
+
+    map.isStyleLoaded() ? run() : map.once('load', run)
+    map.on('mousemove', onMove)
+    map.on('mouseout', onOut)
+    map.on('click', onClick)
+    return () => {
+      map.off('mousemove', onMove)
+      map.off('mouseout', onOut)
+      map.off('click', onClick)
+    }
+  }, [setSelectedLiveStreamerId])
+
   return (
     <div className="map-root-wrap">
       <div className="map-root" ref={mapContainer} aria-label="Weather map" />
@@ -123,6 +195,13 @@ export function MapView() {
           <p>{detailAlert.areaDesc}</p><p>{detailAlert.headline}</p>
           <p>Urgency: {detailAlert.urgency ?? 'Unknown'} | Certainty: {detailAlert.certainty ?? 'Unknown'}</p>
           <p>Effective: {fmt(detailAlert.effective)} | Expires: {fmt(detailAlert.expires)}</p>
+        </section>
+      )}
+      {hoveredSpotter && (
+        <section className="spotter-hover-strip">
+          <strong>{hoveredSpotter.callsign}</strong>
+          <p>{hoveredSpotter.region}</p>
+          {hoveredSpotter.notes && <p>{hoveredSpotter.notes}</p>}
         </section>
       )}
     </div>

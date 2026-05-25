@@ -77,13 +77,12 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   {
     id: 'weatherNews',
     title: 'Weather News',
-    description: 'Future module for vetted weather news and official products. Feed ingestion is deferred.',
+    description: 'Curated official weather news, forecast discussions, and outlook product links for operator context.',
     category: 'reference',
     defaultZone: 'focusPanel',
     defaultSize: 'compact',
     defaultVisible: false,
     isExternalLinkOnly: true,
-    isPlaceholder: true,
   },
   {
     id: 'sourceHealth',

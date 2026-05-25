@@ -29,6 +29,21 @@ export type LiveContextModuleType = 'cams' | 'chasers' | 'spotters' | 'news' | '
 export interface LiveContextItem { id: string; label: string; url?: string; description?: string; location?: string }
 export interface LiveContextModule { id: string; title: string; type: LiveContextModuleType; items: LiveContextItem[]; emptyMessage: string }
 
+export type WeatherNewsSourceType = 'official' | 'forecast-discussion' | 'outlook' | 'operations'
+export interface WeatherNewsItem {
+  id: string
+  label: string
+  url: string
+  sourceType: WeatherNewsSourceType
+  region?: string
+  notes?: string
+}
+export interface WeatherNewsGroup {
+  id: string
+  title: string
+  items: WeatherNewsItem[]
+}
+
 export type WorkspaceModuleId = 'alerts' | 'radar' | 'spc' | 'liveContext' | 'cameras' | 'scanners' | 'weatherNews' | 'sourceHealth' | 'legendTime'
 export type WorkspaceZoneId = 'leftRail' | 'rightRail' | 'bottomDock' | 'mapOverlay' | 'focusPanel'
 export type WorkspaceModuleCategory = 'alerts' | 'radar' | 'convective' | 'operations' | 'media' | 'reference' | 'status'

@@ -15,6 +15,8 @@ import { CommandBar } from './CommandBar'
 import { SourceHealthPanel } from './SourceHealthPanel'
 import { WeatherNewsPanel } from './WeatherNewsPanel'
 import { LegendTimePanel } from './LegendTimePanel'
+import { CameraLinksPanel } from './CameraLinksPanel'
+import { ScannerLinksPanel } from './ScannerLinksPanel'
 import { CommandPalette, type CommandPaletteAction } from './CommandPalette'
 import { useMapStore } from '../state/mapStore'
 
@@ -65,6 +67,8 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
   if (moduleId === 'sourceHealth') return <SourceHealthPanel />
   if (moduleId === 'legendTime') return <LegendTimePanel />
   if (moduleId === 'weatherNews') return <WeatherNewsPanel />
+  if (moduleId === 'cameras') return <CameraLinksPanel />
+  if (moduleId === 'scanners') return <ScannerLinksPanel />
   const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
   return module ? <PlaceholderModule module={module} /> : null
 }

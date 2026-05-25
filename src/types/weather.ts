@@ -44,6 +44,20 @@ export interface WeatherNewsGroup {
   items: WeatherNewsItem[]
 }
 
+export type ExternalOpsSourceType = 'camera' | 'scanner' | 'official' | 'community'
+export interface ExternalOpsItem {
+  id: string
+  label: string
+  url: string
+  sourceType: ExternalOpsSourceType
+  region?: string
+}
+export interface ExternalOpsGroup {
+  id: string
+  title: string
+  items: ExternalOpsItem[]
+}
+
 export type WorkspaceModuleId = 'alerts' | 'radar' | 'spc' | 'liveContext' | 'cameras' | 'scanners' | 'weatherNews' | 'sourceHealth' | 'legendTime'
 export type WorkspaceZoneId = 'leftRail' | 'rightRail' | 'bottomDock' | 'mapOverlay' | 'focusPanel'
 export type WorkspaceModuleCategory = 'alerts' | 'radar' | 'convective' | 'operations' | 'media' | 'reference' | 'status'

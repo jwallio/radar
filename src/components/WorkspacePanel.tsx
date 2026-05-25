@@ -30,6 +30,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
   const userPresets = useWorkspaceStore((state) => state.userPresets)
   const saveCurrentAsPreset = useWorkspaceStore((state) => state.saveCurrentAsPreset)
+  const renameUserPreset = useWorkspaceStore((state) => state.renameUserPreset)
   const deleteUserPreset = useWorkspaceStore((state) => state.deleteUserPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
 
@@ -138,7 +139,18 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
             {userPresets.map((preset) => (
               <div key={preset.id} className="workspace-user-preset-row">
                 <span>{preset.title}</span>
-                <button type="button" onClick={() => deleteUserPreset(preset.id)}>Delete</button>
+                <div className="workspace-user-preset-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = window.prompt('Rename preset:', preset.title)
+                      if (name) renameUserPreset(preset.id, name)
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button type="button" onClick={() => deleteUserPreset(preset.id)}>Delete</button>
+                </div>
               </div>
             ))}
           </div>

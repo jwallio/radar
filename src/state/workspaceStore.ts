@@ -148,6 +148,7 @@ interface WorkspaceState {
   setModuleZone: (moduleId: WorkspaceModuleId, zone: WorkspaceZoneId) => void
   applyPreset: (presetId: string) => void
   saveCurrentAsPreset: (title: string) => void
+  renameUserPreset: (presetId: string, title: string) => void
   deleteUserPreset: (presetId: string) => void
   resetWorkspace: () => void
 }
@@ -209,6 +210,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       : [nextPreset, ...state.userPresets]
     writeWorkspaceState(state.preferences, nextPreset.id, state.layoutMode, userPresets)
     return { userPresets, currentPresetId: nextPreset.id }
+  }),
+  renameUserPreset: (presetId, title) => set((state) => {
+    const normalized = title.trim()
+    if (!normalized) return state
+    const userPresets = state.userPresets.map((preset) => (
+      preset.id === presetId ? { ...preset, title: normalized } : preset
+    ))
+    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, userPresets)
+    return { userPresets }
   }),
   deleteUserPreset: (presetId) => set((state) => {
     const userPresets = state.userPresets.filter((preset) => preset.id !== presetId)

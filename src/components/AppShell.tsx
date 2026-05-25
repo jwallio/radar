@@ -113,25 +113,48 @@ export function AppShell() {
   const toggleLayer = useMapStore((state) => state.toggleLayer)
   const applyLayerPreset = useMapStore((state) => state.applyPreset)
   const applyWorkspacePreset = useWorkspaceStore((state) => state.applyPreset)
+  const userPresets = useWorkspaceStore((state) => state.userPresets)
+  const saveCurrentAsPreset = useWorkspaceStore((state) => state.saveCurrentAsPreset)
   const setLayoutMode = useWorkspaceStore((state) => state.setLayoutMode)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
 
-  const commandPaletteActions = useMemo<CommandPaletteAction[]>(() => [
-    { id: 'utility-workspace', label: 'Open workspace panel', detail: 'Utility: Workspace', run: () => setActiveUtilityTab('workspace') },
-    { id: 'utility-layers', label: 'Open layers panel', detail: 'Utility: Layers', run: () => setActiveUtilityTab('layers') },
-    { id: 'utility-help', label: 'Open help panel', detail: 'Utility: Help', run: () => setActiveUtilityTab('help') },
-    { id: 'layout-operate', label: 'Switch to Operate mode', detail: 'Workspace layout', run: () => setLayoutMode('operate') },
-    { id: 'layout-edit', label: 'Switch to Edit mode', detail: 'Workspace layout', run: () => setLayoutMode('edit') },
-    { id: 'workspace-preset-severe', label: 'Workspace preset: Severe Weather Nowcast', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('severeNowcast') },
-    { id: 'workspace-preset-clean', label: 'Workspace preset: Clean Radar Mode', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('cleanRadar') },
-    { id: 'workspace-reset', label: 'Reset workspace to defaults', detail: 'Workspace reset', run: () => resetWorkspace() },
-    { id: 'layer-preset-severe', label: 'Layer preset: Severe Weather', detail: 'Map layers', run: () => applyLayerPreset('severe-weather') },
-    { id: 'layer-preset-clean', label: 'Layer preset: Clean Map', detail: 'Map layers', run: () => applyLayerPreset('clean-map') },
-    { id: 'toggle-alerts', label: 'Toggle layer: Alerts', detail: 'Shortcut 1', run: () => toggleLayer('nwsAlerts') },
-    { id: 'toggle-radar', label: 'Toggle layer: Radar', detail: 'Shortcut 2', run: () => toggleLayer('radar') },
-    { id: 'toggle-spc', label: 'Toggle layer: SPC outlook', detail: 'Shortcut 3', run: () => toggleLayer('spcOutlook') },
-    { id: 'toggle-reports', label: 'Toggle layer: Storm reports', detail: 'Shortcut 4', run: () => toggleLayer('stormReports') },
-  ], [applyLayerPreset, applyWorkspacePreset, resetWorkspace, setLayoutMode, toggleLayer])
+  const commandPaletteActions = useMemo<CommandPaletteAction[]>(() => {
+    const baseActions: CommandPaletteAction[] = [
+      { id: 'utility-workspace', label: 'Open workspace panel', detail: 'Utility: Workspace', run: () => setActiveUtilityTab('workspace') },
+      { id: 'utility-layers', label: 'Open layers panel', detail: 'Utility: Layers', run: () => setActiveUtilityTab('layers') },
+      { id: 'utility-help', label: 'Open help panel', detail: 'Utility: Help', run: () => setActiveUtilityTab('help') },
+      {
+        id: 'workspace-save-current',
+        label: 'Save current workspace preset',
+        detail: 'Custom presets',
+        run: () => {
+          const name = window.prompt('Save current workspace as preset:', 'My workspace')
+          if (name) saveCurrentAsPreset(name)
+        },
+      },
+      { id: 'layout-operate', label: 'Switch to Operate mode', detail: 'Workspace layout', run: () => setLayoutMode('operate') },
+      { id: 'layout-edit', label: 'Switch to Edit mode', detail: 'Workspace layout', run: () => setLayoutMode('edit') },
+      { id: 'workspace-preset-severe', label: 'Workspace preset: Severe Weather Nowcast', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('severeNowcast') },
+      { id: 'workspace-preset-clean', label: 'Workspace preset: Clean Radar Mode', detail: 'Apply workspace preset', run: () => applyWorkspacePreset('cleanRadar') },
+      { id: 'workspace-reset', label: 'Reset workspace to defaults', detail: 'Workspace reset', run: () => resetWorkspace() },
+      { id: 'layer-preset-severe', label: 'Layer preset: Severe Weather', detail: 'Map layers', run: () => applyLayerPreset('severe-weather') },
+      { id: 'layer-preset-clean', label: 'Layer preset: Clean Map', detail: 'Map layers', run: () => applyLayerPreset('clean-map') },
+      { id: 'toggle-alerts', label: 'Toggle layer: Alerts', detail: 'Shortcut 1', run: () => toggleLayer('nwsAlerts') },
+      { id: 'toggle-radar', label: 'Toggle layer: Radar', detail: 'Shortcut 2', run: () => toggleLayer('radar') },
+      { id: 'toggle-spc', label: 'Toggle layer: SPC outlook', detail: 'Shortcut 3', run: () => toggleLayer('spcOutlook') },
+      { id: 'toggle-reports', label: 'Toggle layer: Storm reports', detail: 'Shortcut 4', run: () => toggleLayer('stormReports') },
+    ]
+
+    const dynamicUserPresetActions: CommandPaletteAction[] = userPresets.map((preset) => ({
+      id: `workspace-user-preset-${preset.id}`,
+      label: `Workspace preset: ${preset.title}`,
+      detail: 'Apply custom preset',
+      run: () => applyWorkspacePreset(preset.id),
+    }))
+
+    return [...dynamicUserPresetActions, ...baseActions]
+  }, [applyLayerPreset, applyWorkspacePreset, resetWorkspace, saveCurrentAsPreset, setLayoutMode, toggleLayer, userPresets])
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

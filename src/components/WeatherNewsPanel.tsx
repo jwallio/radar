@@ -24,14 +24,14 @@ interface RegionalPack {
 }
 
 const REGIONAL_PACKS: RegionalPack[] = [
-  { id: 'southern-plains', label: 'Southern Plains (TX/OK/KS)', areas: ['TX', 'OK', 'KS'] },
-  { id: 'midwest', label: 'Midwest (IA/IL/IN/MO)', areas: ['IA', 'IL', 'IN', 'MO'] },
-  { id: 'southeast', label: 'Southeast (AL/GA/MS/TN)', areas: ['AL', 'GA', 'MS', 'TN'] },
-  { id: 'mid-atlantic', label: 'Mid-Atlantic (VA/MD/NC/SC)', areas: ['VA', 'MD', 'NC', 'SC'] },
+  { id: 'southeast', label: 'Southeast (NC/SC/TN/GA/AL/FL)', areas: ['NC', 'SC', 'TN', 'GA', 'AL', 'FL'] },
+  { id: 'deep-south', label: 'Deep South (TX/OK/AR/LA)', areas: ['TX', 'OK', 'AR', 'LA'] },
+  { id: 'mid-atlantic', label: 'Mid-Atlantic (VA/DC/MD/DE/NJ/PA)', areas: ['VA', 'DC', 'MD', 'DE', 'NJ', 'PA'] },
+  { id: 'northeast', label: 'Northeast (NY/CT/RI/MA/VT/NH/ME)', areas: ['NY', 'CT', 'RI', 'MA', 'VT', 'NH', 'ME'] },
 ]
 
 const US_STATE_CODES = [
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL', 'GA',
   'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
   'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
   'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',

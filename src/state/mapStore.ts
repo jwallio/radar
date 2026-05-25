@@ -8,6 +8,7 @@ interface PersistedMapState { enabledLayers: LayerId[] }
 
 interface MapState {
   enabledLayers: LayerId[]
+  alertViewMode: 'all' | 'warnings' | 'watches'
   selectedAlertId: string | null
   zoomRequestAlertId: string | null
   zoomRequestNonce: number
@@ -16,6 +17,7 @@ interface MapState {
   radarPlaying: boolean
   radarFrameIntervalMs: number
   toggleLayer: (layerId: LayerId) => void
+  setAlertViewMode: (mode: 'all' | 'warnings' | 'watches') => void
   applyPreset: (presetId: string) => void
   selectAlert: (alertId: string | null) => void
   requestZoomToAlert: (alertId: string) => void
@@ -31,6 +33,7 @@ const persisted = readStorage<PersistedMapState>({ enabledLayers: defaultLayers 
 
 export const useMapStore = create<MapState>((set) => ({
   enabledLayers: persisted.enabledLayers,
+  alertViewMode: 'all',
   selectedAlertId: null,
   zoomRequestAlertId: null,
   zoomRequestNonce: 0,
@@ -44,6 +47,7 @@ export const useMapStore = create<MapState>((set) => ({
     writeStorage({ enabledLayers })
     return { enabledLayers }
   }),
+  setAlertViewMode: (mode) => set(() => ({ alertViewMode: mode })),
   applyPreset: (presetId) => set(() => {
     const preset = WEATHER_PRESETS.find((item) => item.id === presetId)
     const enabledLayers = preset ? preset.enabledLayers : defaultLayers

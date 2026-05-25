@@ -33,6 +33,7 @@ export function MapView() {
   const radarEnabled = s.enabledLayers.includes('radar')
   const stormReportsEnabled = s.enabledLayers.includes('stormReports')
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
+  const alertViewMode = s.alertViewMode
 
   const alertsQ = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60000 })
   const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000 })
@@ -85,7 +86,13 @@ export function MapView() {
         ;[ids.alertsPulse,ids.alertsLine,ids.alertsFill].forEach((id)=>map.getLayer(id)&&map.removeLayer(id))
         map.getSource(ids.alertsSource)&&map.removeSource(ids.alertsSource); return
       }
-      const fc=featureCollectionFromAlerts((alertsQ.data?.alerts??[]).filter((a)=>a.geometryStatus==='mapped'))
+      const fc=featureCollectionFromAlerts((alertsQ.data?.alerts??[])
+        .filter((a)=>a.geometryStatus==='mapped')
+        .filter((a)=>{
+          if (alertViewMode === 'warnings') return a.event.toLowerCase().includes('warning')
+          if (alertViewMode === 'watches') return a.event.toLowerCase().includes('watch')
+          return true
+        }))
       const src = map.getSource(ids.alertsSource) as maplibregl.GeoJSONSource | undefined
       if (!src) map.addSource(ids.alertsSource,{type:'geojson',data:fc}); else src.setData(fc)
       const before = map.getLayer(ids.reportsLayer) ? ids.reportsLayer : undefined
@@ -94,7 +101,7 @@ export function MapView() {
       if (!map.getLayer(ids.alertsPulse)) map.addLayer({id:ids.alertsPulse,type:'line',source:ids.alertsSource,filter:['>=',['index-of','Warning',['coalesce',['get','event'],'']],0],paint:{'line-color':'#ffeded','line-width':4,'line-opacity':pulseRef.current}}, before)
     }
     map.isStyleLoaded()?run():map.once('load',run)
-  }, [alertsEnabled, alertsQ.data, s.selectedAlertId])
+  }, [alertsEnabled, alertsQ.data, s.selectedAlertId, alertViewMode])
 
   useEffect(()=>{ const map=mapRef.current; if(!map||!alertsEnabled||!map.getLayer(ids.alertsPulse)) return; let t=0; const timer=setInterval(()=>{ t+=0.28; const o=0.25+((Math.sin(t)+1)/2)*0.6; pulseRef.current=o; map.getLayer(ids.alertsPulse)&&map.setPaintProperty(ids.alertsPulse,'line-opacity',o)},150); return ()=>clearInterval(timer)},[alertsEnabled,alertsQ.data])
 

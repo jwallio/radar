@@ -5,9 +5,19 @@ import { useWorkspaceStore } from '../state/workspaceStore'
 import type { WorkspaceModuleCategory, WorkspacePresetId } from '../types/weather'
 
 const categories: WorkspaceModuleCategory[] = ['alerts', 'radar', 'convective', 'operations', 'media', 'reference', 'status']
+const helpStorageKey = 'wallcloud-weather-dashboard-workspace-help-dismissed'
+
+function readHelpDismissed(): boolean {
+  try {
+    return localStorage.getItem(helpStorageKey) === 'true'
+  } catch {
+    return false
+  }
+}
 
 export function WorkspacePanel() {
   const [query, setQuery] = useState('')
+  const [helpDismissed, setHelpDismissed] = useState(readHelpDismissed)
   const preferences = useWorkspaceStore((state) => state.preferences)
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
@@ -34,6 +44,27 @@ export function WorkspacePanel() {
         <button type="button" onClick={resetWorkspace}>Reset</button>
       </div>
       <p className="workspace-panel-copy">Customize your weather monitoring workspace.</p>
+      {!helpDismissed && (
+        <section className="workspace-help-card">
+          <div>
+            <h2>First run guide</h2>
+            <p>Apply a preset to start fast, drag module boxes between zones, or use each module&apos;s Move buttons and zone selector for precise placement.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setHelpDismissed(true)
+              try {
+                localStorage.setItem(helpStorageKey, 'true')
+              } catch {
+                // no-op
+              }
+            }}
+          >
+            Got it
+          </button>
+        </section>
+      )}
       <label className="workspace-search">
         <span>Search modules</span>
         <input

@@ -12,6 +12,7 @@ import type { WorkspaceModuleDefinition, WorkspaceModuleId, WorkspaceZoneId } fr
 import { WorkspaceModuleFrame } from './WorkspaceModuleFrame'
 import { WorkspacePanel } from './WorkspacePanel'
 import { CommandBar } from './CommandBar'
+import { SourceHealthPanel } from './SourceHealthPanel'
 
 const zoneLabels: Record<WorkspaceZoneId, string> = {
   leftRail: 'Left rail',
@@ -43,6 +44,7 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
   if (moduleId === 'liveContext') return <LiveContextRail embedded />
   if (moduleId === 'spc') return <SpcPanel />
   if (moduleId === 'radar') return <RadarPanel />
+  if (moduleId === 'sourceHealth') return <SourceHealthPanel />
   const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
   return module ? <PlaceholderModule module={module} /> : null
 }

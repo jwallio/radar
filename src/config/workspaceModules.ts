@@ -55,7 +55,7 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   {
     id: 'cameras',
     title: 'Weather Cameras',
-    description: 'Placeholder for future camera collections. Use the Live Context links until embedded sources are wired.',
+    description: 'Future module for vetted weather camera collections. No camera feeds are embedded in this build.',
     category: 'media',
     defaultZone: 'rightRail',
     defaultSize: 'compact',
@@ -66,7 +66,7 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   {
     id: 'scanners',
     title: 'Scanner Links',
-    description: 'Placeholder for future scanner shortcuts. No live audio is embedded in this build.',
+    description: 'Future module for scanner shortcuts. No live audio is embedded in this build.',
     category: 'media',
     defaultZone: 'rightRail',
     defaultSize: 'compact',
@@ -77,7 +77,7 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   {
     id: 'weatherNews',
     title: 'Weather News',
-    description: 'Placeholder for vetted weather news and official product links. Feed ingestion is deferred.',
+    description: 'Future module for vetted weather news and official products. Feed ingestion is deferred.',
     category: 'reference',
     defaultZone: 'focusPanel',
     defaultSize: 'compact',
@@ -88,12 +88,11 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   {
     id: 'sourceHealth',
     title: 'Source Health',
-    description: 'Placeholder for source freshness and stale-state summaries from the current weather data loaders.',
+    description: 'Live status for the currently wired NWS, SPC, and RainViewer data sources.',
     category: 'status',
     defaultZone: 'mapOverlay',
     defaultSize: 'compact',
     defaultVisible: true,
-    isPlaceholder: true,
   },
   {
     id: 'legendTime',

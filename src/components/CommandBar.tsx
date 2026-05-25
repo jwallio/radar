@@ -21,7 +21,7 @@ export function CommandBar({ workspacePanelOpen, onToggleWorkspacePanel }: Comma
     <header className="command-bar">
       <div className="command-identity">
         <strong>wall.cloud</strong>
-        <span>Weather Monitor</span>
+        <span>Weather workspace for U.S. operations</span>
       </div>
       <div className="command-status">
         <span className="workspace-module-badge live">LIVE</span>

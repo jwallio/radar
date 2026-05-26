@@ -113,7 +113,7 @@ function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: Work
   )
 }
 
-function WorkspaceDropBoard({ activeDropZone, setActiveDropZone }: { activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void }) {
+function WorkspaceDropBoard({ activeDropZone, setActiveDropZone, activeDragModuleId, onExitEditMode }: { activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void; activeDragModuleId: WorkspaceModuleId | null; onExitEditMode: () => void }) {
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const preferences = useWorkspaceStore((state) => state.preferences)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
@@ -144,8 +144,11 @@ function WorkspaceDropBoard({ activeDropZone, setActiveDropZone }: { activeDropZ
   return (
     <section className="workspace-drop-board" aria-label="Workspace drag and drop board">
       <div className="workspace-drop-board-top">
-        <h3>Drop Board</h3>
-        <p>Drag any module card into a target bin below.</p>
+        <div>
+          <h3>Drop Board</h3>
+          <p>{activeDragModuleId ? `Dragging: ${WORKSPACE_MODULES.find((m) => m.id === activeDragModuleId)?.title ?? activeDragModuleId}` : 'Drag any module card into a target bin below.'}</p>
+        </div>
+        <button type="button" className="workspace-drop-board-exit" onClick={onExitEditMode}>Exit Edit Mode</button>
       </div>
       <div className="workspace-drop-board-grid">
         {(Object.keys(zoneLabels) as WorkspaceZoneId[]).map((zone) => (
@@ -170,6 +173,7 @@ function WorkspaceDropBoard({ activeDropZone, setActiveDropZone }: { activeDropZ
 
 export function AppShell() {
   const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
+  const [activeDragModuleId, setActiveDragModuleId] = useState<WorkspaceModuleId | null>(null)
   const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -254,7 +258,10 @@ export function AppShell() {
         onCloseUtility={() => setActiveUtilityTab(null)}
         onOpenCommandPalette={() => setPaletteOpen(true)}
       />
-      <div className="operator-layout">
+      <div className="operator-layout" onDragStart={(event) => {
+        const moduleId = event.dataTransfer?.getData('text/plain') as WorkspaceModuleId
+        if (WORKSPACE_MODULES.some((module) => module.id === moduleId)) setActiveDragModuleId(moduleId)
+      }} onDragEnd={() => { setActiveDragModuleId(null); setActiveDropZone(null) }}>
         <WorkspaceZone zone="leftRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
         <WorkspaceZone zone="rightRail" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
         <WorkspaceZone zone="bottomDock" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
@@ -262,7 +269,12 @@ export function AppShell() {
         <WorkspaceZone zone="focusPanel" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
       </div>
 
-      <WorkspaceDropBoard activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
+      <WorkspaceDropBoard
+        activeDropZone={activeDropZone}
+        setActiveDropZone={setActiveDropZone}
+        activeDragModuleId={activeDragModuleId}
+        onExitEditMode={() => setLayoutMode('operate')}
+      />
 
       {activeUtilityTab && (
         <aside className="utility-drawer" aria-label="Utility drawer">

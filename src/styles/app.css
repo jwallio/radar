@@ -58,6 +58,7 @@ html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gra
 .workspace-module-frame { flex: 0 0 auto; min-height: 0; }
 .workspace-module-frame[draggable='true'] { cursor: grab; }
 .workspace-module-frame[draggable='true']:active { cursor: grabbing; }
+.workspace-module-frame.dragging { transform: scale(1.01); box-shadow: 0 0 0 2px rgba(140,233,154,.22), 0 12px 24px rgba(0,0,0,.35); border-radius: 12px; opacity: .98; }
 .workspace-module-frame.operating .workspace-module-actions { gap: 6px; }
 .workspace-module-frame + .workspace-module-frame { padding-top: 10px; border-top: 1px solid rgba(173,201,255,.12); }
 .workspace-module-header { margin-bottom: 8px; }
@@ -74,6 +75,9 @@ html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gra
 .workspace-drop-board { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; width: min(920px, calc(100% - 36px)); height: min(46vh, 420px); z-index: 27; border: 1px solid rgba(173,201,255,.26); border-radius: 14px; background: rgba(7,12,22,.92); backdrop-filter: blur(6px); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .workspace-drop-board-top h3 { margin: 0; font-size: 15px; }
 .workspace-drop-board-top p { margin: 4px 0 0 0; font-size: 12px; color: #9fb5d8; }
+.workspace-drop-board-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.workspace-drop-board-exit { background: rgba(40,82,146,.42); border: 1px solid rgba(173,201,255,.34); color: #dce9ff; border-radius: 8px; padding: 6px 10px; font-size: 11px; cursor: pointer; }
+.workspace-drop-board-exit:hover { border-color: rgba(140,233,154,.45); }
 .workspace-drop-board-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .workspace-drop-bin { border: 1px dashed rgba(173,201,255,.34); border-radius: 12px; padding: 10px; background: rgba(17,28,45,.45); display: flex; flex-direction: column; justify-content: space-between; transition: border-color .15s ease, box-shadow .15s ease, background .15s ease; }
 .workspace-drop-bin.active { border-color: #8ce99a; box-shadow: 0 0 0 2px rgba(140,233,154,.18); background: rgba(31,68,52,.4); }

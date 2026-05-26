@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { WORKSPACE_MODULE_BY_ID } from '../config/workspaceModules'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import type { WorkspaceModuleId, WorkspaceZoneId } from '../types/weather'
@@ -15,6 +15,7 @@ export function WorkspaceModuleFrame({ moduleId, children, className = '' }: Wor
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const setModuleVisible = useWorkspaceStore((state) => state.setModuleVisible)
   const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
+  const [isDragging, setIsDragging] = useState(false)
 
   if (!module) return null
 
@@ -22,14 +23,16 @@ export function WorkspaceModuleFrame({ moduleId, children, className = '' }: Wor
 
   return (
     <section
-      className={`workspace-module-frame module-size-${module.defaultSize} ${className} ${editing ? 'editing' : 'operating'}`}
+      className={`workspace-module-frame module-size-${module.defaultSize} ${className} ${editing ? 'editing' : 'operating'} ${isDragging ? 'dragging' : ''}`}
       data-module-id={module.id}
       draggable={editing}
       onDragStart={(event) => {
         if (!editing) return
         event.dataTransfer.setData('text/plain', module.id)
         event.dataTransfer.effectAllowed = 'move'
+        setIsDragging(true)
       }}
+      onDragEnd={() => setIsDragging(false)}
     >
       <header className="workspace-module-header">
         <div>

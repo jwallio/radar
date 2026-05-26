@@ -83,6 +83,7 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
           value={currentPresetId ?? ''}
           onChange={(event) => {
             if (event.currentTarget.value) applyWorkspacePreset(event.currentTarget.value)
+            setActiveIncidentMode(null)
           }}
         >
           <option value="">Custom</option>
@@ -108,7 +109,10 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
               key={preset.id}
               type="button"
               className={currentPresetId === preset.id ? 'active' : ''}
-              onClick={() => applyWorkspacePreset(preset.id)}
+              onClick={() => {
+                applyWorkspacePreset(preset.id)
+                setActiveIncidentMode(null)
+              }}
             >
               {preset.title}
             </button>

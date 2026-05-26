@@ -4,6 +4,7 @@ import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByAreas, fetchNwsAle
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchOpsAiSummary } from '../services/aiSummary'
 import { useMapStore } from '../state/mapStore'
+import { TextPromptDialog } from './TextPromptDialog'
 
 interface WeatherNewsPanelProps {
   embedded?: boolean
@@ -75,6 +76,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
   const [customPacks, setCustomPacks] = useState<CustomRegionalPack[]>(() => loadCustomRegionalPacks())
   const [regionalPackId, setRegionalPackId] = useState<string>(REGIONAL_PACKS[0].id)
   const [customSelectedAreas, setCustomSelectedAreas] = useState<string[]>(['TX', 'OK', 'KS'])
+  const [saveCustomDialogOpen, setSaveCustomDialogOpen] = useState(false)
 
   const allPacks = useMemo(() => [...REGIONAL_PACKS, ...customPacks], [customPacks])
   const isCustomBuilder = regionalPackId === 'custom-builder'
@@ -252,8 +254,10 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
 
   function saveCurrentCustomPack(): void {
     if (customSelectedAreas.length === 0) return
-    const name = window.prompt('Name this regional pack:', `Custom (${customSelectedAreas.join('/')})`)
-    if (!name) return
+    setSaveCustomDialogOpen(true)
+  }
+
+  function submitCustomPackName(name: string): void {
     const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`
     const next = [
       ...customPacks.filter((pack) => pack.id !== id),
@@ -262,6 +266,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     setCustomPacks(next)
     saveCustomRegionalPacks(next)
     setRegionalPackId(id)
+    setSaveCustomDialogOpen(false)
   }
 
   function deleteCustomPack(id: string): void {
@@ -327,6 +332,16 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
           </article>
         ))}
       </div>
+      <TextPromptDialog
+        key={`custom-pack-${saveCustomDialogOpen ? customSelectedAreas.join('-') : 'closed'}`}
+        open={saveCustomDialogOpen}
+        title="Save custom regional pack"
+        label="Pack name"
+        defaultValue={`Custom (${customSelectedAreas.join('/')})`}
+        confirmLabel="Save pack"
+        onCancel={() => setSaveCustomDialogOpen(false)}
+        onSubmit={submitCustomPackName}
+      />
     </div>
   )
 

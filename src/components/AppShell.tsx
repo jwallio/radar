@@ -1,24 +1,26 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
-import { NwsAlertsPanel } from './NwsAlertsPanel'
-import { SpcPanel } from './SpcPanel'
-import { RadarPanel } from './RadarPanel'
-import { MapView } from './MapView'
+import { Suspense, lazy, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { WeatherLayerPanel } from './WeatherLayerPanel'
 import { PresetBar } from './PresetBar'
-import { LiveContextRail } from './LiveContextRail'
 import { WORKSPACE_MODULES } from '../config/workspaceModules'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import type { WorkspaceModuleDefinition, WorkspaceModuleId, WorkspaceZoneId } from '../types/weather'
 import { WorkspaceModuleFrame } from './WorkspaceModuleFrame'
 import { WorkspacePanel } from './WorkspacePanel'
 import { CommandBar } from './CommandBar'
-import { SourceHealthPanel } from './SourceHealthPanel'
-import { WeatherNewsPanel } from './WeatherNewsPanel'
-import { LegendTimePanel } from './LegendTimePanel'
-import { CameraLinksPanel } from './CameraLinksPanel'
-import { ScannerLinksPanel } from './ScannerLinksPanel'
 import { CommandPalette, type CommandPaletteAction } from './CommandPalette'
 import { useMapStore } from '../state/mapStore'
+import { TextPromptDialog } from './TextPromptDialog'
+
+const MapView = lazy(async () => import('./MapView').then((m) => ({ default: m.MapView })))
+const NwsAlertsPanel = lazy(async () => import('./NwsAlertsPanel').then((m) => ({ default: m.NwsAlertsPanel })))
+const LiveContextRail = lazy(async () => import('./LiveContextRail').then((m) => ({ default: m.LiveContextRail })))
+const SpcPanel = lazy(async () => import('./SpcPanel').then((m) => ({ default: m.SpcPanel })))
+const RadarPanel = lazy(async () => import('./RadarPanel').then((m) => ({ default: m.RadarPanel })))
+const SourceHealthPanel = lazy(async () => import('./SourceHealthPanel').then((m) => ({ default: m.SourceHealthPanel })))
+const LegendTimePanel = lazy(async () => import('./LegendTimePanel').then((m) => ({ default: m.LegendTimePanel })))
+const WeatherNewsPanel = lazy(async () => import('./WeatherNewsPanel').then((m) => ({ default: m.WeatherNewsPanel })))
+const CameraLinksPanel = lazy(async () => import('./CameraLinksPanel').then((m) => ({ default: m.CameraLinksPanel })))
+const ScannerLinksPanel = lazy(async () => import('./ScannerLinksPanel').then((m) => ({ default: m.ScannerLinksPanel })))
 
 const zoneLabels: Record<WorkspaceZoneId, string> = {
   leftRail: 'Left rail',
@@ -60,17 +62,21 @@ function UtilityHelpPanel() {
 }
 
 function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
-  if (moduleId === 'alerts') return <NwsAlertsPanel embedded />
-  if (moduleId === 'liveContext') return <LiveContextRail embedded />
-  if (moduleId === 'spc') return <SpcPanel />
-  if (moduleId === 'radar') return <RadarPanel />
-  if (moduleId === 'sourceHealth') return <SourceHealthPanel />
-  if (moduleId === 'legendTime') return <LegendTimePanel />
-  if (moduleId === 'weatherNews') return <WeatherNewsPanel />
-  if (moduleId === 'cameras') return <CameraLinksPanel />
-  if (moduleId === 'scanners') return <ScannerLinksPanel />
-  const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
-  return module ? <PlaceholderModule module={module} /> : null
+  const content = (() => {
+    if (moduleId === 'alerts') return <NwsAlertsPanel embedded />
+    if (moduleId === 'liveContext') return <LiveContextRail embedded />
+    if (moduleId === 'spc') return <SpcPanel />
+    if (moduleId === 'radar') return <RadarPanel />
+    if (moduleId === 'sourceHealth') return <SourceHealthPanel />
+    if (moduleId === 'legendTime') return <LegendTimePanel />
+    if (moduleId === 'weatherNews') return <WeatherNewsPanel />
+    if (moduleId === 'cameras') return <CameraLinksPanel />
+    if (moduleId === 'scanners') return <ScannerLinksPanel />
+    const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
+    return module ? <PlaceholderModule module={module} /> : null
+  })()
+
+  return <Suspense fallback={<p className="workspace-empty-zone">Loading module...</p>}>{content}</Suspense>
 }
 
 function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: WorkspaceZoneId; activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void }) {
@@ -176,6 +182,7 @@ export function AppShell() {
   const [activeDragModuleId, setActiveDragModuleId] = useState<WorkspaceModuleId | null>(null)
   const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
 
   const toggleLayer = useMapStore((state) => state.toggleLayer)
   const applyLayerPreset = useMapStore((state) => state.applyPreset)
@@ -194,10 +201,7 @@ export function AppShell() {
         id: 'workspace-save-current',
         label: 'Save current workspace preset',
         detail: 'Custom presets',
-        run: () => {
-          const name = window.prompt('Save current workspace as preset:', 'My workspace')
-          if (name) saveCurrentAsPreset(name)
-        },
+        run: () => setSavePresetDialogOpen(true),
       },
       { id: 'layout-operate', label: 'Switch to Operate mode', detail: 'Workspace layout', run: () => setLayoutMode('operate') },
       { id: 'layout-edit', label: 'Switch to Edit mode', detail: 'Workspace layout', run: () => setLayoutMode('edit') },
@@ -220,7 +224,7 @@ export function AppShell() {
     }))
 
     return [...dynamicUserPresetActions, ...baseActions]
-  }, [applyLayerPreset, applyWorkspacePreset, resetWorkspace, saveCurrentAsPreset, setLayoutMode, toggleLayer, userPresets])
+  }, [applyLayerPreset, applyWorkspacePreset, resetWorkspace, setLayoutMode, toggleLayer, userPresets])
 
 
   useEffect(() => {
@@ -251,7 +255,9 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <MapView />
+      <Suspense fallback={<div className="map-root-wrap" />}>
+        <MapView />
+      </Suspense>
       <CommandBar
         activeUtilityTab={activeUtilityTab}
         onToggleUtilityTab={(tab) => setActiveUtilityTab((current) => (current === tab ? null : tab))}
@@ -285,6 +291,20 @@ export function AppShell() {
       )}
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={commandPaletteActions} />
+
+      <TextPromptDialog
+        key={`shell-save-${savePresetDialogOpen ? 'open' : 'closed'}`}
+        open={savePresetDialogOpen}
+        title="Save current workspace preset"
+        label="Preset name"
+        defaultValue="My workspace"
+        confirmLabel="Save preset"
+        onCancel={() => setSavePresetDialogOpen(false)}
+        onSubmit={(value) => {
+          saveCurrentAsPreset(value)
+          setSavePresetDialogOpen(false)
+        }}
+      />
 
       <PresetBar />
     </div>

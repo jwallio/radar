@@ -58,14 +58,14 @@ export const useMapStore = create<MapState>((set) => ({
     const enabled = state.enabledLayers.includes(layerId)
     const enabledLayers = enabled ? state.enabledLayers.filter((id) => id !== layerId) : [...state.enabledLayers, layerId]
     writeStorage({ enabledLayers })
-    return { enabledLayers }
+    return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
-  setAlertViewMode: (mode) => set(() => ({ alertViewMode: mode })),
+  setAlertViewMode: (mode) => set(() => ({ alertViewMode: mode, activeIncidentModeId: null, activeIncidentModeAppliedAt: null })),
   applyPreset: (presetId) => set(() => {
     const preset = WEATHER_PRESETS.find((item) => item.id === presetId)
     const enabledLayers = preset ? preset.enabledLayers : defaultLayers
     writeStorage({ enabledLayers })
-    return { enabledLayers }
+    return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
   selectAlert: (alertId) => set(() => ({ selectedAlertId: alertId, zoomRequestAlertId: null })),
   requestZoomToAlert: (alertId) => set((state) => ({ selectedAlertId: alertId, zoomRequestAlertId: alertId, zoomRequestNonce: state.zoomRequestNonce + 1 })),
@@ -78,6 +78,8 @@ export const useMapStore = create<MapState>((set) => ({
   setRegionalFocus: (packId, areas) => set(() => ({
     regionalFocusPackId: packId,
     regionalFocusAreas: Array.from(new Set(areas.map((area) => area.trim().toUpperCase()).filter(Boolean))),
+    activeIncidentModeId: null,
+    activeIncidentModeAppliedAt: null,
   })),
   setActiveIncidentMode: (modeId, appliedAt) => set(() => ({
     activeIncidentModeId: modeId,

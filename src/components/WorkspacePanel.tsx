@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { WORKSPACE_MODULES, WORKSPACE_ZONES } from '../config/workspaceModules'
 import { WORKSPACE_PRESETS } from '../config/workspacePresets'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useMapStore } from '../state/mapStore'
+import { TextPromptDialog } from './TextPromptDialog'
 import type { WorkspaceModuleCategory } from '../types/weather'
 
 const categories: WorkspaceModuleCategory[] = ['alerts', 'radar', 'convective', 'operations', 'media', 'reference', 'status']
@@ -22,6 +24,8 @@ interface WorkspacePanelProps {
 export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const [query, setQuery] = useState('')
   const [helpDismissed, setHelpDismissed] = useState(readHelpDismissed)
+  const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
+  const [renamePresetId, setRenamePresetId] = useState<string | null>(null)
   const preferences = useWorkspaceStore((state) => state.preferences)
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
@@ -35,6 +39,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
   const pinnedPresetIds = useWorkspaceStore((state) => state.pinnedPresetIds)
   const togglePinnedPreset = useWorkspaceStore((state) => state.togglePinnedPreset)
+  const setActiveIncidentMode = useMapStore((state) => state.setActiveIncidentMode)
 
   const filteredModules = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -47,6 +52,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   }, [query])
 
   const hiddenModules = useMemo(() => WORKSPACE_MODULES.filter((module) => !preferences[module.id]?.visible), [preferences])
+  const renamePreset = userPresets.find((preset) => preset.id === renamePresetId) ?? null
 
   const content = (
     <>
@@ -109,6 +115,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
           value={currentPresetId ?? ''}
           onChange={(event) => {
             if (event.currentTarget.value) applyPreset(event.currentTarget.value)
+            setActiveIncidentMode(null)
           }}
         >
           <option value="">Custom workspace</option>
@@ -118,16 +125,13 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
         <div className="workspace-preset-buttons">
           <button
             type="button"
-            onClick={() => {
-              const name = window.prompt('Save current workspace as preset:', 'My workspace')
-              if (name) saveCurrentAsPreset(name)
-            }}
+            onClick={() => setSavePresetDialogOpen(true)}
           >
             Save current preset
           </button>
           {WORKSPACE_PRESETS.map((preset) => (
             <div key={preset.id} className="workspace-preset-action-row">
-              <button type="button" data-workspace-preset={preset.id} onClick={() => applyPreset(preset.id)}>
+              <button type="button" data-workspace-preset={preset.id} onClick={() => { applyPreset(preset.id); setActiveIncidentMode(null) }}>
                 {preset.title}
               </button>
               <button type="button" onClick={() => togglePinnedPreset(preset.id)}>
@@ -137,7 +141,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
           ))}
           {userPresets.map((preset) => (
             <div key={preset.id} className="workspace-preset-action-row">
-              <button type="button" onClick={() => applyPreset(preset.id)}>
+              <button type="button" onClick={() => { applyPreset(preset.id); setActiveIncidentMode(null) }}>
                 ★ {preset.title}
               </button>
               <button type="button" onClick={() => togglePinnedPreset(preset.id)}>
@@ -154,10 +158,7 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
                 <div className="workspace-user-preset-actions">
                   <button
                     type="button"
-                    onClick={() => {
-                      const name = window.prompt('Rename preset:', preset.title)
-                      if (name) renameUserPreset(preset.id, name)
-                    }}
+                    onClick={() => setRenamePresetId(preset.id)}
                   >
                     Rename
                   </button>
@@ -206,6 +207,32 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
           </section>
         )
       })}
+      <TextPromptDialog
+        key={`save-${savePresetDialogOpen ? 'open' : 'closed'}`}
+        open={savePresetDialogOpen}
+        title="Save current workspace preset"
+        label="Preset name"
+        defaultValue="My workspace"
+        confirmLabel="Save preset"
+        onCancel={() => setSavePresetDialogOpen(false)}
+        onSubmit={(value) => {
+          saveCurrentAsPreset(value)
+          setSavePresetDialogOpen(false)
+        }}
+      />
+      <TextPromptDialog
+        key={`rename-${renamePreset?.id ?? 'none'}`}
+        open={Boolean(renamePreset)}
+        title="Rename workspace preset"
+        label="Preset name"
+        defaultValue={renamePreset?.title ?? ''}
+        confirmLabel="Rename"
+        onCancel={() => setRenamePresetId(null)}
+        onSubmit={(value) => {
+          if (renamePreset) renameUserPreset(renamePreset.id, value)
+          setRenamePresetId(null)
+        }}
+      />
     </>
   )
 

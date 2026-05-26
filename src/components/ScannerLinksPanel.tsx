@@ -1,4 +1,5 @@
 import { SCANNER_LINK_GROUPS } from '../config/scannerLinks'
+import { ModuleStateNotice, ModuleStatusBadge } from './ModuleStatusBadge'
 
 interface ScannerLinksPanelProps {
   embedded?: boolean
@@ -7,7 +8,10 @@ interface ScannerLinksPanelProps {
 export function ScannerLinksPanel({ embedded = false }: ScannerLinksPanelProps) {
   const content = (
     <div className="workspace-module-body external-links-panel">
-      <h3>Scanner Links</h3>
+      <div className="module-title-row">
+        <h3>Scanner Links</h3>
+        <ModuleStatusBadge state="ready" />
+      </div>
       {SCANNER_LINK_GROUPS.map((group) => (
         <section key={group.id} className="external-links-group">
           <h4>{group.title}</h4>
@@ -22,6 +26,11 @@ export function ScannerLinksPanel({ embedded = false }: ScannerLinksPanelProps) 
           ))}
         </section>
       ))}
+      <ModuleStateNotice
+        state="degraded"
+        title="Embedded scanner audio pending"
+        message="This module currently links to live scanner sources. In-app audio embedding arrives in the next integration increment."
+      />
     </div>
   )
 

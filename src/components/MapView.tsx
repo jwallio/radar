@@ -10,6 +10,7 @@ import { fetchJsonSafe } from '../services/fetchJson'
 import { useMapStore } from '../state/mapStore'
 import { boundsFromGeometries, boundsFromGeometry, featureCollectionFromAlerts, featureCollectionFromSpcReports } from '../utils/geojson'
 import { SPOTTER_NETWORK_LOCATIONS } from '../config/liveStreamers'
+import { INTEGRATION_FLAGS } from '../config/integrations'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
 const ids = {
@@ -200,6 +201,12 @@ export function MapView() {
     const map = mapRef.current
     if (!map) return
 
+    if (!INTEGRATION_FLAGS.spotterMapOverlays) {
+      ;[ids.spotterCamLayer, ids.spotterLayer].forEach((id) => map.getLayer(id) && map.removeLayer(id))
+      map.getSource(ids.spotterSource) && map.removeSource(ids.spotterSource)
+      return
+    }
+
     const spotterFc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: SPOTTER_NETWORK_LOCATIONS.map((spotter) => ({
@@ -275,7 +282,7 @@ export function MapView() {
           <p>Effective: {fmt(detailAlert.effective)} | Expires: {fmt(detailAlert.expires)}</p>
         </section>
       )}
-      {hoveredSpotter && (
+      {INTEGRATION_FLAGS.spotterMapOverlays && hoveredSpotter && (
         <section className="spotter-hover-strip">
           <strong>{hoveredSpotter.callsign}</strong>
           <p>{hoveredSpotter.region}</p>

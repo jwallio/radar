@@ -79,6 +79,8 @@ export interface ExternalOpsGroup {
   items: ExternalOpsItem[]
 }
 
+export type ModuleOperationalState = 'loading' | 'ready' | 'degraded' | 'disabled'
+
 export type WorkspaceModuleId = 'alerts' | 'radar' | 'spc' | 'liveContext' | 'cameras' | 'scanners' | 'weatherNews' | 'sourceHealth' | 'legendTime'
 export type WorkspaceZoneId = 'leftRail' | 'rightRail' | 'bottomDock' | 'mapOverlay' | 'focusPanel'
 export type WorkspaceModuleCategory = 'alerts' | 'radar' | 'convective' | 'operations' | 'media' | 'reference' | 'status'

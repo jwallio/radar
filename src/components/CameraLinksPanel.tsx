@@ -1,14 +1,28 @@
 import { CAMERA_LINK_GROUPS } from '../config/cameraLinks'
+import { INTEGRATION_FLAGS } from '../config/integrations'
+import { ModuleStateNotice, ModuleStatusBadge } from './ModuleStatusBadge'
 
 interface CameraLinksPanelProps {
   embedded?: boolean
 }
 
 export function CameraLinksPanel({ embedded = false }: CameraLinksPanelProps) {
+  const disabled = !INTEGRATION_FLAGS.embeddedCameras
+
   const content = (
     <div className="workspace-module-body external-links-panel">
-      <h3>Weather Cameras</h3>
-      {CAMERA_LINK_GROUPS.map((group) => (
+      <div className="module-title-row">
+        <h3>Weather Cameras</h3>
+        <ModuleStatusBadge state={disabled ? 'disabled' : 'ready'} />
+      </div>
+      {disabled && (
+        <ModuleStateNotice
+          state="disabled"
+          title="Embedded cameras disabled"
+          message="Enable VITE_ENABLE_EMBEDDED_CAMERAS=true to render camera integrations in this module."
+        />
+      )}
+      {!disabled && CAMERA_LINK_GROUPS.map((group) => (
         <section key={group.id} className="external-links-group">
           <h4>{group.title}</h4>
           {group.items.map((item) => (

@@ -1,6 +1,8 @@
 import { LIVE_CONTEXT_MODULES } from '../config/liveContext'
 import { LIVE_STREAMERS } from '../config/liveStreamers'
+import { INTEGRATION_FLAGS } from '../config/integrations'
 import { useMapStore } from '../state/mapStore'
+import { ModuleStateNotice, ModuleStatusBadge } from './ModuleStatusBadge'
 
 interface LiveContextRailProps { embedded?: boolean }
 
@@ -12,36 +14,54 @@ export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
     ?? LIVE_STREAMERS.find((streamer) => streamer.isLiveByDefault)
     ?? LIVE_STREAMERS[0]
 
+  const streamerDisabled = !INTEGRATION_FLAGS.embeddedStreamers
+
   const content = (
     <>
       <h2>Live Context</h2>
 
       <section className="context-card">
-        <h3>Live Streamers</h3>
-        <div className="live-streamer-list">
-          {LIVE_STREAMERS.map((streamer) => (
-            <button
-              key={streamer.id}
-              type="button"
-              className={selectedStreamer?.id === streamer.id ? 'active' : ''}
-              onClick={() => setSelectedLiveStreamerId(streamer.id)}
-            >
-              {streamer.label}
-              {streamer.region ? ` · ${streamer.region}` : ''}
-            </button>
-          ))}
+        <div className="module-title-row">
+          <h3>Live Streamers</h3>
+          <ModuleStatusBadge state={streamerDisabled ? 'disabled' : 'ready'} />
         </div>
-        {selectedStreamer && (
-          <div className="live-streamer-player">
-            <iframe
-              title={`Live stream: ${selectedStreamer.label}`}
-              src={selectedStreamer.youtubeEmbedUrl}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
-            <a href={selectedStreamer.youtubeChannelUrl} target="_blank" rel="noreferrer">Open channel on YouTube</a>
-          </div>
+
+        {streamerDisabled && (
+          <ModuleStateNotice
+            state="disabled"
+            title="Embedded streamers disabled"
+            message="Enable VITE_ENABLE_EMBEDDED_STREAMERS=true to show in-app live streamer playback."
+          />
+        )}
+
+        {!streamerDisabled && (
+          <>
+            <div className="live-streamer-list">
+              {LIVE_STREAMERS.map((streamer) => (
+                <button
+                  key={streamer.id}
+                  type="button"
+                  className={selectedStreamer?.id === streamer.id ? 'active' : ''}
+                  onClick={() => setSelectedLiveStreamerId(streamer.id)}
+                >
+                  {streamer.label}
+                  {streamer.region ? ` · ${streamer.region}` : ''}
+                </button>
+              ))}
+            </div>
+            {selectedStreamer && (
+              <div className="live-streamer-player">
+                <iframe
+                  title={`Live stream: ${selectedStreamer.label}`}
+                  src={selectedStreamer.youtubeEmbedUrl}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+                <a href={selectedStreamer.youtubeChannelUrl} target="_blank" rel="noreferrer">Open channel on YouTube</a>
+              </div>
+            )}
+          </>
         )}
       </section>
 

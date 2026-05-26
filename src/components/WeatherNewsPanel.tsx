@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchNwsAlertCounts, fetchNwsAlerts, fetchNwsAlertsByAreas, fetchNwsAlertsByEvent } from '../services/nws'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchOpsAiSummary } from '../services/aiSummary'
 import { useMapStore } from '../state/mapStore'
 import { TextPromptDialog } from './TextPromptDialog'
+import { INTEGRATION_FLAGS } from '../config/integrations'
+import { ModuleStateNotice, ModuleStatusBadge } from './ModuleStatusBadge'
 
 interface WeatherNewsPanelProps {
   embedded?: boolean
@@ -72,6 +74,8 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
+  const queryClient = useQueryClient()
+  const aiSummaryEnabled = INTEGRATION_FLAGS.aiNewsSummary
   const setRegionalFocus = useMapStore((state) => state.setRegionalFocus)
   const [customPacks, setCustomPacks] = useState<CustomRegionalPack[]>(() => loadCustomRegionalPacks())
   const [regionalPackId, setRegionalPackId] = useState<string>(REGIONAL_PACKS[0].id)
@@ -121,7 +125,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     }),
     staleTime: 60_000,
     refetchInterval: 120_000,
-    enabled: !!alerts.data && !!reports.data && !!outlook.data && !!regionalAlerts.data,
+    enabled: aiSummaryEnabled && !!alerts.data && !!reports.data && !!outlook.data && !!regionalAlerts.data,
   })
 
   const cards = useMemo<NewsCard[]>(() => {
@@ -130,7 +134,9 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         id: 'ai-ops-summary',
         source: aiSummary.data?.model ? `AI Ops Summary (${aiSummary.data.model})` : 'AI Ops Summary',
         headline: severeCount > 0 || regionalSevereCount > 0 ? 'Severe-weather escalation detected' : 'Baseline weather operations posture',
-        summary: aiSummary.data?.summary ?? 'Generating AI summary...',
+        summary: aiSummaryEnabled
+          ? (aiSummary.data?.summary ?? 'Generating AI summary...')
+          : 'AI summary disabled by config. Enable VITE_ENABLE_AI_NEWS_SUMMARY=true and provide VITE_LLM_API_KEY to activate.',
         updated: aiSummary.data?.generatedAt ?? null,
         priority: 0,
       },
@@ -218,6 +224,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
 
     return next.sort((a, b) => a.priority - b.priority)
   }, [
+    aiSummaryEnabled,
     aiSummary.data,
     severeCount,
     regionalSevereCount,
@@ -246,7 +253,21 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     || flashFloodWarnings.isLoading
     || reports.isLoading
     || outlook.isLoading
-    || aiSummary.isLoading
+    || (aiSummaryEnabled && aiSummary.isLoading)
+
+  const degraded = Boolean(
+    alerts.data?.error
+    || alertCounts.data?.error
+    || regionalAlerts.data?.error
+    || tornadoWarnings.data?.error
+    || severeThunderstormWarnings.data?.error
+    || flashFloodWarnings.data?.error
+    || reports.data?.error
+    || outlook.data?.error
+    || (aiSummaryEnabled && aiSummary.data?.error),
+  )
+
+  const moduleState = !aiSummaryEnabled ? 'disabled' : loading ? 'loading' : degraded ? 'degraded' : 'ready'
 
   function toggleCustomArea(area: string): void {
     setCustomSelectedAreas((prev) => (prev.includes(area) ? prev.filter((entry) => entry !== area) : [...prev, area]))
@@ -276,9 +297,35 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
     if (regionalPackId === id) setRegionalPackId(REGIONAL_PACKS[0].id)
   }
 
+  function retryRefresh(): void {
+    void queryClient.invalidateQueries({ queryKey: ['nws-alerts'] })
+    void queryClient.invalidateQueries({ queryKey: ['nws-alert-counts'] })
+    void queryClient.invalidateQueries({ queryKey: ['spc-reports'] })
+    void queryClient.invalidateQueries({ queryKey: ['spc-day1-outlook'] })
+    void queryClient.invalidateQueries({ queryKey: ['ops-ai-summary'] })
+  }
+
   const content = (
     <div className="workspace-module-body weather-news-panel">
-      <h3>Integrated Live Weather Feed</h3>
+      <div className="module-title-row">
+        <h3>Integrated Live Weather Feed</h3>
+        <ModuleStatusBadge state={moduleState} />
+      </div>
+      {moduleState === 'disabled' && (
+        <ModuleStateNotice
+          state="disabled"
+          title="AI summary disabled"
+          message="Set VITE_ENABLE_AI_NEWS_SUMMARY=true with VITE_LLM_API_KEY to enable model-generated summaries. Raw weather feeds remain active."
+        />
+      )}
+      {moduleState === 'degraded' && (
+        <ModuleStateNotice
+          state="degraded"
+          title="One or more sources degraded"
+          message="At least one live feed or summary source failed. Use retry to refresh module data."
+          onRetry={retryRefresh}
+        />
+      )}
       <p className="weather-news-meta">Sources: NWS national + regional packs + event filters, SPC reports/outlook, LLM ops summary</p>
       <p className="weather-news-meta">Auto refresh: NWS 2m • SPC 3-4m • AI summary 2m</p>
 

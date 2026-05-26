@@ -104,6 +104,15 @@ html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gra
 .legend-time-section p { margin: 4px 0; font-size: 12px; line-height: 1.3; }
 .legend-time-layer-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .weather-news-panel, .external-links-panel { display: flex; flex-direction: column; gap: 8px; }
+.module-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.module-status-badge { border: 1px solid rgba(173,201,255,.3); border-radius: 999px; padding: 2px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.module-status-badge.ready { color: #8ce99a; }
+.module-status-badge.loading { color: #ffd47a; }
+.module-status-badge.degraded { color: #ffb573; }
+.module-status-badge.disabled { color: #b8bec9; }
+.module-state-card { border: 1px solid rgba(173,201,255,.2); border-radius: 10px; background: rgba(16,24,39,.66); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.module-state-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.module-state-card button { width: fit-content; padding: 4px 8px; font-size: 11px; }
 .weather-news-panel h3, .external-links-panel h3 { margin: 0; font-size: 14px; }
 .weather-news-group, .external-links-group { border-top: 1px solid rgba(173,201,255,.14); padding-top: 8px; }
 .weather-news-group h4, .external-links-group h4 { margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #9fb5d8; }

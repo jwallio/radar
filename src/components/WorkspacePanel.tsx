@@ -33,6 +33,8 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
   const renameUserPreset = useWorkspaceStore((state) => state.renameUserPreset)
   const deleteUserPreset = useWorkspaceStore((state) => state.deleteUserPreset)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
+  const pinnedPresetIds = useWorkspaceStore((state) => state.pinnedPresetIds)
+  const togglePinnedPreset = useWorkspaceStore((state) => state.togglePinnedPreset)
 
   const filteredModules = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -124,14 +126,24 @@ export function WorkspacePanel({ embedded = false }: WorkspacePanelProps) {
             Save current preset
           </button>
           {WORKSPACE_PRESETS.map((preset) => (
-            <button key={preset.id} type="button" data-workspace-preset={preset.id} onClick={() => applyPreset(preset.id)}>
-              {preset.title}
-            </button>
+            <div key={preset.id} className="workspace-preset-action-row">
+              <button type="button" data-workspace-preset={preset.id} onClick={() => applyPreset(preset.id)}>
+                {preset.title}
+              </button>
+              <button type="button" onClick={() => togglePinnedPreset(preset.id)}>
+                {pinnedPresetIds.includes(preset.id) ? 'Unpin' : 'Pin'}
+              </button>
+            </div>
           ))}
           {userPresets.map((preset) => (
-            <button key={preset.id} type="button" onClick={() => applyPreset(preset.id)}>
-              ★ {preset.title}
-            </button>
+            <div key={preset.id} className="workspace-preset-action-row">
+              <button type="button" onClick={() => applyPreset(preset.id)}>
+                ★ {preset.title}
+              </button>
+              <button type="button" onClick={() => togglePinnedPreset(preset.id)}>
+                {pinnedPresetIds.includes(preset.id) ? 'Unpin' : 'Pin'}
+              </button>
+            </div>
           ))}
         </div>
         {userPresets.length > 0 && (

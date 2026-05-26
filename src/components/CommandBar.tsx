@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { WORKSPACE_PRESETS } from '../config/workspacePresets'
 import { fetchNwsAlerts } from '../services/nws'
@@ -20,11 +21,24 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
   const applyPreset = useWorkspaceStore((state) => state.applyPreset)
   const userPresets = useWorkspaceStore((state) => state.userPresets)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
+  const layoutLocked = useWorkspaceStore((state) => state.layoutLocked)
+  const toggleLayoutLocked = useWorkspaceStore((state) => state.toggleLayoutLocked)
+  const pinnedPresetIds = useWorkspaceStore((state) => state.pinnedPresetIds)
   const alertList = alerts.data?.alerts ?? []
   const severeCount = alertList.filter((alert) => alert.severity === 'Extreme' || alert.severity === 'Severe').length
   const presetLabel = WORKSPACE_PRESETS.find((preset) => preset.id === currentPresetId)?.title
     ?? userPresets.find((preset) => preset.id === currentPresetId)?.title
     ?? 'Custom workspace'
+
+  const pinnedPresets = useMemo(() => {
+    const all = [
+      ...WORKSPACE_PRESETS.map((preset) => ({ id: preset.id, title: preset.title })),
+      ...userPresets.map((preset) => ({ id: preset.id, title: `★ ${preset.title}` })),
+    ]
+    return pinnedPresetIds
+      .map((id) => all.find((preset) => preset.id === id))
+      .filter((item): item is { id: string; title: string } => Boolean(item))
+  }, [pinnedPresetIds, userPresets])
 
   return (
     <header className="command-bar">
@@ -37,6 +51,7 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
         <span>{alerts.isLoading ? 'Alerts loading' : `${alertList.length} alerts`}</span>
         <span>{severeCount} severe+</span>
         <span>{presetLabel}</span>
+        <span>{layoutLocked ? 'Layout locked' : 'Layout unlocked'}</span>
       </div>
       <label className="command-preset-picker">
         <span>Preset</span>
@@ -58,8 +73,24 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
         <button type="button" onClick={() => onToggleUtilityTab('help')} className={activeUtilityTab === 'help' ? 'active' : ''}>Help</button>
         {activeUtilityTab && <button type="button" onClick={onCloseUtility}>Close Panel</button>}
         <button type="button" onClick={toggleLayoutMode}>{layoutMode === 'edit' ? 'Edit Mode' : 'Operate Mode'}</button>
+        <button type="button" onClick={toggleLayoutLocked}>{layoutLocked ? 'Unlock Layout' : 'Lock Layout'}</button>
         <button type="button" onClick={resetWorkspace}>Reset</button>
       </div>
+      {pinnedPresets.length > 0 && (
+        <div className="command-pinned-presets" aria-label="Pinned ops layouts">
+          <span>Ops layouts</span>
+          {pinnedPresets.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={currentPresetId === preset.id ? 'active' : ''}
+              onClick={() => applyPreset(preset.id)}
+            >
+              {preset.title}
+            </button>
+          ))}
+        </div>
+      )}
     </header>
   )
 }

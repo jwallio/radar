@@ -20,6 +20,8 @@ interface PersistedWorkspaceBlob {
   currentPresetId?: unknown
   layoutMode?: unknown
   userPresets?: unknown
+  pinnedPresetIds?: unknown
+  layoutLocked?: unknown
   [key: string]: unknown
 }
 
@@ -72,6 +74,10 @@ function readLayoutMode(raw: unknown): LayoutMode {
   return raw === 'edit' ? 'edit' : 'operate'
 }
 
+function readLayoutLocked(raw: unknown): boolean {
+  return raw === true
+}
+
 function isWorkspacePreferences(value: unknown): value is WorkspacePreferences {
   if (!value || typeof value !== 'object') return false
   return WORKSPACE_MODULES.every((module) => {
@@ -107,11 +113,22 @@ function readCurrentPresetId(raw: unknown, userPresets: UserWorkspacePreset[]): 
   return null
 }
 
+function readPinnedPresetIds(raw: unknown, userPresets: UserWorkspacePreset[]): string[] {
+  if (!Array.isArray(raw)) return []
+  const valid = new Set<string>([
+    ...Array.from(WORKSPACE_PRESET_BY_ID.keys()),
+    ...userPresets.map((preset) => preset.id),
+  ])
+  return raw.filter((value): value is string => typeof value === 'string' && valid.has(value))
+}
+
 function writeWorkspaceState(
   preferences: WorkspacePreferences,
   currentPresetId: string | null,
   layoutMode: LayoutMode,
   userPresets: UserWorkspacePreset[],
+  pinnedPresetIds: string[],
+  layoutLocked: boolean,
 ): void {
   try {
     const knownOnly = Object.entries(preferences).reduce((output, [id, preference]) => {
@@ -125,6 +142,8 @@ function writeWorkspaceState(
         currentPresetId: currentPresetId ?? null,
         layoutMode,
         userPresets,
+        pinnedPresetIds,
+        layoutLocked,
       }),
     )
   } catch {
@@ -141,12 +160,17 @@ interface WorkspaceState {
   preferences: WorkspacePreferences
   currentPresetId: string | null
   layoutMode: LayoutMode
+  layoutLocked: boolean
   userPresets: UserWorkspacePreset[]
+  pinnedPresetIds: string[]
   setLayoutMode: (mode: LayoutMode) => void
   toggleLayoutMode: () => void
+  setLayoutLocked: (locked: boolean) => void
+  toggleLayoutLocked: () => void
   setModuleVisible: (moduleId: WorkspaceModuleId, visible: boolean) => void
   setModuleZone: (moduleId: WorkspaceModuleId, zone: WorkspaceZoneId) => void
   applyPreset: (presetId: string) => void
+  togglePinnedPreset: (presetId: string) => void
   saveCurrentAsPreset: (title: string) => void
   renameUserPreset: (presetId: string, title: string) => void
   deleteUserPreset: (presetId: string) => void
@@ -155,6 +179,7 @@ interface WorkspaceState {
 
 const initialBlob = readWorkspaceBlob()
 const initialUserPresets = readUserPresets(initialBlob.userPresets)
+const initialPinnedPresetIds = readPinnedPresetIds(initialBlob.pinnedPresetIds, initialUserPresets)
 
 function findPresetById(presetId: string, userPresets: UserWorkspacePreset[]): WorkspacePresetDefinition | UserWorkspacePreset | null {
   const builtIn = WORKSPACE_PRESET_BY_ID.get(presetId as WorkspacePresetId)
@@ -166,33 +191,54 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   preferences: readWorkspacePreferences(),
   currentPresetId: readCurrentPresetId(initialBlob.currentPresetId, initialUserPresets),
   layoutMode: readLayoutMode(initialBlob.layoutMode),
+  layoutLocked: readLayoutLocked(initialBlob.layoutLocked),
   userPresets: initialUserPresets,
+  pinnedPresetIds: initialPinnedPresetIds,
   setLayoutMode: (mode) => set((state) => {
-    writeWorkspaceState(state.preferences, state.currentPresetId, mode, state.userPresets)
+    writeWorkspaceState(state.preferences, state.currentPresetId, mode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { layoutMode: mode }
   }),
   toggleLayoutMode: () => set((state) => {
     const layoutMode: LayoutMode = state.layoutMode === 'edit' ? 'operate' : 'edit'
-    writeWorkspaceState(state.preferences, state.currentPresetId, layoutMode, state.userPresets)
+    writeWorkspaceState(state.preferences, state.currentPresetId, layoutMode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { layoutMode }
+  }),
+  setLayoutLocked: (locked) => set((state) => {
+    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, state.userPresets, state.pinnedPresetIds, locked)
+    return { layoutLocked: locked }
+  }),
+  toggleLayoutLocked: () => set((state) => {
+    const layoutLocked = !state.layoutLocked
+    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, state.userPresets, state.pinnedPresetIds, layoutLocked)
+    return { layoutLocked }
   }),
   setModuleVisible: (moduleId, visible) => set((state) => {
     const next = { ...state.preferences, [moduleId]: { ...state.preferences[moduleId], visible } }
-    writeWorkspaceState(next, state.currentPresetId, state.layoutMode, state.userPresets)
+    writeWorkspaceState(next, state.currentPresetId, state.layoutMode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { preferences: next, currentPresetId: state.currentPresetId }
   }),
   setModuleZone: (moduleId, zone) => set((state) => {
-    if (!zoneIds.has(zone)) return state
+    if (!zoneIds.has(zone) || state.layoutLocked) return state
     const next = { ...state.preferences, [moduleId]: { ...state.preferences[moduleId], zone } }
-    writeWorkspaceState(next, state.currentPresetId, state.layoutMode, state.userPresets)
+    writeWorkspaceState(next, state.currentPresetId, state.layoutMode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { preferences: next, currentPresetId: state.currentPresetId }
   }),
   applyPreset: (presetId) => set((state) => {
     const preset = findPresetById(presetId, state.userPresets)
     if (!preset) return state
     const preferences = clonePreferences(preset.preferences)
-    writeWorkspaceState(preferences, presetId, state.layoutMode, state.userPresets)
+    writeWorkspaceState(preferences, presetId, state.layoutMode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { preferences, currentPresetId: presetId }
+  }),
+  togglePinnedPreset: (presetId) => set((state) => {
+    const preset = findPresetById(presetId, state.userPresets)
+    if (!preset) return state
+    const exists = state.pinnedPresetIds.includes(presetId)
+    const pinnedPresetIds = exists
+      ? state.pinnedPresetIds.filter((id) => id !== presetId)
+      : [...state.pinnedPresetIds, presetId]
+    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, state.userPresets, pinnedPresetIds, state.layoutLocked)
+    return { pinnedPresetIds }
   }),
   saveCurrentAsPreset: (title) => set((state) => {
     const normalized = title.trim()
@@ -208,7 +254,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     const userPresets = existing
       ? state.userPresets.map((preset) => (preset.id === existing.id ? nextPreset : preset))
       : [nextPreset, ...state.userPresets]
-    writeWorkspaceState(state.preferences, nextPreset.id, state.layoutMode, userPresets)
+    writeWorkspaceState(state.preferences, nextPreset.id, state.layoutMode, userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { userPresets, currentPresetId: nextPreset.id }
   }),
   renameUserPreset: (presetId, title) => set((state) => {
@@ -217,18 +263,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     const userPresets = state.userPresets.map((preset) => (
       preset.id === presetId ? { ...preset, title: normalized } : preset
     ))
-    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, userPresets)
+    writeWorkspaceState(state.preferences, state.currentPresetId, state.layoutMode, userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { userPresets }
   }),
   deleteUserPreset: (presetId) => set((state) => {
     const userPresets = state.userPresets.filter((preset) => preset.id !== presetId)
+    const pinnedPresetIds = state.pinnedPresetIds.filter((id) => id !== presetId)
     const currentPresetId = state.currentPresetId === presetId ? null : state.currentPresetId
-    writeWorkspaceState(state.preferences, currentPresetId, state.layoutMode, userPresets)
-    return { userPresets, currentPresetId }
+    writeWorkspaceState(state.preferences, currentPresetId, state.layoutMode, userPresets, pinnedPresetIds, state.layoutLocked)
+    return { userPresets, pinnedPresetIds, currentPresetId }
   }),
   resetWorkspace: () => set((state) => {
     const next = defaultPreferences()
-    writeWorkspaceState(next, null, state.layoutMode, state.userPresets)
+    writeWorkspaceState(next, null, state.layoutMode, state.userPresets, state.pinnedPresetIds, state.layoutLocked)
     return { preferences: next, currentPresetId: null }
   }),
 }))

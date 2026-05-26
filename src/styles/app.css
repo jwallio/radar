@@ -46,6 +46,7 @@ html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gra
 .workspace-preset-list select { width: 100%; margin-top: 6px; }
 .workspace-preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .workspace-preset-buttons button { padding: 4px 8px; font-size: 11px; }
+.workspace-preset-action-row { display: inline-flex; align-items: center; gap: 6px; }
 .workspace-user-presets { margin-top: 10px; border-top: 1px solid rgba(173,201,255,.14); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .workspace-user-preset-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 .workspace-user-preset-actions { display: flex; align-items: center; gap: 6px; }
@@ -150,6 +151,9 @@ html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gra
 button { border: 1px solid rgba(173,201,255,.35); border-radius: 999px; padding: 7px 12px; background: rgba(19,32,54,.85); color: #dce9ff; cursor: pointer; }
 button:hover { background: rgba(30,49,79,.95); }
 .command-actions button.active { border-color: #8ce99a; box-shadow: 0 0 0 1px rgba(140,233,154,.45) inset; }
+.command-pinned-presets { width: 100%; margin-top: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #9fb5d8; }
+.command-pinned-presets button { border: 1px solid rgba(173,201,255,.24); border-radius: 999px; background: rgba(16,26,44,.86); color: #dce9ff; padding: 4px 9px; font-size: 11px; cursor: pointer; }
+.command-pinned-presets button.active { border-color: #8ce99a; box-shadow: 0 0 0 1px rgba(140,233,154,.3) inset; }
 .command-palette-overlay { position: absolute; inset: 0; z-index: 40; background: rgba(5,10,19,.58); display: flex; align-items: flex-start; justify-content: center; padding-top: 84px; pointer-events: auto; }
 .command-palette { width: min(640px, calc(100% - 28px)); border: 1px solid rgba(173,201,255,.3); border-radius: 14px; background: rgba(8,14,26,.98); padding: 12px; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
 .command-palette-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }

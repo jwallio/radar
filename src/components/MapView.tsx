@@ -44,16 +44,21 @@ export function MapView() {
   const regionalFocusPackId = s.regionalFocusPackId
   const regionalFocusAreas = s.regionalFocusAreas
 
-  const alertsQ = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60000 })
+  const alertsQ = useQuery({
+    queryKey: ['nws-alerts'],
+    queryFn: fetchNwsAlerts,
+    staleTime: 60000,
+    enabled: alertsEnabled,
+  })
   const regionalFocusQ = useQuery({
     queryKey: ['nws-alerts-regional-focus', regionalFocusPackId, regionalFocusAreas.join(',')],
     queryFn: () => fetchNwsAlertsByAreas(regionalFocusAreas),
     staleTime: 60_000,
     enabled: regionalFocusAreas.length > 0,
   })
-  const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000 })
-  const reportsQ = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120000 })
-  const outlookQ = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180000 })
+  const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000, enabled: radarEnabled })
+  const reportsQ = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120000, enabled: stormReportsEnabled })
+  const outlookQ = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180000, enabled: spcOutlookEnabled })
 
   const alertsById = useMemo(() => new Map((alertsQ.data?.alerts ?? []).map((a) => [a.id, a])), [alertsQ.data?.alerts])
   const detailAlert = hoveredAlertId ? alertsById.get(hoveredAlertId) ?? null : alertsById.get(s.selectedAlertId ?? '') ?? null

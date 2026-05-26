@@ -2,6 +2,10 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gradient(circle at 20% 20%, #162236 0%, #0a0f18 55%, #05070b 100%); }
 .app-shell, .map-root-wrap, .map-root { position: absolute; inset: 0; }
+.map-boot-splash { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; gap: 10px; text-align: center; background: radial-gradient(circle at 50% 40%, rgba(28,39,62,.92), rgba(7,11,20,.98)); color: #dce9ff; }
+.map-boot-splash h2 { margin: 0; font-size: 26px; }
+.map-boot-splash p { margin: 0; color: #9fb5d8; max-width: 520px; }
+.map-boot-splash button { justify-self: center; min-width: 140px; }
 .operator-layout { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 .side-panel, .operator-rail, .operator-dock, .workspace-zone, .workspace-panel { border: 1px solid rgba(173,201,255,.2); background: rgba(8,14,26,.82); border-radius: 12px; padding: 14px; overflow: auto; pointer-events: auto; }
 .command-bar { position: absolute; top: 12px; left: 16px; right: 16px; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 9px 12px; border: 1px solid rgba(173,201,255,.24); border-radius: 12px; background: rgba(8,14,26,.9); pointer-events: auto; }

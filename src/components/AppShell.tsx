@@ -183,6 +183,7 @@ export function AppShell() {
   const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
+  const [mapBooted, setMapBooted] = useState(false)
 
   const toggleLayer = useMapStore((state) => state.toggleLayer)
   const applyLayerPreset = useMapStore((state) => state.applyPreset)
@@ -255,9 +256,17 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <Suspense fallback={<div className="map-root-wrap" />}>
-        <MapView />
-      </Suspense>
+      {mapBooted ? (
+        <Suspense fallback={<div className="map-root-wrap" />}>
+          <MapView />
+        </Suspense>
+      ) : (
+        <section className="map-boot-splash">
+          <h2>Map not started</h2>
+          <p>Start map rendering when you are ready. This reduces initial app load overhead.</p>
+          <button type="button" onClick={() => setMapBooted(true)}>Start map</button>
+        </section>
+      )}
       <CommandBar
         activeUtilityTab={activeUtilityTab}
         onToggleUtilityTab={(tab) => setActiveUtilityTab((current) => (current === tab ? null : tab))}

@@ -4,7 +4,10 @@ import { WEATHER_PRESETS } from '../config/presets'
 import { readStorage, writeStorage } from '../app/storage'
 import type { LayerId } from '../types/weather'
 
-interface PersistedMapState { enabledLayers: LayerId[] }
+interface PersistedMapState {
+  enabledLayers: LayerId[]
+  selectedLiveStreamerId: string | null
+}
 
 interface MapState {
   enabledLayers: LayerId[]
@@ -37,7 +40,10 @@ interface MapState {
 }
 
 const defaultLayers = WEATHER_LAYERS.filter((layer) => layer.defaultEnabled).map((layer) => layer.id)
-const persisted = readStorage<PersistedMapState>({ enabledLayers: defaultLayers })
+const persisted = readStorage<PersistedMapState>({
+  enabledLayers: defaultLayers,
+  selectedLiveStreamerId: null,
+})
 
 export const useMapStore = create<MapState>((set) => ({
   enabledLayers: persisted.enabledLayers,
@@ -49,7 +55,7 @@ export const useMapStore = create<MapState>((set) => ({
   radarOpacity: 0.65,
   radarPlaying: false,
   radarFrameIntervalMs: 750,
-  selectedLiveStreamerId: null,
+  selectedLiveStreamerId: persisted.selectedLiveStreamerId,
   regionalFocusPackId: null,
   regionalFocusAreas: [],
   activeIncidentModeId: null,
@@ -57,14 +63,14 @@ export const useMapStore = create<MapState>((set) => ({
   toggleLayer: (layerId) => set((state) => {
     const enabled = state.enabledLayers.includes(layerId)
     const enabledLayers = enabled ? state.enabledLayers.filter((id) => id !== layerId) : [...state.enabledLayers, layerId]
-    writeStorage({ enabledLayers })
+    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId })
     return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
   setAlertViewMode: (mode) => set(() => ({ alertViewMode: mode, activeIncidentModeId: null, activeIncidentModeAppliedAt: null })),
-  applyPreset: (presetId) => set(() => {
+  applyPreset: (presetId) => set((state) => {
     const preset = WEATHER_PRESETS.find((item) => item.id === presetId)
     const enabledLayers = preset ? preset.enabledLayers : defaultLayers
-    writeStorage({ enabledLayers })
+    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId })
     return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
   selectAlert: (alertId) => set(() => ({ selectedAlertId: alertId, zoomRequestAlertId: null })),
@@ -74,7 +80,10 @@ export const useMapStore = create<MapState>((set) => ({
   setRadarPlaying: (playing) => set(() => ({ radarPlaying: playing })),
   toggleRadarPlaying: () => set((state) => ({ radarPlaying: !state.radarPlaying })),
   setRadarFrameIntervalMs: (intervalMs) => set(() => ({ radarFrameIntervalMs: Math.max(250, Math.min(2500, intervalMs)) })),
-  setSelectedLiveStreamerId: (streamerId) => set(() => ({ selectedLiveStreamerId: streamerId })),
+  setSelectedLiveStreamerId: (streamerId) => set((state) => {
+    writeStorage({ enabledLayers: state.enabledLayers, selectedLiveStreamerId: streamerId })
+    return { selectedLiveStreamerId: streamerId }
+  }),
   setRegionalFocus: (packId, areas) => set(() => ({
     regionalFocusPackId: packId,
     regionalFocusAreas: Array.from(new Set(areas.map((area) => area.trim().toUpperCase()).filter(Boolean))),

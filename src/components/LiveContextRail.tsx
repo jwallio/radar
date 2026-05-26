@@ -3,6 +3,7 @@ import { LIVE_STREAMERS } from '../config/liveStreamers'
 import { INTEGRATION_FLAGS } from '../config/integrations'
 import { useMapStore } from '../state/mapStore'
 import { ModuleStateNotice, ModuleStatusBadge } from './ModuleStatusBadge'
+import { LiveStreamerPlayer } from './LiveStreamerPlayer'
 
 interface LiveContextRailProps { embedded?: boolean }
 
@@ -49,18 +50,7 @@ export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
                 </button>
               ))}
             </div>
-            {selectedStreamer && (
-              <div className="live-streamer-player">
-                <iframe
-                  title={`Live stream: ${selectedStreamer.label}`}
-                  src={selectedStreamer.youtubeEmbedUrl}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowFullScreen
-                />
-                <a href={selectedStreamer.youtubeChannelUrl} target="_blank" rel="noreferrer">Open channel on YouTube</a>
-              </div>
-            )}
+            {selectedStreamer && <LiveStreamerPlayer key={selectedStreamer.id} streamer={selectedStreamer} />}
           </>
         )}
       </section>

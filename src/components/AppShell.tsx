@@ -113,6 +113,61 @@ function WorkspaceZone({ zone, activeDropZone, setActiveDropZone }: { zone: Work
   )
 }
 
+function WorkspaceDropBoard({ activeDropZone, setActiveDropZone }: { activeDropZone: WorkspaceZoneId | null; setActiveDropZone: (zone: WorkspaceZoneId | null) => void }) {
+  const layoutMode = useWorkspaceStore((state) => state.layoutMode)
+  const preferences = useWorkspaceStore((state) => state.preferences)
+  const setModuleZone = useWorkspaceStore((state) => state.setModuleZone)
+
+  if (layoutMode !== 'edit') return null
+
+  const modulesByZone = WORKSPACE_MODULES.reduce((acc, module) => {
+    if (!preferences[module.id]?.visible) return acc
+    const zone = preferences[module.id]?.zone
+    if (!zone) return acc
+    acc[zone] = (acc[zone] ?? 0) + 1
+    return acc
+  }, {} as Partial<Record<WorkspaceZoneId, number>>)
+
+  const onDragOver = (zone: WorkspaceZoneId, event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setActiveDropZone(zone)
+  }
+
+  const onDrop = (zone: WorkspaceZoneId, event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    const moduleId = event.dataTransfer.getData('text/plain') as WorkspaceModuleId
+    if (WORKSPACE_MODULES.some((module) => module.id === moduleId)) setModuleZone(moduleId, zone)
+    setActiveDropZone(null)
+  }
+
+  return (
+    <section className="workspace-drop-board" aria-label="Workspace drag and drop board">
+      <div className="workspace-drop-board-top">
+        <h3>Drop Board</h3>
+        <p>Drag any module card into a target bin below.</p>
+      </div>
+      <div className="workspace-drop-board-grid">
+        {(Object.keys(zoneLabels) as WorkspaceZoneId[]).map((zone) => (
+          <article
+            key={zone}
+            className={`workspace-drop-bin ${activeDropZone === zone ? 'active' : ''}`}
+            onDragOver={(event) => onDragOver(zone, event)}
+            onDragLeave={() => setActiveDropZone(null)}
+            onDrop={(event) => onDrop(zone, event)}
+          >
+            <div className="workspace-drop-bin-head">
+              <strong>{zoneLabels[zone]}</strong>
+              <span>{modulesByZone[zone] ?? 0} modules</span>
+            </div>
+            <p>Drop modules here</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function AppShell() {
   const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
   const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
@@ -206,6 +261,8 @@ export function AppShell() {
         <WorkspaceZone zone="mapOverlay" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
         <WorkspaceZone zone="focusPanel" activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
       </div>
+
+      <WorkspaceDropBoard activeDropZone={activeDropZone} setActiveDropZone={setActiveDropZone} />
 
       {activeUtilityTab && (
         <aside className="utility-drawer" aria-label="Utility drawer">

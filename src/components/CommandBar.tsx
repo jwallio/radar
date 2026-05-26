@@ -30,6 +30,9 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
   const applyLayerPreset = useMapStore((state) => state.applyPreset)
   const setRegionalFocus = useMapStore((state) => state.setRegionalFocus)
   const setAlertViewMode = useMapStore((state) => state.setAlertViewMode)
+  const setActiveIncidentMode = useMapStore((state) => state.setActiveIncidentMode)
+  const activeIncidentModeId = useMapStore((state) => state.activeIncidentModeId)
+  const activeIncidentModeAppliedAt = useMapStore((state) => state.activeIncidentModeAppliedAt)
 
   const alertList = alerts.data?.alerts ?? []
   const severeCount = alertList.filter((alert) => alert.severity === 'Extreme' || alert.severity === 'Severe').length
@@ -46,6 +49,20 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
       .map((id) => all.find((preset) => preset.id === id))
       .filter((item): item is { id: string; title: string } => Boolean(item))
   }, [pinnedPresetIds, userPresets])
+
+  const activeIncidentModeLabel = useMemo(
+    () => INCIDENT_MODES.find((mode) => mode.id === activeIncidentModeId)?.label ?? null,
+    [activeIncidentModeId],
+  )
+
+  const activeIncidentModeAppliedLabel = useMemo(() => {
+    if (!activeIncidentModeAppliedAt) return null
+    try {
+      return new Date(activeIncidentModeAppliedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return null
+    }
+  }, [activeIncidentModeAppliedAt])
 
   return (
     <header className="command-bar">
@@ -100,15 +117,23 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
       )}
       <div className="command-incident-modes" aria-label="Incident modes">
         <span>Incident mode</span>
+        {activeIncidentModeLabel && (
+          <small>
+            Active: {activeIncidentModeLabel}
+            {activeIncidentModeAppliedLabel ? ` · ${activeIncidentModeAppliedLabel}` : ''}
+          </small>
+        )}
         {INCIDENT_MODES.map((mode) => (
           <button
             key={mode.id}
             type="button"
+            className={activeIncidentModeId === mode.id ? 'active' : ''}
             onClick={() => {
               applyWorkspacePreset(mode.workspacePresetId)
               applyLayerPreset(mode.layerPresetId)
               setRegionalFocus(mode.regionalPackId, mode.regionalAreas)
               setAlertViewMode(mode.alertViewMode)
+              setActiveIncidentMode(mode.id)
             }}
           >
             {mode.label}

@@ -19,6 +19,8 @@ interface MapState {
   selectedLiveStreamerId: string | null
   regionalFocusPackId: string | null
   regionalFocusAreas: string[]
+  activeIncidentModeId: string | null
+  activeIncidentModeAppliedAt: number | null
   toggleLayer: (layerId: LayerId) => void
   setAlertViewMode: (mode: 'all' | 'warnings' | 'watches') => void
   applyPreset: (presetId: string) => void
@@ -31,6 +33,7 @@ interface MapState {
   setRadarFrameIntervalMs: (intervalMs: number) => void
   setSelectedLiveStreamerId: (streamerId: string | null) => void
   setRegionalFocus: (packId: string | null, areas: string[]) => void
+  setActiveIncidentMode: (modeId: string | null, appliedAt?: number) => void
 }
 
 const defaultLayers = WEATHER_LAYERS.filter((layer) => layer.defaultEnabled).map((layer) => layer.id)
@@ -49,6 +52,8 @@ export const useMapStore = create<MapState>((set) => ({
   selectedLiveStreamerId: null,
   regionalFocusPackId: null,
   regionalFocusAreas: [],
+  activeIncidentModeId: null,
+  activeIncidentModeAppliedAt: null,
   toggleLayer: (layerId) => set((state) => {
     const enabled = state.enabledLayers.includes(layerId)
     const enabledLayers = enabled ? state.enabledLayers.filter((id) => id !== layerId) : [...state.enabledLayers, layerId]
@@ -73,5 +78,9 @@ export const useMapStore = create<MapState>((set) => ({
   setRegionalFocus: (packId, areas) => set(() => ({
     regionalFocusPackId: packId,
     regionalFocusAreas: Array.from(new Set(areas.map((area) => area.trim().toUpperCase()).filter(Boolean))),
+  })),
+  setActiveIncidentMode: (modeId, appliedAt) => set(() => ({
+    activeIncidentModeId: modeId,
+    activeIncidentModeAppliedAt: modeId ? (appliedAt ?? Date.now()) : null,
   })),
 }))

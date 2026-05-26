@@ -155,8 +155,10 @@ button:hover { background: rgba(30,49,79,.95); }
 .command-pinned-presets button { border: 1px solid rgba(173,201,255,.24); border-radius: 999px; background: rgba(16,26,44,.86); color: #dce9ff; padding: 4px 9px; font-size: 11px; cursor: pointer; }
 .command-pinned-presets button.active { border-color: #8ce99a; box-shadow: 0 0 0 1px rgba(140,233,154,.3) inset; }
 .command-incident-modes { width: 100%; margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #9fb5d8; }
+.command-incident-modes small { color: #cdbb96; }
 .command-incident-modes button { border: 1px solid rgba(245,176,65,.35); border-radius: 999px; background: rgba(66,46,18,.45); color: #ffe4b3; padding: 4px 9px; font-size: 11px; cursor: pointer; }
 .command-incident-modes button:hover { border-color: rgba(245,176,65,.7); background: rgba(87,62,25,.58); }
+.command-incident-modes button.active { border-color: rgba(255,214,138,.92); box-shadow: 0 0 0 1px rgba(255,214,138,.35) inset; background: rgba(109,74,24,.62); }
 .command-palette-overlay { position: absolute; inset: 0; z-index: 40; background: rgba(5,10,19,.58); display: flex; align-items: flex-start; justify-content: center; padding-top: 84px; pointer-events: auto; }
 .command-palette { width: min(640px, calc(100% - 28px)); border: 1px solid rgba(173,201,255,.3); border-radius: 14px; background: rgba(8,14,26,.98); padding: 12px; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
 .command-palette-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }

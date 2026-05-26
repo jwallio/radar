@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { WORKSPACE_PRESETS } from '../config/workspacePresets'
+import { INCIDENT_MODES } from '../config/incidentModes'
 import { fetchNwsAlerts } from '../services/nws'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useMapStore } from '../state/mapStore'
 
 type UtilityTab = 'workspace' | 'layers' | 'help'
 
@@ -18,12 +20,17 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
   const toggleLayoutMode = useWorkspaceStore((state) => state.toggleLayoutMode)
-  const applyPreset = useWorkspaceStore((state) => state.applyPreset)
+  const applyWorkspacePreset = useWorkspaceStore((state) => state.applyPreset)
   const userPresets = useWorkspaceStore((state) => state.userPresets)
   const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
   const layoutLocked = useWorkspaceStore((state) => state.layoutLocked)
   const toggleLayoutLocked = useWorkspaceStore((state) => state.toggleLayoutLocked)
   const pinnedPresetIds = useWorkspaceStore((state) => state.pinnedPresetIds)
+
+  const applyLayerPreset = useMapStore((state) => state.applyPreset)
+  const setRegionalFocus = useMapStore((state) => state.setRegionalFocus)
+  const setAlertViewMode = useMapStore((state) => state.setAlertViewMode)
+
   const alertList = alerts.data?.alerts ?? []
   const severeCount = alertList.filter((alert) => alert.severity === 'Extreme' || alert.severity === 'Severe').length
   const presetLabel = WORKSPACE_PRESETS.find((preset) => preset.id === currentPresetId)?.title
@@ -58,7 +65,7 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
         <select
           value={currentPresetId ?? ''}
           onChange={(event) => {
-            if (event.currentTarget.value) applyPreset(event.currentTarget.value)
+            if (event.currentTarget.value) applyWorkspacePreset(event.currentTarget.value)
           }}
         >
           <option value="">Custom</option>
@@ -84,13 +91,30 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
               key={preset.id}
               type="button"
               className={currentPresetId === preset.id ? 'active' : ''}
-              onClick={() => applyPreset(preset.id)}
+              onClick={() => applyWorkspacePreset(preset.id)}
             >
               {preset.title}
             </button>
           ))}
         </div>
       )}
+      <div className="command-incident-modes" aria-label="Incident modes">
+        <span>Incident mode</span>
+        {INCIDENT_MODES.map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            onClick={() => {
+              applyWorkspacePreset(mode.workspacePresetId)
+              applyLayerPreset(mode.layerPresetId)
+              setRegionalFocus(mode.regionalPackId, mode.regionalAreas)
+              setAlertViewMode(mode.alertViewMode)
+            }}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
     </header>
   )
 }

@@ -199,6 +199,61 @@
   opacity: 0.45;
 }
 
+.wcc-spotter-hover-card {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 13;
+  width: min(280px, calc(100% - 28px));
+  padding: 10px;
+  border: 1px solid rgba(140, 233, 154, 0.3);
+  border-radius: 12px;
+  background: rgba(8, 14, 26, 0.88);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+}
+
+.wcc-spotter-hover-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.wcc-spotter-hover-head strong {
+  color: #e8edf7;
+  font-size: 12px;
+}
+
+.wcc-spotter-hover-head span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(173, 201, 255, 0.24);
+  color: #9fb5d8;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.wcc-spotter-hover-head span.active,
+.wcc-spotter-hover-head span.cam {
+  border-color: rgba(140, 233, 154, 0.45);
+  color: #8ce99a;
+}
+
+.wcc-spotter-hover-card p {
+  margin: 7px 0 0;
+  color: #c8d7ef;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wcc-spotter-hover-card button {
+  margin-top: 9px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 /* ── Left Rail ── */
 .wcc-left-rail {
   grid-area: left;

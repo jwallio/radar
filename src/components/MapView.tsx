@@ -35,7 +35,7 @@ export function MapView() {
   const previousExtentRef = useRef<{ center: maplibregl.LngLatLike; zoom: number; bearing: number; pitch: number } | null>(null)
   const [hasPreviousExtent, setHasPreviousExtent] = useState(false)
   const [hoveredAlertId, setHoveredAlertId] = useState<string | null>(null)
-  const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; notes?: string } | null>(null)
+  const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; status: string; notes?: string; hasLiveCam: boolean; streamerId?: string } | null>(null)
 
   const s = useMapStore()
   const alertsEnabled = s.enabledLayers.includes('nwsAlerts')
@@ -265,8 +265,8 @@ export function MapView() {
       if (!src) map.addSource(ids.spotterSource, { type: 'geojson', data: spotterFc })
       else src.setData(spotterFc)
 
-      if (!map.getLayer(ids.spotterLayer)) map.addLayer({ id: ids.spotterLayer, type: 'circle', source: ids.spotterSource, paint: { 'circle-color': ['match', ['get', 'status'], 'active', '#8ce99a', '#9fb5d8'], 'circle-radius': 5, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1 } })
-      if (!map.getLayer(ids.spotterCamLayer)) map.addLayer({ id: ids.spotterCamLayer, type: 'symbol', source: ids.spotterSource, filter: ['==', ['get', 'hasLiveCam'], 1], layout: { 'text-field': '📹', 'text-size': 13, 'text-offset': [0, -1.1], 'text-allow-overlap': true } })
+      if (!map.getLayer(ids.spotterLayer)) map.addLayer({ id: ids.spotterLayer, type: 'circle', source: ids.spotterSource, paint: { 'circle-color': ['match', ['get', 'status'], 'active', '#8ce99a', '#9fb5d8'], 'circle-radius': ['case', ['==', ['get', 'hasLiveCam'], 1], 6.5, 5], 'circle-stroke-color': ['case', ['==', ['get', 'hasLiveCam'], 1], '#f8fafc', '#0b1220'], 'circle-stroke-width': ['case', ['==', ['get', 'hasLiveCam'], 1], 2, 1] } })
+      if (!map.getLayer(ids.spotterCamLayer)) map.addLayer({ id: ids.spotterCamLayer, type: 'symbol', source: ids.spotterSource, filter: ['==', ['get', 'hasLiveCam'], 1], layout: { 'text-field': 'CAM', 'text-size': 9, 'text-offset': [0, -1.45], 'text-allow-overlap': true }, paint: { 'text-color': '#0b1220', 'text-halo-color': '#8ce99a', 'text-halo-width': 3 } })
     }
 
     const onMove = (event: maplibregl.MapMouseEvent) => {
@@ -279,7 +279,14 @@ export function MapView() {
         map.getCanvas().style.cursor = ''
         return
       }
-      setHoveredSpotter({ callsign: String(props.callsign ?? 'Unknown'), region: String(props.region ?? 'Unknown region'), notes: String(props.notes ?? '') })
+      setHoveredSpotter({
+        callsign: String(props.callsign ?? 'Unknown'),
+        region: String(props.region ?? 'Unknown region'),
+        status: String(props.status ?? 'unknown'),
+        notes: String(props.notes ?? ''),
+        hasLiveCam: Number(props.hasLiveCam ?? 0) === 1,
+        streamerId: String(props.streamerId ?? '') || undefined,
+      })
       map.getCanvas().style.cursor = 'pointer'
     }
 
@@ -336,10 +343,19 @@ export function MapView() {
         </section>
       )}
       {INTEGRATION_FLAGS.spotterMapOverlays && hoveredSpotter && (
-        <section className="spotter-hover-strip">
-          <strong>{hoveredSpotter.callsign}</strong>
+        <section className="wcc-spotter-hover-card">
+          <div className="wcc-spotter-hover-head">
+            <strong>{hoveredSpotter.callsign}</strong>
+            <span className={hoveredSpotter.status === 'active' ? 'active' : ''}>{hoveredSpotter.status}</span>
+            {hoveredSpotter.hasLiveCam && <span className="cam">CAM</span>}
+          </div>
           <p>{hoveredSpotter.region}</p>
           {hoveredSpotter.notes && <p>{hoveredSpotter.notes}</p>}
+          {hoveredSpotter.streamerId && (
+            <button type="button" onClick={() => setSelectedLiveStreamerId(hoveredSpotter.streamerId ?? null)}>
+              Open in live viewer
+            </button>
+          )}
         </section>
       )}
     </div>

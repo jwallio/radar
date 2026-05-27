@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
+import { BASEMAPS } from '../config/basemaps'
 import { WEATHER_LAYERS } from '../config/layers'
 import { WEATHER_PRESETS } from '../config/presets'
 import { useMapStore } from '../state/mapStore'
-import type { LayerId } from '../types/weather'
+import type { BasemapMode, LayerId } from '../types/weather'
 
 const layerGroups = [
   { label: 'Alerts', layers: WEATHER_LAYERS.filter((l) => l.id === 'nwsAlerts') },
@@ -19,8 +20,10 @@ function sameLayerSet(left: LayerId[], right: LayerId[]) {
 export function WeatherLayerRail() {
   const enabledLayers = useMapStore((s) => s.enabledLayers)
   const alertViewMode = useMapStore((s) => s.alertViewMode)
+  const basemapMode = useMapStore((s) => s.basemapMode)
   const toggleLayer = useMapStore((s) => s.toggleLayer)
   const setAlertViewMode = useMapStore((s) => s.setAlertViewMode)
+  const setBasemapMode = useMapStore((s) => s.setBasemapMode)
   const applyPreset = useMapStore((s) => s.applyPreset)
 
   const activePresetId = useMemo(() => {
@@ -55,6 +58,25 @@ export function WeatherLayerRail() {
           <option value="warnings">Warnings only</option>
           <option value="watches">Watches only</option>
         </select>
+      </div>
+
+      <div className="wcc-rail-section">
+        <h3 className="wcc-rail-heading">Basemap</h3>
+        <div className="wcc-basemap-buttons">
+          {BASEMAPS.map((basemap) => (
+            <button
+              key={basemap.id}
+              type="button"
+              className={`wcc-basemap-btn ${basemapMode === basemap.id ? 'active' : ''}`}
+              onClick={() => setBasemapMode(basemap.id as BasemapMode)}
+              disabled={!basemap.configured}
+              title={basemap.description}
+            >
+              <span>{basemap.label}</span>
+              {!basemap.configured && <em>configure env</em>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {layerGroups.map((group) => (

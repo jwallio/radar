@@ -2,11 +2,13 @@ import { create } from 'zustand'
 import { WEATHER_LAYERS } from '../config/layers'
 import { WEATHER_PRESETS } from '../config/presets'
 import { readStorage, writeStorage } from '../app/storage'
-import type { LayerId } from '../types/weather'
+import type { BasemapMode, LayerId, RadarProvider } from '../types/weather'
 
 interface PersistedMapState {
   enabledLayers: LayerId[]
   selectedLiveStreamerId: string | null
+  basemapMode?: BasemapMode
+  radarProvider?: RadarProvider
 }
 
 interface MapState {
@@ -16,10 +18,12 @@ interface MapState {
   zoomRequestAlertId: string | null
   zoomRequestNonce: number
   selectedRadarFrameTime: number | null
+  radarProvider: RadarProvider
   radarOpacity: number
   radarPlaying: boolean
   radarFrameIntervalMs: number
   selectedLiveStreamerId: string | null
+  basemapMode: BasemapMode
   regionalFocusPackId: string | null
   regionalFocusAreas: string[]
   activeIncidentModeId: string | null
@@ -30,11 +34,13 @@ interface MapState {
   selectAlert: (alertId: string | null) => void
   requestZoomToAlert: (alertId: string) => void
   setSelectedRadarFrameTime: (time: number | null) => void
+  setRadarProvider: (provider: RadarProvider) => void
   setRadarOpacity: (opacity: number) => void
   setRadarPlaying: (playing: boolean) => void
   toggleRadarPlaying: () => void
   setRadarFrameIntervalMs: (intervalMs: number) => void
   setSelectedLiveStreamerId: (streamerId: string | null) => void
+  setBasemapMode: (mode: BasemapMode) => void
   setRegionalFocus: (packId: string | null, areas: string[]) => void
   setActiveIncidentMode: (modeId: string | null, appliedAt?: number) => void
 }
@@ -43,6 +49,8 @@ const defaultLayers = WEATHER_LAYERS.filter((layer) => layer.defaultEnabled).map
 const persisted = readStorage<PersistedMapState>({
   enabledLayers: defaultLayers,
   selectedLiveStreamerId: null,
+  basemapMode: 'black',
+  radarProvider: 'rainviewer',
 })
 
 export const useMapStore = create<MapState>((set) => ({
@@ -52,10 +60,12 @@ export const useMapStore = create<MapState>((set) => ({
   zoomRequestAlertId: null,
   zoomRequestNonce: 0,
   selectedRadarFrameTime: null,
+  radarProvider: persisted.radarProvider ?? 'rainviewer',
   radarOpacity: 0.65,
   radarPlaying: false,
   radarFrameIntervalMs: 750,
   selectedLiveStreamerId: persisted.selectedLiveStreamerId,
+  basemapMode: persisted.basemapMode ?? 'black',
   regionalFocusPackId: null,
   regionalFocusAreas: [],
   activeIncidentModeId: null,
@@ -63,26 +73,34 @@ export const useMapStore = create<MapState>((set) => ({
   toggleLayer: (layerId) => set((state) => {
     const enabled = state.enabledLayers.includes(layerId)
     const enabledLayers = enabled ? state.enabledLayers.filter((id) => id !== layerId) : [...state.enabledLayers, layerId]
-    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId })
+    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId, basemapMode: state.basemapMode, radarProvider: state.radarProvider })
     return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
   setAlertViewMode: (mode) => set(() => ({ alertViewMode: mode, activeIncidentModeId: null, activeIncidentModeAppliedAt: null })),
   applyPreset: (presetId) => set((state) => {
     const preset = WEATHER_PRESETS.find((item) => item.id === presetId)
     const enabledLayers = preset ? preset.enabledLayers : defaultLayers
-    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId })
+    writeStorage({ enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId, basemapMode: state.basemapMode, radarProvider: state.radarProvider })
     return { enabledLayers, activeIncidentModeId: null, activeIncidentModeAppliedAt: null }
   }),
   selectAlert: (alertId) => set(() => ({ selectedAlertId: alertId, zoomRequestAlertId: null })),
   requestZoomToAlert: (alertId) => set((state) => ({ selectedAlertId: alertId, zoomRequestAlertId: alertId, zoomRequestNonce: state.zoomRequestNonce + 1 })),
   setSelectedRadarFrameTime: (time) => set(() => ({ selectedRadarFrameTime: time })),
+  setRadarProvider: (provider) => set((state) => {
+    writeStorage({ enabledLayers: state.enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId, basemapMode: state.basemapMode, radarProvider: provider })
+    return { radarProvider: provider, selectedRadarFrameTime: null, radarPlaying: false }
+  }),
   setRadarOpacity: (opacity) => set(() => ({ radarOpacity: Math.max(0, Math.min(1, opacity)) })),
   setRadarPlaying: (playing) => set(() => ({ radarPlaying: playing })),
   toggleRadarPlaying: () => set((state) => ({ radarPlaying: !state.radarPlaying })),
   setRadarFrameIntervalMs: (intervalMs) => set(() => ({ radarFrameIntervalMs: Math.max(250, Math.min(2500, intervalMs)) })),
   setSelectedLiveStreamerId: (streamerId) => set((state) => {
-    writeStorage({ enabledLayers: state.enabledLayers, selectedLiveStreamerId: streamerId })
+    writeStorage({ enabledLayers: state.enabledLayers, selectedLiveStreamerId: streamerId, basemapMode: state.basemapMode, radarProvider: state.radarProvider })
     return { selectedLiveStreamerId: streamerId }
+  }),
+  setBasemapMode: (mode) => set((state) => {
+    writeStorage({ enabledLayers: state.enabledLayers, selectedLiveStreamerId: state.selectedLiveStreamerId, basemapMode: mode, radarProvider: state.radarProvider })
+    return { basemapMode: mode }
   }),
   setRegionalFocus: (packId, areas) => set(() => ({
     regionalFocusPackId: packId,

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { fetchNwsAlerts, fetchNwsAlertsByAreas } from '../services/nws'
-import { fetchRainViewerMetadata } from '../services/rainviewer'
+import { getBasemap } from '../config/basemaps'
+import { fetchRadarMetadata } from '../services/radar'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchJsonSafe } from '../services/fetchJson'
 import { useMapStore } from '../state/mapStore'
@@ -40,6 +41,8 @@ export function MapView() {
   const s = useMapStore()
   const alertsEnabled = s.enabledLayers.includes('nwsAlerts')
   const radarEnabled = s.enabledLayers.includes('radar')
+  const basemapMode = s.basemapMode
+  const radarProvider = s.radarProvider
   const stormReportsEnabled = s.enabledLayers.includes('stormReports')
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
   const alertViewMode = s.alertViewMode
@@ -59,7 +62,7 @@ export function MapView() {
     staleTime: 60_000,
     enabled: regionalFocusAreas.length > 0,
   })
-  const radarQ = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180000, enabled: radarEnabled })
+  const radarQ = useQuery({ queryKey: ['radar-metadata', radarProvider], queryFn: () => fetchRadarMetadata(radarProvider), staleTime: 180000, enabled: radarEnabled })
   const reportsQ = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120000, enabled: stormReportsEnabled })
   const outlookQ = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180000, enabled: spcOutlookEnabled })
 
@@ -86,17 +89,79 @@ export function MapView() {
     s.toggleLayer(layerId)
   }
 
+  const zoomToActiveAlertExtent = async (scope: 'visible' | 'all') => {
+    const map = mapRef.current
+    if (!map) return
+    const sourceAlerts = alertsQ.data?.alerts ?? []
+    const candidateAlerts = sourceAlerts.filter((alert) => {
+      if (scope === 'all') return true
+      if (alert.geometry) return true
+      return alert.affectedZones.length > 0
+    })
+    const geometries: Array<GeoJSON.Geometry | null> = []
+    for (const alert of candidateAlerts) {
+      if (alert.geometry) {
+        geometries.push(alert.geometry)
+        continue
+      }
+      for (const zoneUrl of alert.affectedZones.filter(Boolean)) {
+        if (zoneGeometryCacheRef.current.has(zoneUrl)) {
+          geometries.push(zoneGeometryCacheRef.current.get(zoneUrl) ?? null)
+          continue
+        }
+        const result = await fetchJsonSafe<{ geometry?: GeoJSON.Geometry | null }>(zoneUrl, {
+          headers: { Accept: 'application/geo+json, application/json' },
+        })
+        const geometry = result.data?.geometry ?? null
+        zoneGeometryCacheRef.current.set(zoneUrl, geometry)
+        geometries.push(geometry)
+      }
+    }
+    const bounds = boundsFromGeometries(geometries)
+    if (bounds) {
+      capturePreviousExtent()
+      map.fitBounds(bounds, { padding: 60, duration: 640, maxZoom: scope === 'visible' ? 10.5 : 7.5 })
+      return
+    }
+    capturePreviousExtent()
+    map.easeTo({ center: conusCenter, zoom: 4.2, duration: 640 })
+  }
+
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
+    const initialBasemap = getBasemap('black')
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: { version: 8, sources: { basemap: { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }] },
-      center: conusCenter, zoom: 3.7, minZoom: 2, maxZoom: 16,
+      style: {
+        version: 8,
+        sources: { basemap: { type: 'raster', tiles: initialBasemap.tiles, tileSize: 256 } },
+        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+      },
+      center: conusCenter, zoom: 3.7, minZoom: 2, maxZoom: 18,
     })
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const basemap = getBasemap(basemapMode)
+    const run = () => {
+      const layersToRestore = [
+        ids.radarLayer, ids.outlookFill, ids.outlookLine, ids.alertsFill, ids.alertsLine, ids.alertsSelectedLine,
+        ids.alertsPulse, ids.reportsLayer, ids.spotterLayer, ids.spotterCamLayer,
+      ].filter((id) => map.getLayer(id))
+      layersToRestore.forEach((id) => map.removeLayer(id))
+      if (map.getLayer('basemap')) map.removeLayer('basemap')
+      if (map.getSource('basemap')) map.removeSource('basemap')
+      map.addSource('basemap', { type: 'raster', tiles: basemap.tiles, tileSize: 256 })
+      map.addLayer({ id: 'basemap', type: 'raster', source: 'basemap' })
+      radarTileRef.current = null
+    }
+    map.isStyleLoaded() ? run() : map.once('load', run)
+  }, [basemapMode])
 
   useEffect(() => { radarOpacityRef.current = s.radarOpacity }, [s.radarOpacity])
 
@@ -151,7 +216,7 @@ export function MapView() {
       if (!map.getLayer(ids.alertsPulse)) map.addLayer({id:ids.alertsPulse,type:'line',source:ids.alertsSource,filter:['>=',['index-of','Warning',['coalesce',['get','event'],'']],0],paint:{'line-color':'#ffeded','line-width':4,'line-opacity':pulseRef.current}}, before)
     }
     map.isStyleLoaded()?run():map.once('load',run)
-  }, [alertsEnabled, alertsQ.data, s.selectedAlertId, alertViewMode])
+  }, [alertsEnabled, alertsQ.data, s.selectedAlertId, alertViewMode, basemapMode])
 
   useEffect(()=>{ const map=mapRef.current; if(!map||!alertsEnabled||!map.getLayer(ids.alertsPulse)) return; let t=0; const timer=setInterval(()=>{ t+=0.28; const o=0.25+((Math.sin(t)+1)/2)*0.6; pulseRef.current=o; map.getLayer(ids.alertsPulse)&&map.setPaintProperty(ids.alertsPulse,'line-opacity',o)},150); return ()=>clearInterval(timer)},[alertsEnabled,alertsQ.data])
 
@@ -173,7 +238,7 @@ export function MapView() {
       const directBounds = boundsFromGeometry(alert.geometry)
       if (directBounds) {
         capturePreviousExtent()
-        map.fitBounds(directBounds, { padding: 44, duration: 560, maxZoom: 12.5 })
+        map.fitBounds(directBounds, { padding: 56, duration: 560, maxZoom: 14.5 })
         return
       }
 
@@ -197,7 +262,7 @@ export function MapView() {
       const fallbackBounds = boundsFromGeometries(geometries)
       if (!fallbackBounds) return
       capturePreviousExtent()
-      map.fitBounds(fallbackBounds, { padding: 44, duration: 560, maxZoom: 11.5 })
+      map.fitBounds(fallbackBounds, { padding: 56, duration: 560, maxZoom: 13.5 })
     }
 
     zoomToAlert().catch(() => undefined)
@@ -221,12 +286,12 @@ export function MapView() {
     map.fitBounds(regionalBounds, { padding: 52, duration: 720, maxZoom: 8.75 })
   }, [alertsEnabled, regionalFocusPackId, regionalFocusAreas, regionalFocusQ.data])
 
-  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!radarEnabled){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); radarTileRef.current=null; return } const frames=radarQ.data?.frames??[]; const active=s.selectedRadarFrameTime? frames.find((f)=>f.time===s.selectedRadarFrameTime)??frames[frames.length-1]:frames[frames.length-1]; if(!active){return} const src=map.getSource(ids.radarSource) as maplibregl.RasterTileSource|undefined; if(!src || radarTileRef.current!==active.tileUrlTemplate){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); map.addSource(ids.radarSource,{type:'raster',tiles:[active.tileUrlTemplate],tileSize:256}); const before=map.getLayer(ids.outlookFill)?ids.outlookFill:map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; map.addLayer({id:ids.radarLayer,type:'raster',source:ids.radarSource,paint:{'raster-opacity':radarOpacityRef.current}},before); radarTileRef.current=active.tileUrlTemplate }}; map.isStyleLoaded()?run():map.once('load',run)},[radarEnabled,radarQ.data,s.selectedRadarFrameTime])
+  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!radarEnabled){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); radarTileRef.current=null; return } const frames=radarQ.data?.frames??[]; const active=s.selectedRadarFrameTime? frames.find((f)=>f.time===s.selectedRadarFrameTime)??frames[frames.length-1]:frames[frames.length-1]; if(!active){return} const src=map.getSource(ids.radarSource) as maplibregl.RasterTileSource|undefined; if(!src || radarTileRef.current!==active.tileUrlTemplate){ map.getLayer(ids.radarLayer)&&map.removeLayer(ids.radarLayer); map.getSource(ids.radarSource)&&map.removeSource(ids.radarSource); map.addSource(ids.radarSource,{type:'raster',tiles:[active.tileUrlTemplate],tileSize:256}); const before=map.getLayer(ids.outlookFill)?ids.outlookFill:map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; map.addLayer({id:ids.radarLayer,type:'raster',source:ids.radarSource,paint:{'raster-opacity':radarOpacityRef.current}},before); radarTileRef.current=active.tileUrlTemplate }}; map.isStyleLoaded()?run():map.once('load',run)},[radarEnabled,radarQ.data,s.selectedRadarFrameTime,basemapMode])
   useEffect(()=>{ const map=mapRef.current; if(map?.getLayer(ids.radarLayer)) map.setPaintProperty(ids.radarLayer,'raster-opacity',s.radarOpacity)},[s.radarOpacity])
 
-  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!spcOutlookEnabled){ [ids.outlookLine,ids.outlookFill].forEach((id)=>map.getLayer(id)&&map.removeLayer(id)); map.getSource(ids.outlookSource)&&map.removeSource(ids.outlookSource); return } const fc=outlookQ.data?.featureCollection??{type:'FeatureCollection',features:[] as GeoJSON.Feature[]}; const src=map.getSource(ids.outlookSource) as maplibregl.GeoJSONSource|undefined; if(!src) map.addSource(ids.outlookSource,{type:'geojson',data:fc}); else src.setData(fc); const before=map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; if(!map.getLayer(ids.outlookFill)) map.addLayer({id:ids.outlookFill,type:'fill',source:ids.outlookSource,paint:{'fill-color':['match',['coalesce',['to-string',['get','LABEL']],['to-string',['get','label']],'' ],'TSTM','#6ea8fe','MRGL','#5bc0de','SLGT','#f7dc6f','ENH','#f5b041','MDT','#ec7063','HIGH','#e74c3c','#7f8c8d'],'fill-opacity':0.22}},before); if(!map.getLayer(ids.outlookLine)) map.addLayer({id:ids.outlookLine,type:'line',source:ids.outlookSource,paint:{'line-color':'#d0d7e3','line-width':1.1,'line-opacity':0.75}},before)}; map.isStyleLoaded()?run():map.once('load',run)},[spcOutlookEnabled,outlookQ.data])
+  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!spcOutlookEnabled){ [ids.outlookLine,ids.outlookFill].forEach((id)=>map.getLayer(id)&&map.removeLayer(id)); map.getSource(ids.outlookSource)&&map.removeSource(ids.outlookSource); return } const fc=outlookQ.data?.featureCollection??{type:'FeatureCollection',features:[] as GeoJSON.Feature[]}; const src=map.getSource(ids.outlookSource) as maplibregl.GeoJSONSource|undefined; if(!src) map.addSource(ids.outlookSource,{type:'geojson',data:fc}); else src.setData(fc); const before=map.getLayer(ids.alertsFill)?ids.alertsFill:map.getLayer(ids.reportsLayer)?ids.reportsLayer:undefined; if(!map.getLayer(ids.outlookFill)) map.addLayer({id:ids.outlookFill,type:'fill',source:ids.outlookSource,paint:{'fill-color':['match',['coalesce',['to-string',['get','LABEL']],['to-string',['get','label']],'' ],'TSTM','#6ea8fe','MRGL','#5bc0de','SLGT','#f7dc6f','ENH','#f5b041','MDT','#ec7063','HIGH','#e74c3c','#7f8c8d'],'fill-opacity':0.22}},before); if(!map.getLayer(ids.outlookLine)) map.addLayer({id:ids.outlookLine,type:'line',source:ids.outlookSource,paint:{'line-color':'#d0d7e3','line-width':1.1,'line-opacity':0.75}},before)}; map.isStyleLoaded()?run():map.once('load',run)},[spcOutlookEnabled,outlookQ.data,basemapMode])
 
-  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!stormReportsEnabled){ map.getLayer(ids.reportsLayer)&&map.removeLayer(ids.reportsLayer); map.getSource(ids.reportsSource)&&map.removeSource(ids.reportsSource); return } const fc=featureCollectionFromSpcReports(reportsQ.data?.reports??[]); const src=map.getSource(ids.reportsSource) as maplibregl.GeoJSONSource|undefined; if(!src) map.addSource(ids.reportsSource,{type:'geojson',data:fc}); else src.setData(fc); if(!map.getLayer(ids.reportsLayer)) map.addLayer({id:ids.reportsLayer,type:'circle',source:ids.reportsSource,paint:{'circle-color':['match',['get','type'],'tornado','#ff5f7f','wind','#58c4ff','hail','#75e65d','#b8bec9'],'circle-radius':4.2,'circle-opacity':0.9,'circle-stroke-color':'#0b1220','circle-stroke-width':1}})}; map.isStyleLoaded()?run():map.once('load',run)},[stormReportsEnabled,reportsQ.data])
+  useEffect(()=>{ const map=mapRef.current; if(!map) return; const run=()=>{ if(!stormReportsEnabled){ map.getLayer(ids.reportsLayer)&&map.removeLayer(ids.reportsLayer); map.getSource(ids.reportsSource)&&map.removeSource(ids.reportsSource); return } const fc=featureCollectionFromSpcReports(reportsQ.data?.reports??[]); const src=map.getSource(ids.reportsSource) as maplibregl.GeoJSONSource|undefined; if(!src) map.addSource(ids.reportsSource,{type:'geojson',data:fc}); else src.setData(fc); if(!map.getLayer(ids.reportsLayer)) map.addLayer({id:ids.reportsLayer,type:'circle',source:ids.reportsSource,paint:{'circle-color':['match',['get','type'],'tornado','#ff5f7f','wind','#58c4ff','hail','#75e65d','#b8bec9'],'circle-radius':4.2,'circle-opacity':0.9,'circle-stroke-color':'#0b1220','circle-stroke-width':1}})}; map.isStyleLoaded()?run():map.once('load',run)},[stormReportsEnabled,reportsQ.data,basemapMode])
 
   useEffect(() => {
     const map = mapRef.current
@@ -307,11 +372,24 @@ export function MapView() {
       map.off('mouseout', onOut)
       map.off('click', onClick)
     }
-  }, [setSelectedLiveStreamerId])
+  }, [setSelectedLiveStreamerId, basemapMode])
 
   return (
     <div className="map-root-wrap">
       <div className="map-root" ref={mapContainer} aria-label="Weather map" />
+      <section className="wcc-map-ops-panel" aria-label="Weather map operations">
+        <div className="wcc-map-ops-head">
+          <strong>Map Ops</strong>
+          <span>{getBasemap(basemapMode).label}</span>
+          <span>{radarQ.data?.providerLabel ?? (radarProvider === 'level2' ? 'Level2 radar' : 'RainViewer')}</span>
+        </div>
+        <div className="wcc-map-alert-actions">
+          <button type="button" onClick={() => zoomToActiveAlertExtent('visible')} disabled={!alertsQ.data?.alerts.length}>Zoom active alerts</button>
+          <button type="button" onClick={() => zoomToActiveAlertExtent('all')} disabled={!alertsQ.data?.alerts.length}>CONUS alerts</button>
+          <button type="button" onClick={returnToPreviousExtent} disabled={!hasPreviousExtent}>Back to extent</button>
+          <button type="button" className={radarEnabled ? 'active' : ''} onClick={() => toggleOpsLayer('radar')}>Radar</button>
+        </div>
+      </section>
       {detailAlert && (
         <section className="wcc-map-alert-ops" aria-label="Selected alert map operations">
           <div className="wcc-map-alert-ops-head">

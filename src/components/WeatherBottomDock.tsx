@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchRainViewerMetadata } from '../services/rainviewer'
+import { fetchRadarMetadata } from '../services/radar'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchNwsAlerts } from '../services/nws'
 import { useMapStore } from '../state/mapStore'
+import type { RadarProvider } from '../types/weather'
 import { LiveContextRail } from './LiveContextRail'
 import { ScannerLinksPanel } from './ScannerLinksPanel'
 
@@ -22,6 +23,8 @@ function formatTime(value: string): string {
 }
 
 function RadarTab() {
+  const radarProvider = useMapStore((s) => s.radarProvider)
+  const setRadarProvider = useMapStore((s) => s.setRadarProvider)
   const selectedRadarFrameTime = useMapStore((s) => s.selectedRadarFrameTime)
   const setSelectedRadarFrameTime = useMapStore((s) => s.setSelectedRadarFrameTime)
   const radarOpacity = useMapStore((s) => s.radarOpacity)
@@ -32,7 +35,7 @@ function RadarTab() {
   const radarFrameIntervalMs = useMapStore((s) => s.radarFrameIntervalMs)
   const setRadarFrameIntervalMs = useMapStore((s) => s.setRadarFrameIntervalMs)
 
-  const radar = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180_000 })
+  const radar = useQuery({ queryKey: ['radar-metadata', radarProvider], queryFn: () => fetchRadarMetadata(radarProvider), staleTime: 180_000 })
   const data = radar.data
   const frames = useMemo(() => data?.frames ?? [], [data?.frames])
   const latest = data?.latestFrame ?? null
@@ -59,10 +62,17 @@ function RadarTab() {
 
   return (
     <div className="wcc-dock-panel">
-      <div className="wcc-dock-row">
-        <span className="wcc-dock-label">Source: RainViewer</span>
+      <div className="wcc-dock-row wcc-radar-provider-row">
+        <label className="wcc-provider-select">
+          <span>Provider</span>
+          <select value={radarProvider} onChange={(event) => setRadarProvider(event.target.value as RadarProvider)}>
+            <option value="rainviewer">RainViewer fallback</option>
+            <option value="level2">Rust Level2</option>
+          </select>
+        </label>
         <span className="wcc-dock-label">Frames: {frames.length}</span>
         <span className="wcc-dock-label">Latest: {latest ? fmt(latest.time) : 'None'}</span>
+        {data?.healthMessage && <span className={`wcc-provider-health ${data.error ? 'error' : 'ok'}`}>{data.healthMessage}</span>}
       </div>
       <div className="wcc-dock-row wcc-dock-controls">
         <button onClick={() => hasPrev && setSelectedRadarFrameTime(frames[selectedIndex - 1].time)} disabled={!hasPrev}>Prev</button>
@@ -127,13 +137,14 @@ function SpcTab() {
 
 function StatusTab() {
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000 })
-  const radar = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180_000 })
+  const radarProvider = useMapStore((s) => s.radarProvider)
+  const radar = useQuery({ queryKey: ['radar-metadata', radarProvider], queryFn: () => fetchRadarMetadata(radarProvider), staleTime: 180_000 })
   const reports = useQuery({ queryKey: ['spc-reports'], queryFn: fetchSpcReports, staleTime: 120_000 })
   const outlook = useQuery({ queryKey: ['spc-day1-outlook'], queryFn: fetchSpcDay1Outlook, staleTime: 180_000 })
 
   const sources = [
     { label: 'NWS Alerts', error: alerts.data?.error, loading: alerts.isLoading, updated: alerts.data?.updated ? formatTime(alerts.data.updated) : null },
-    { label: 'Radar', error: radar.data?.error, loading: radar.isLoading, updated: radar.data?.generated ? fmt(radar.data.generated) : null },
+    { label: radar.data?.providerLabel ?? 'Radar', error: radar.data?.error, loading: radar.isLoading, updated: radar.data?.generated ? fmt(radar.data.generated) : null },
     { label: 'SPC Reports', error: reports.data?.error, loading: reports.isLoading, updated: reports.data?.fetchedAt ? formatTime(reports.data.fetchedAt) : null },
     { label: 'SPC Outlook', error: outlook.data?.error, loading: outlook.isLoading, updated: outlook.data?.fetchedAt ? formatTime(outlook.data.fetchedAt) : null },
   ]

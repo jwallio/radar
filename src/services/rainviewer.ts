@@ -37,12 +37,15 @@ export async function fetchRainViewerMetadata(): Promise<RainViewerRadarState> {
 
   if (result.error) {
     return {
+      provider: 'rainviewer',
+      providerLabel: 'RainViewer',
       version: null,
       generated: null,
       host: '',
       frames: [],
       latestFrame: null,
       sourceUrl: url,
+      healthMessage: 'RainViewer radar metadata is unreachable.',
       error: result.error,
     }
   }
@@ -59,12 +62,15 @@ export async function fetchRainViewerMetadata(): Promise<RainViewerRadarState> {
   const latestFrame = frames.length > 0 ? frames[frames.length - 1] : null
 
   return {
+    provider: 'rainviewer',
+    providerLabel: 'RainViewer',
     version: payload?.version ?? null,
     generated: payload?.generated ?? null,
     host,
     frames,
     latestFrame,
     sourceUrl: url,
+    healthMessage: latestFrame ? 'RainViewer radar ready.' : 'RainViewer metadata returned no frames.',
   }
 }
 

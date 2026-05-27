@@ -1,4 +1,6 @@
 export type LayerId = 'nwsAlerts' | 'wwaPolygons' | 'radar' | 'spcOutlook' | 'stormReports'
+export type BasemapMode = 'black' | 'bingRoad' | 'bingAerial' | 'googleRoad' | 'googleSatellite'
+export type RadarProvider = 'rainviewer' | 'level2'
 
 export interface LayerDefinition { id: LayerId; label: string; description: string; defaultEnabled: boolean }
 export interface LayerPreset { id: string; label: string; enabledLayers: LayerId[] }
@@ -17,8 +19,10 @@ export interface WeatherAlert {
   affectedZones: string[]; geometry: GeoJSON.Geometry | null; geometryStatus: AlertGeometryStatus; sourceUrl: string
 }
 
-export interface RainViewerFrame { id: string; time: number; timestampIso: string; path: string; kind: 'past' | 'nowcast'; tileUrlTemplate: string }
-export interface RainViewerRadarState { version: string | null; generated: number | null; host: string; frames: RainViewerFrame[]; latestFrame: RainViewerFrame | null; sourceUrl: string; error?: SafeFetchError }
+export interface RadarFrame { id: string; time: number; timestampIso: string; path: string; kind: 'past' | 'nowcast' | 'latest' | 'level2'; tileUrlTemplate: string; label?: string }
+export interface RadarState { provider: RadarProvider; providerLabel: string; version: string | null; generated: number | null; host: string; frames: RadarFrame[]; latestFrame: RadarFrame | null; sourceUrl: string; healthMessage?: string; error?: SafeFetchError | { kind: 'config'; message: string } }
+export type RainViewerFrame = RadarFrame
+export type RainViewerRadarState = RadarState
 
 export type SpcReportType = 'tornado' | 'wind' | 'hail'
 export interface SpcStormReport { id: string; type: SpcReportType; time: string; magnitude: string | null; location: string; county: string; state: string; lat: number; lon: number; remarks: string }

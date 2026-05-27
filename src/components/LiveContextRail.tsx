@@ -19,10 +19,13 @@ export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
 
   const content = (
     <>
-      <h2>Live Context</h2>
+      <div className="live-context-intro">
+        <h2>Live Context</h2>
+        {embedded && <p>Use this only when map context needs live eyes or field audio. Keep the map as the primary decision surface.</p>}
+      </div>
 
       <section className="context-card">
-          <div className="module-title-row">
+        <div className="module-title-row">
           <h3>Live Streamers</h3>
           <ModuleStatusBadge state={streamerDisabled ? 'disabled' : selectedStreamer ? 'ready' : 'degraded'} />
         </div>
@@ -58,21 +61,42 @@ export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
         )}
       </section>
 
-      {LIVE_CONTEXT_MODULES.map((module) => (
-        <section key={module.id} className="context-card">
-          <h3>{module.title}</h3>
-          {module.items.length === 0 && <p className="context-empty">{module.emptyMessage}</p>}
-          {module.items.length > 0 && (
-            <ul>
-              {module.items.map((item) => (
-                <li key={item.id}>
-                  <a href={item.url} target="_blank" rel="noreferrer">{item.label}</a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ))}
+      {embedded ? (
+        <details className="context-card live-reference-links">
+          <summary>Reference links</summary>
+          {LIVE_CONTEXT_MODULES.map((module) => (
+            <section key={module.id} className="live-reference-group">
+              <h3>{module.title}</h3>
+              {module.items.length === 0 && <p className="context-empty">{module.emptyMessage}</p>}
+              {module.items.length > 0 && (
+                <ul>
+                  {module.items.map((item) => (
+                    <li key={item.id}>
+                      <a href={item.url} target="_blank" rel="noreferrer">{item.label}</a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </details>
+      ) : (
+        LIVE_CONTEXT_MODULES.map((module) => (
+          <section key={module.id} className="context-card">
+            <h3>{module.title}</h3>
+            {module.items.length === 0 && <p className="context-empty">{module.emptyMessage}</p>}
+            {module.items.length > 0 && (
+              <ul>
+                {module.items.map((item) => (
+                  <li key={item.id}>
+                    <a href={item.url} target="_blank" rel="noreferrer">{item.label}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))
+      )}
     </>
   )
 

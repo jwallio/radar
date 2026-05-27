@@ -155,9 +155,15 @@ function StatusTab() {
 
 function LiveOpsTab() {
   return (
-    <div className="wcc-live-ops-grid">
-      <LiveContextRail embedded />
-      <ScannerLinksPanel embedded />
+    <div className="wcc-live-ops-panel">
+      <div className="wcc-live-ops-header">
+        <strong>Live Ops</strong>
+        <span>Secondary field context: streamer video and scanner audio stay grouped here so the map remains primary.</span>
+      </div>
+      <div className="wcc-live-ops-grid">
+        <LiveContextRail embedded />
+        <ScannerLinksPanel embedded />
+      </div>
     </div>
   )
 }

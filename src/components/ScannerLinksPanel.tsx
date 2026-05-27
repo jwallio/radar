@@ -22,6 +22,7 @@ function ScannerPlayer({ source }: { source: ExternalOpsItem }) {
       <div className="scanner-player scanner-player-empty">
         <span className="scanner-health-chip error">external only</span>
         <p>No embeddable scanner player is configured for this source yet.</p>
+        <a href={source.url} target="_blank" rel="noreferrer">Open canonical source</a>
       </div>
     )
   }
@@ -73,6 +74,7 @@ export function ScannerLinksPanel({ embedded = false }: ScannerLinksPanelProps) 
         <h3>Scanner Monitor</h3>
         <ModuleStatusBadge state={moduleState} />
       </div>
+      <p className="scanner-monitor-help">Pick a source, then use the player status chip to confirm whether the feed is live, connecting, stalled, or external-only.</p>
       {INTEGRATION_FLAGS.embeddedScanners && selectedSource && <ScannerPlayer source={selectedSource} />}
       {!INTEGRATION_FLAGS.embeddedScanners && (
         <ModuleStateNotice
@@ -88,26 +90,28 @@ export function ScannerLinksPanel({ embedded = false }: ScannerLinksPanelProps) 
           message="Add embedUrl or verified audioStreamUrl entries to scannerLinks.ts. External scanner links remain available."
         />
       )}
-      {SCANNER_LINK_GROUPS.map((group) => (
-        <section key={group.id} className="external-links-group">
-          <h4>{group.title}</h4>
-          {group.items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`external-links-row scanner-source-row ${selectedSource?.id === item.id ? 'active' : ''}`}
-              onClick={() => setSelectedSourceId(item.id)}
-            >
-              <span>{item.label}</span>
-              <span className="external-links-meta">
-                <span className="external-links-chip">{item.audioStreamUrl ? 'audio' : item.embedUrl ? 'embed' : 'link'}</span>
-                <span className="external-links-chip">{item.sourceType}</span>
-                {item.region && <span className="external-links-chip">{item.region}</span>}
-              </span>
-            </button>
-          ))}
-        </section>
-      ))}
+      <div className="scanner-source-list" aria-label="Scanner sources">
+        {SCANNER_LINK_GROUPS.map((group) => (
+          <section key={group.id} className="external-links-group">
+            <h4>{group.title}</h4>
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`external-links-row scanner-source-row ${selectedSource?.id === item.id ? 'active' : ''}`}
+                onClick={() => setSelectedSourceId(item.id)}
+              >
+                <span>{item.label}</span>
+                <span className="external-links-meta">
+                  <span className="external-links-chip">{item.audioStreamUrl ? 'audio' : item.embedUrl ? 'embed' : 'link'}</span>
+                  <span className="external-links-chip">{item.sourceType}</span>
+                  {item.region && <span className="external-links-chip">{item.region}</span>}
+                </span>
+              </button>
+            ))}
+          </section>
+        ))}
+      </div>
     </div>
   )
 

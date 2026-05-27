@@ -86,11 +86,6 @@ export function MapView() {
     s.toggleLayer(layerId)
   }
 
-  const openNearestSpotterCam = () => {
-    const camSpotter = SPOTTER_NETWORK_LOCATIONS.find((spotter) => spotter.hasLiveCam && spotter.streamerId)
-    if (camSpotter?.streamerId) setSelectedLiveStreamerId(camSpotter.streamerId)
-  }
-
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
     const map = new maplibregl.Map({
@@ -265,8 +260,8 @@ export function MapView() {
       if (!src) map.addSource(ids.spotterSource, { type: 'geojson', data: spotterFc })
       else src.setData(spotterFc)
 
-      if (!map.getLayer(ids.spotterLayer)) map.addLayer({ id: ids.spotterLayer, type: 'circle', source: ids.spotterSource, paint: { 'circle-color': ['match', ['get', 'status'], 'active', '#8ce99a', '#9fb5d8'], 'circle-radius': ['case', ['==', ['get', 'hasLiveCam'], 1], 6.5, 5], 'circle-stroke-color': ['case', ['==', ['get', 'hasLiveCam'], 1], '#f8fafc', '#0b1220'], 'circle-stroke-width': ['case', ['==', ['get', 'hasLiveCam'], 1], 2, 1] } })
-      if (!map.getLayer(ids.spotterCamLayer)) map.addLayer({ id: ids.spotterCamLayer, type: 'symbol', source: ids.spotterSource, filter: ['==', ['get', 'hasLiveCam'], 1], layout: { 'text-field': 'CAM', 'text-size': 9, 'text-offset': [0, -1.45], 'text-allow-overlap': true }, paint: { 'text-color': '#0b1220', 'text-halo-color': '#8ce99a', 'text-halo-width': 3 } })
+      if (!map.getLayer(ids.spotterLayer)) map.addLayer({ id: ids.spotterLayer, type: 'circle', source: ids.spotterSource, paint: { 'circle-color': ['match', ['get', 'status'], 'active', '#8ce99a', '#9fb5d8'], 'circle-radius': ['case', ['==', ['get', 'hasLiveCam'], 1], 5.8, 4.2], 'circle-opacity': 0.72, 'circle-stroke-color': ['case', ['==', ['get', 'hasLiveCam'], 1], '#f8fafc', '#0b1220'], 'circle-stroke-width': ['case', ['==', ['get', 'hasLiveCam'], 1], 1.5, 1] } })
+      if (!map.getLayer(ids.spotterCamLayer)) map.addLayer({ id: ids.spotterCamLayer, type: 'symbol', source: ids.spotterSource, filter: ['==', ['get', 'hasLiveCam'], 1], layout: { 'text-field': 'CAM', 'text-size': 8, 'text-offset': [0, -1.4], 'text-allow-overlap': false }, paint: { 'text-color': '#0b1220', 'text-opacity': 0.86, 'text-halo-color': '#8ce99a', 'text-halo-width': 2.4 } })
     }
 
     const onMove = (event: maplibregl.MapMouseEvent) => {
@@ -330,7 +325,6 @@ export function MapView() {
             <button type="button" onClick={returnToPreviousExtent} disabled={!hasPreviousExtent}>Back to extent</button>
             <button type="button" className={radarEnabled ? 'active' : ''} onClick={() => toggleOpsLayer('radar')}>Radar</button>
             <button type="button" className={stormReportsEnabled ? 'active' : ''} onClick={() => toggleOpsLayer('stormReports')}>Reports</button>
-            {INTEGRATION_FLAGS.spotterMapOverlays && <button type="button" onClick={openNearestSpotterCam}>Spotter cam</button>}
           </div>
         </section>
       )}

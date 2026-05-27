@@ -4,8 +4,10 @@ import { fetchRainViewerMetadata } from '../services/rainviewer'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
 import { fetchNwsAlerts } from '../services/nws'
 import { useMapStore } from '../state/mapStore'
+import { LiveContextRail } from './LiveContextRail'
+import { ScannerLinksPanel } from './ScannerLinksPanel'
 
-type DockTab = 'radar' | 'spc' | 'status'
+type DockTab = 'radar' | 'spc' | 'live' | 'status'
 
 function fmt(sec: number | null) {
   if (!sec) return 'Unknown'
@@ -151,9 +153,19 @@ function StatusTab() {
   )
 }
 
+function LiveOpsTab() {
+  return (
+    <div className="wcc-live-ops-grid">
+      <LiveContextRail embedded />
+      <ScannerLinksPanel embedded />
+    </div>
+  )
+}
+
 const tabs: { id: DockTab; label: string }[] = [
   { id: 'radar', label: 'Radar' },
   { id: 'spc', label: 'SPC' },
+  { id: 'live', label: 'Live Ops' },
   { id: 'status', label: 'Status' },
 ]
 
@@ -176,6 +188,7 @@ export function WeatherBottomDock() {
       <div className="wcc-dock-content">
         {activeTab === 'radar' && <RadarTab />}
         {activeTab === 'spc' && <SpcTab />}
+        {activeTab === 'live' && <LiveOpsTab />}
         {activeTab === 'status' && <StatusTab />}
       </div>
     </section>

@@ -623,6 +623,45 @@
   gap: 8px;
 }
 
+.wcc-live-ops-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.wcc-live-ops-grid .workspace-module-body {
+  max-height: calc(32vh - 56px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wcc-live-ops-grid h2 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #9fb5d8;
+}
+
+.wcc-live-ops-grid .context-card,
+.wcc-live-ops-grid .external-links-group {
+  border-top: 1px solid rgba(173, 201, 255, 0.14);
+  padding-top: 8px;
+}
+
+.wcc-live-ops-grid .scanner-player iframe {
+  min-height: 180px;
+}
+
+.wcc-live-ops-grid .live-streamer-player iframe {
+  max-height: 210px;
+}
+
+.wcc-live-ops-grid .external-links-row {
+  min-height: 32px;
+}
+
 .wcc-dock-row {
   display: flex;
   flex-wrap: wrap;

@@ -22,10 +22,13 @@ export function LiveContextRail({ embedded = false }: LiveContextRailProps) {
       <h2>Live Context</h2>
 
       <section className="context-card">
-        <div className="module-title-row">
+          <div className="module-title-row">
           <h3>Live Streamers</h3>
-          <ModuleStatusBadge state={streamerDisabled ? 'disabled' : 'ready'} />
+          <ModuleStatusBadge state={streamerDisabled ? 'disabled' : selectedStreamer ? 'ready' : 'degraded'} />
         </div>
+        {!streamerDisabled && selectedStreamer && (
+          <p className="weather-news-meta">Selected: {selectedStreamer.label}{selectedStreamer.region ? ` · ${selectedStreamer.region}` : ''}</p>
+        )}
 
         {streamerDisabled && (
           <ModuleStateNotice

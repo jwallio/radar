@@ -28,9 +28,19 @@ export function LiveStreamerPlayer({ streamer }: LiveStreamerPlayerProps) {
   }, [streamer.id, streamer.label])
 
   const showFallback = useMemo(() => timedOut && !loaded, [timedOut, loaded])
+  const playerState = showFallback ? 'fallback' : loaded ? 'ready' : 'loading'
 
   return (
     <div className="live-streamer-player">
+      <div className="live-streamer-player-top">
+        <div>
+          <strong>{streamer.label}</strong>
+          {streamer.region && <span>{streamer.region}</span>}
+        </div>
+        <span className={`live-streamer-health ${playerState}`} aria-live="polite">
+          {playerState === 'ready' ? 'embed ready' : playerState === 'fallback' ? 'fallback' : 'connecting'}
+        </span>
+      </div>
       <iframe
         title={`Live stream: ${streamer.label}`}
         src={streamer.youtubeEmbedUrl}

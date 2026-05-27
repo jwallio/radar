@@ -1,7 +1,5 @@
-import { AppShell } from '../components/AppShell'
-import '../styles/app.css'
+import { WeatherCommandCenter } from '../components/WeatherCommandCenter'
 
 export default function App() {
-  return <AppShell />
+  return <WeatherCommandCenter />
 }
-

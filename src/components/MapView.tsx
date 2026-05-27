@@ -14,7 +14,7 @@ import { INTEGRATION_FLAGS } from '../config/integrations'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
 const ids = {
-  alertsSource: 'nws-alerts-source', alertsFill: 'nws-alerts-fill', alertsLine: 'nws-alerts-line', alertsPulse: 'nws-alerts-warning-pulse',
+  alertsSource: 'nws-alerts-source', alertsFill: 'nws-alerts-fill', alertsLine: 'nws-alerts-line', alertsSelectedLine: 'nws-alerts-selected-line', alertsPulse: 'nws-alerts-warning-pulse',
   radarSource: 'rainviewer-radar-source', radarLayer: 'rainviewer-radar-layer',
   reportsSource: 'spc-reports-source', reportsLayer: 'spc-reports-layer',
   outlookSource: 'spc-day1-outlook-source', outlookFill: 'spc-day1-outlook-fill', outlookLine: 'spc-day1-outlook-line',
@@ -32,6 +32,8 @@ export function MapView() {
   const zoomNonceRef = useRef(0)
   const regionalFocusNonceRef = useRef('')
   const zoneGeometryCacheRef = useRef<Map<string, GeoJSON.Geometry | null>>(new Map())
+  const previousExtentRef = useRef<{ center: maplibregl.LngLatLike; zoom: number; bearing: number; pitch: number } | null>(null)
+  const [hasPreviousExtent, setHasPreviousExtent] = useState(false)
   const [hoveredAlertId, setHoveredAlertId] = useState<string | null>(null)
   const [hoveredSpotter, setHoveredSpotter] = useState<{ callsign: string; region: string; notes?: string } | null>(null)
 
@@ -63,6 +65,31 @@ export function MapView() {
 
   const alertsById = useMemo(() => new Map((alertsQ.data?.alerts ?? []).map((a) => [a.id, a])), [alertsQ.data?.alerts])
   const detailAlert = hoveredAlertId ? alertsById.get(hoveredAlertId) ?? null : alertsById.get(s.selectedAlertId ?? '') ?? null
+
+  const capturePreviousExtent = () => {
+    const map = mapRef.current
+    if (!map) return
+    previousExtentRef.current = { center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() }
+    setHasPreviousExtent(true)
+  }
+
+  const returnToPreviousExtent = () => {
+    const map = mapRef.current
+    const previous = previousExtentRef.current
+    if (!map || !previous) return
+    map.easeTo({ ...previous, duration: 560 })
+    previousExtentRef.current = null
+    setHasPreviousExtent(false)
+  }
+
+  const toggleOpsLayer = (layerId: 'radar' | 'stormReports') => {
+    s.toggleLayer(layerId)
+  }
+
+  const openNearestSpotterCam = () => {
+    const camSpotter = SPOTTER_NETWORK_LOCATIONS.find((spotter) => spotter.hasLiveCam && spotter.streamerId)
+    if (camSpotter?.streamerId) setSelectedLiveStreamerId(camSpotter.streamerId)
+  }
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
@@ -104,7 +131,7 @@ export function MapView() {
     const map = mapRef.current; if (!map) return
     const run = () => {
       if (!alertsEnabled) {
-        ;[ids.alertsPulse,ids.alertsLine,ids.alertsFill].forEach((id)=>map.getLayer(id)&&map.removeLayer(id))
+        ;[ids.alertsPulse,ids.alertsSelectedLine,ids.alertsLine,ids.alertsFill].forEach((id)=>map.getLayer(id)&&map.removeLayer(id))
         map.getSource(ids.alertsSource)&&map.removeSource(ids.alertsSource); return
       }
       const fc=featureCollectionFromAlerts((alertsQ.data?.alerts??[])
@@ -118,7 +145,14 @@ export function MapView() {
       if (!src) map.addSource(ids.alertsSource,{type:'geojson',data:fc}); else src.setData(fc)
       const before = map.getLayer(ids.reportsLayer) ? ids.reportsLayer : undefined
       if (!map.getLayer(ids.alertsFill)) map.addLayer({id:ids.alertsFill,type:'fill',source:ids.alertsSource,paint:{'fill-color':['match',['get','severity'],'Extreme','#ff1f4b','Severe','#ff6a00','Moderate','#ffd347','Minor','#58a6ff','#8b949e'],'fill-opacity':['case',['==',['get','id'],s.selectedAlertId??'__none__'],0.52,0.2]}}, before)
+      else map.setPaintProperty(ids.alertsFill, 'fill-opacity', ['case',['==',['get','id'],s.selectedAlertId??'__none__'],0.52,0.2])
       if (!map.getLayer(ids.alertsLine)) map.addLayer({id:ids.alertsLine,type:'line',source:ids.alertsSource,paint:{'line-color':['case',['==',['get','id'],s.selectedAlertId??'__none__'],'#f8fafc','#d5e1f5'],'line-width':['case',['==',['get','id'],s.selectedAlertId??'__none__'],3.2,1.2]}}, before)
+      else {
+        map.setPaintProperty(ids.alertsLine, 'line-color', ['case',['==',['get','id'],s.selectedAlertId??'__none__'],'#f8fafc','#d5e1f5'])
+        map.setPaintProperty(ids.alertsLine, 'line-width', ['case',['==',['get','id'],s.selectedAlertId??'__none__'],3.2,1.2])
+      }
+      if (!map.getLayer(ids.alertsSelectedLine)) map.addLayer({id:ids.alertsSelectedLine,type:'line',source:ids.alertsSource,filter:['==',['get','id'],s.selectedAlertId??'__none__'],paint:{'line-color':'#8ce99a','line-width':5.4,'line-opacity':0.95,'line-blur':0.4}}, before)
+      else map.setFilter(ids.alertsSelectedLine, ['==',['get','id'],s.selectedAlertId??'__none__'])
       if (!map.getLayer(ids.alertsPulse)) map.addLayer({id:ids.alertsPulse,type:'line',source:ids.alertsSource,filter:['>=',['index-of','Warning',['coalesce',['get','event'],'']],0],paint:{'line-color':'#ffeded','line-width':4,'line-opacity':pulseRef.current}}, before)
     }
     map.isStyleLoaded()?run():map.once('load',run)
@@ -143,6 +177,7 @@ export function MapView() {
     const zoomToAlert = async () => {
       const directBounds = boundsFromGeometry(alert.geometry)
       if (directBounds) {
+        capturePreviousExtent()
         map.fitBounds(directBounds, { padding: 44, duration: 560, maxZoom: 12.5 })
         return
       }
@@ -166,6 +201,7 @@ export function MapView() {
 
       const fallbackBounds = boundsFromGeometries(geometries)
       if (!fallbackBounds) return
+      capturePreviousExtent()
       map.fitBounds(fallbackBounds, { padding: 44, duration: 560, maxZoom: 11.5 })
     }
 
@@ -274,6 +310,23 @@ export function MapView() {
   return (
     <div className="map-root-wrap">
       <div className="map-root" ref={mapContainer} aria-label="Weather map" />
+      {detailAlert && (
+        <section className="wcc-map-alert-ops" aria-label="Selected alert map operations">
+          <div className="wcc-map-alert-ops-head">
+            <span>Selected Alert</span>
+            <strong>{detailAlert.event}</strong>
+            <span className={`wcc-severity-badge severity-${detailAlert.severity.toLowerCase()}`}>{detailAlert.severity}</span>
+          </div>
+          <p>{detailAlert.areaDesc}</p>
+          <div className="wcc-map-alert-actions">
+            <button type="button" onClick={() => s.requestZoomToAlert(detailAlert.id)}>Zoom to alert</button>
+            <button type="button" onClick={returnToPreviousExtent} disabled={!hasPreviousExtent}>Back to extent</button>
+            <button type="button" className={radarEnabled ? 'active' : ''} onClick={() => toggleOpsLayer('radar')}>Radar</button>
+            <button type="button" className={stormReportsEnabled ? 'active' : ''} onClick={() => toggleOpsLayer('stormReports')}>Reports</button>
+            {INTEGRATION_FLAGS.spotterMapOverlays && <button type="button" onClick={openNearestSpotterCam}>Spotter cam</button>}
+          </div>
+        </section>
+      )}
       {detailAlert && (
         <section className="alert-detail-strip">
           <div className="alert-detail-top"><strong>{detailAlert.event}</strong><span className={`severity-badge severity-${detailAlert.severity.toLowerCase()}`}>{detailAlert.severity}</span></div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchRainViewerMetadata } from '../services/rainviewer'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
@@ -25,18 +25,35 @@ function RadarTab() {
   const radarOpacity = useMapStore((s) => s.radarOpacity)
   const setRadarOpacity = useMapStore((s) => s.setRadarOpacity)
   const radarPlaying = useMapStore((s) => s.radarPlaying)
+  const setRadarPlaying = useMapStore((s) => s.setRadarPlaying)
   const toggleRadarPlaying = useMapStore((s) => s.toggleRadarPlaying)
   const radarFrameIntervalMs = useMapStore((s) => s.radarFrameIntervalMs)
   const setRadarFrameIntervalMs = useMapStore((s) => s.setRadarFrameIntervalMs)
 
   const radar = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180_000 })
   const data = radar.data
-  const frames = data?.frames ?? []
+  const frames = useMemo(() => data?.frames ?? [], [data?.frames])
   const latest = data?.latestFrame ?? null
   const selected = selectedRadarFrameTime ? frames.find((f) => f.time === selectedRadarFrameTime) ?? latest : latest
   const selectedIndex = selected ? frames.findIndex((f) => f.time === selected.time) : -1
   const hasPrev = selectedIndex > 0
   const hasNext = selectedIndex >= 0 && selectedIndex < frames.length - 1
+
+  useEffect(() => {
+    if (frames.length < 2 && radarPlaying) {
+      setRadarPlaying(false)
+      return
+    }
+    if (!radarPlaying || frames.length < 2) return
+
+    const timer = window.setInterval(() => {
+      const currentIndex = selectedRadarFrameTime ? frames.findIndex((f) => f.time === selectedRadarFrameTime) : frames.length - 1
+      const nextIndex = ((currentIndex >= 0 ? currentIndex : frames.length - 1) + 1) % frames.length
+      setSelectedRadarFrameTime(frames[nextIndex].time)
+    }, radarFrameIntervalMs)
+
+    return () => window.clearInterval(timer)
+  }, [frames, radarFrameIntervalMs, radarPlaying, selectedRadarFrameTime, setRadarPlaying, setSelectedRadarFrameTime])
 
   return (
     <div className="wcc-dock-panel">

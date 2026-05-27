@@ -9,7 +9,7 @@ export const WEATHER_PRESETS: LayerPreset[] = [
   {
     id: 'severe-weather',
     label: 'Severe Weather',
-    enabledLayers: ['nwsAlerts', 'wwaPolygons', 'spcOutlook', 'stormReports', 'radar'],
+    enabledLayers: ['nwsAlerts', 'spcOutlook', 'stormReports', 'radar'],
   },
   {
     id: 'spc-outlook',

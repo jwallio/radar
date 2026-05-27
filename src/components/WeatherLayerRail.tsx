@@ -5,10 +5,16 @@ import { useMapStore } from '../state/mapStore'
 import type { LayerId } from '../types/weather'
 
 const layerGroups = [
-  { label: 'Alerts', layers: WEATHER_LAYERS.filter((l) => l.id === 'nwsAlerts' || l.id === 'wwaPolygons') },
+  { label: 'Alerts', layers: WEATHER_LAYERS.filter((l) => l.id === 'nwsAlerts') },
   { label: 'Radar', layers: WEATHER_LAYERS.filter((l) => l.id === 'radar') },
   { label: 'SPC', layers: WEATHER_LAYERS.filter((l) => l.id === 'spcOutlook' || l.id === 'stormReports') },
 ]
+
+function sameLayerSet(left: LayerId[], right: LayerId[]) {
+  const visibleLeft = left.filter((id) => id !== 'wwaPolygons')
+  const visibleRight = right.filter((id) => id !== 'wwaPolygons')
+  return visibleLeft.length === visibleRight.length && visibleLeft.every((id) => visibleRight.includes(id))
+}
 
 export function WeatherLayerRail() {
   const enabledLayers = useMapStore((s) => s.enabledLayers)
@@ -18,12 +24,7 @@ export function WeatherLayerRail() {
   const applyPreset = useMapStore((s) => s.applyPreset)
 
   const activePresetId = useMemo(() => {
-    if (enabledLayers.length === 0) return 'clean-map'
-    const stormOps: LayerId[] = ['nwsAlerts', 'wwaPolygons', 'spcOutlook', 'stormReports', 'radar']
-    const opsLean: LayerId[] = ['nwsAlerts', 'radar']
-    if (stormOps.every((id) => enabledLayers.includes(id))) return 'storm-ops'
-    if (opsLean.every((id) => enabledLayers.includes(id)) && enabledLayers.length === 2) return 'ops-lean'
-    return null
+    return WEATHER_PRESETS.find((preset) => sameLayerSet(enabledLayers, preset.enabledLayers))?.id ?? null
   }, [enabledLayers])
 
   return (

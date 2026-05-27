@@ -276,6 +276,92 @@
   color: #ff9650;
 }
 
+.wcc-situation-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wcc-severity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.wcc-severity-filters button {
+  padding: 4px 8px;
+  font-size: 10px;
+  border-radius: 999px;
+}
+
+.wcc-severity-filters button.active {
+  border-color: #8ce99a;
+  box-shadow: 0 0 0 1px rgba(140, 233, 154, 0.3) inset;
+}
+
+.wcc-alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.wcc-alert-card {
+  border: 1px solid rgba(173, 201, 255, 0.16);
+  border-radius: 10px;
+  padding: 9px;
+  background: rgba(16, 24, 39, 0.72);
+  cursor: pointer;
+}
+
+.wcc-alert-card:hover,
+.wcc-alert-card:focus-visible,
+.wcc-alert-card.selected {
+  border-color: rgba(140, 233, 154, 0.5);
+  outline: none;
+}
+
+.wcc-alert-card-top,
+.wcc-alert-card-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wcc-alert-card-top strong {
+  font-size: 12px;
+  color: #e8edf7;
+  line-height: 1.25;
+}
+
+.wcc-alert-card-area,
+.wcc-alert-card-headline,
+.wcc-alert-card-meta {
+  margin: 5px 0 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wcc-alert-card-area {
+  color: #dce9ff;
+  font-weight: 600;
+}
+
+.wcc-alert-card-headline,
+.wcc-alert-card-meta {
+  color: #9fb5d8;
+}
+
+.wcc-alert-card-zoom {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
 .wcc-rail-muted {
   font-size: 12px;
   color: #9fb5d8;

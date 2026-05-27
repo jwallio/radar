@@ -11,6 +11,7 @@ export function WeatherTopBar() {
     : enabledLayers.length === 0 ? 'CLEAN MAP'
     : enabledLayers.includes('radar') && !enabledLayers.includes('nwsAlerts') ? 'RADAR'
     : 'CUSTOM'
+  const zuluTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })
 
   return (
     <header className="wcc-topbar">
@@ -23,7 +24,7 @@ export function WeatherTopBar() {
         {severeCount > 0 && <span className="wcc-stat wcc-stat-severe">{severeCount} severe</span>}
       </div>
       <div className="wcc-topbar-right">
-        <span className="wcc-time">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}Z</span>
+        <span className="wcc-time">{zuluTime}Z</span>
       </div>
     </header>
   )

@@ -21,6 +21,7 @@ import { useRadarLayer } from '../hooks/useRadarLayer'
 import { useSpotterLayer, type HoveredSpotter } from '../hooks/useSpotterLayer'
 import { useWatchesLayer } from '../hooks/useWatchesLayer'
 import { useMapInteractions } from '../hooks/useMapInteractions'
+import { useAlertNotifications } from '../hooks/useAlertNotifications'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
 
@@ -279,6 +280,7 @@ export function MapView() {
   useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange: setHoveredSpotter })
   useWatchesLayer({ mapRef, watches: watchesQ.data?.watches ?? [], watchesEnabled, basemapMode })
   useMapInteractions({ mapRef, alertsEnabled, selectAlert: s.selectAlert, requestZoomToAlert: s.requestZoomToAlert, onHoveredAlertChange: setHoveredAlertId })
+  useAlertNotifications({ alerts, alertsEnabled })
 
   // ---- JSX ----
   return (

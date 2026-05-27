@@ -70,6 +70,8 @@ export interface ExternalOpsItem {
   id: string
   label: string
   url: string
+  embedUrl?: string
+  audioStreamUrl?: string
   sourceType: ExternalOpsSourceType
   region?: string
 }

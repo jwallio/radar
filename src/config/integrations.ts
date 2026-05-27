@@ -13,4 +13,5 @@ export const INTEGRATION_FLAGS = {
   embeddedStreamers: parseFlag(import.meta.env.VITE_ENABLE_EMBEDDED_STREAMERS as string | undefined, true),
   aiNewsSummary: parseFlag(import.meta.env.VITE_ENABLE_AI_NEWS_SUMMARY as string | undefined, hasAiSummaryKey),
   spotterMapOverlays: parseFlag(import.meta.env.VITE_ENABLE_SPOTTER_MAP_OVERLAYS as string | undefined, false),
+  embeddedScanners: parseFlag(import.meta.env.VITE_ENABLE_EMBEDDED_SCANNERS as string | undefined, true),
 }

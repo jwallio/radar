@@ -136,7 +136,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         headline: severeCount > 0 || regionalSevereCount > 0 ? 'Severe-weather escalation detected' : 'Baseline weather operations posture',
         summary: aiSummaryEnabled
           ? (aiSummary.data?.summary ?? 'Generating AI summary...')
-          : 'AI summary disabled by config. Enable VITE_ENABLE_AI_NEWS_SUMMARY=true and provide VITE_LLM_API_KEY to activate.',
+          : 'AI summary disabled by config. Enable VITE_ENABLE_AI_NEWS_SUMMARY=true with a non-secret VITE_LLM_API_ENDPOINT proxy to activate.',
         updated: aiSummary.data?.generatedAt ?? null,
         priority: 0,
       },
@@ -315,7 +315,7 @@ export function WeatherNewsPanel({ embedded = false }: WeatherNewsPanelProps) {
         <ModuleStateNotice
           state="disabled"
           title="AI summary disabled"
-          message="Set VITE_ENABLE_AI_NEWS_SUMMARY=true with VITE_LLM_API_KEY to enable model-generated summaries. Raw weather feeds remain active."
+          message="Set VITE_ENABLE_AI_NEWS_SUMMARY=true with a non-secret VITE_LLM_API_ENDPOINT proxy to enable model-generated summaries. Raw weather feeds remain active."
         />
       )}
       {moduleState === 'degraded' && (

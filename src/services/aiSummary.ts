@@ -29,16 +29,15 @@ function buildPrompt(input: OpsSummaryInput): string {
 }
 
 export async function fetchOpsAiSummary(input: OpsSummaryInput): Promise<OpsAiSummaryResult> {
-  const apiKey = import.meta.env.VITE_LLM_API_KEY as string | undefined
-  const endpoint = (import.meta.env.VITE_LLM_API_ENDPOINT as string | undefined) ?? 'https://openrouter.ai/api/v1/chat/completions'
+  const endpoint = (import.meta.env.VITE_LLM_API_ENDPOINT as string | undefined)?.trim()
   const model = (import.meta.env.VITE_LLM_MODEL as string | undefined) ?? 'openai/gpt-4o-mini'
 
-  if (!apiKey) {
+  if (!endpoint) {
     return {
-      summary: 'AI summary unavailable: set VITE_LLM_API_KEY to enable live model-generated summaries.',
+      summary: 'AI summary unavailable: configure VITE_LLM_API_ENDPOINT to a non-secret proxy endpoint to enable model-generated summaries.',
       model: 'unconfigured',
       generatedAt: new Date().toISOString(),
-      error: 'missing_api_key',
+      error: 'missing_endpoint',
     }
   }
 
@@ -46,7 +45,6 @@ export async function fetchOpsAiSummary(input: OpsSummaryInput): Promise<OpsAiSu
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

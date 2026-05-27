@@ -6,12 +6,10 @@ function parseFlag(value: string | undefined, fallback: boolean): boolean {
   return fallback
 }
 
-const hasAiSummaryKey = Boolean((import.meta.env.VITE_LLM_API_KEY as string | undefined)?.trim())
-
 export const INTEGRATION_FLAGS = {
   embeddedCameras: parseFlag(import.meta.env.VITE_ENABLE_EMBEDDED_CAMERAS as string | undefined, false),
   embeddedStreamers: parseFlag(import.meta.env.VITE_ENABLE_EMBEDDED_STREAMERS as string | undefined, true),
-  aiNewsSummary: parseFlag(import.meta.env.VITE_ENABLE_AI_NEWS_SUMMARY as string | undefined, hasAiSummaryKey),
+  aiNewsSummary: parseFlag(import.meta.env.VITE_ENABLE_AI_NEWS_SUMMARY as string | undefined, false),
   spotterMapOverlays: parseFlag(import.meta.env.VITE_ENABLE_SPOTTER_MAP_OVERLAYS as string | undefined, true),
   embeddedScanners: parseFlag(import.meta.env.VITE_ENABLE_EMBEDDED_SCANNERS as string | undefined, true),
 }

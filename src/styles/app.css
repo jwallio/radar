@@ -233,6 +233,10 @@ button:hover { background: rgba(30,49,79,.95); }
 .radar-button-row button { flex: 1; }
 .radar-slider-row { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .radar-slider-row input[type='range'] { width: 100%; }
+.radar-provider-select { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; color: #dce9ff; }
+.radar-provider-select select { border: 1px solid rgba(173,201,255,.3); border-radius: 999px; padding: 5px 8px; background: #111b2d; color: #dce9ff; font-size: 11px; }
+.radar-health-ok { color: #8ce99a; }
+.radar-health-error { color: #ff9a9a; }
 .spc-count-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .spc-report-list { display: flex; flex-direction: column; gap: 8px; }
 .spc-report-row { border: 1px solid rgba(173,201,255,.2); border-radius: 10px; background: rgba(16,24,39,.75); padding: 8px; }

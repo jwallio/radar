@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
-import { fetchRainViewerMetadata } from '../services/rainviewer'
+import { fetchRadarMetadata } from '../services/radar'
 import { useMapStore } from '../state/mapStore'
+import type { RadarProvider } from '../types/weather'
 
 function fmt(sec: number | null) { if (!sec) return 'Unknown'; const d=new Date(sec*1000); return Number.isNaN(d.getTime())?'Unknown':d.toLocaleString() }
 
@@ -15,7 +16,9 @@ export function RadarPanel() {
   const toggleRadarPlaying = useMapStore((s) => s.toggleRadarPlaying)
   const radarFrameIntervalMs = useMapStore((s) => s.radarFrameIntervalMs)
   const setRadarFrameIntervalMs = useMapStore((s) => s.setRadarFrameIntervalMs)
-  const radar = useQuery({ queryKey: ['rainviewer-metadata'], queryFn: fetchRainViewerMetadata, staleTime: 180_000 })
+  const radarProvider = useMapStore((s) => s.radarProvider)
+  const setRadarProvider = useMapStore((s) => s.setRadarProvider)
+  const radar = useQuery({ queryKey: ['radar-metadata', radarProvider], queryFn: () => fetchRadarMetadata(radarProvider), staleTime: 180_000 })
 
   const data = radar.data
   const frames = useMemo(() => data?.frames ?? [], [data?.frames])
@@ -39,8 +42,16 @@ export function RadarPanel() {
   return (
     <section className="panel-block">
       <h3>Radar Context</h3>
-      <p className="radar-meta-row">Source: RainViewer</p>
-      <p className="radar-meta-row" title={data?.sourceUrl ?? ''}>Feed: public weather maps metadata</p>
+      <p className="radar-meta-row">Provider: {radarProvider === 'level2' ? 'Rust Level2' : 'RainViewer'}</p>
+      <label className="radar-provider-select">
+        <span>Provider</span>
+        <select value={radarProvider} onChange={(event) => setRadarProvider(event.target.value as RadarProvider)}>
+          <option value="rainviewer">RainViewer fallback</option>
+          <option value="level2">Rust Level2</option>
+        </select>
+      </label>
+      {data?.healthMessage && <p className={`radar-meta-row ${data?.error ? 'radar-health-error' : 'radar-health-ok'}`}>{data.healthMessage}</p>}
+      <p className="radar-meta-row" title={data?.sourceUrl ?? ''}>Feed: {radarProvider === 'level2' ? 'Rust Level2 backend' : 'public weather maps metadata'}</p>
       <p className="radar-meta-row">Radar tiles © RainViewer</p>
       {data?.version && <p className="radar-meta-row">API version: {data.version}</p>}
       <p className="radar-meta-row">Generated: {fmt(data?.generated ?? null)}</p>

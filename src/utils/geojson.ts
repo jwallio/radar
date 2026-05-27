@@ -1,4 +1,5 @@
 import type { SpcStormReport, WeatherAlert } from '../types/weather'
+import type { WwaWatch } from '../services/wwa'
 
 type Bounds = [[number, number], [number, number]]
 
@@ -47,5 +48,24 @@ export function featureCollectionFromSpcReports(reports: SpcStormReport[]): GeoJ
   return {
     type: 'FeatureCollection',
     features: reports.map((r) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] }, properties: { id: r.id, type: r.type, location: r.location, state: r.state, magnitude: r.magnitude ?? '' } })),
+  }
+}
+
+export function featureCollectionFromWatches(watches: WwaWatch[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: watches.map((w) => ({
+      type: 'Feature',
+      geometry: w.geometry,
+      properties: {
+        id: w.id,
+        type: w.type,
+        label: w.label,
+        wfo: w.wfo ?? '',
+        eventNumber: w.eventNumber ?? '',
+        issued: w.issued ?? '',
+        expires: w.expires ?? '',
+      },
+    })),
   }
 }

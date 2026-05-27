@@ -7,6 +7,7 @@ import { fetchNwsAlerts, fetchNwsAlertsByAreas } from '../services/nws'
 import { getBasemap } from '../config/basemaps'
 import { fetchRadarMetadata } from '../services/radar'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
+import { fetchWwaWatches } from '../services/wwa'
 import { fetchJsonSafe } from '../services/fetchJson'
 import { useMapStore } from '../state/mapStore'
 import { boundsFromGeometries, boundsFromGeometry } from '../utils/geojson'
@@ -18,6 +19,7 @@ import { useSpcOutlookLayer } from '../hooks/useSpcOutlookLayer'
 import { useSpcReportsLayer } from '../hooks/useSpcReportsLayer'
 import { useRadarLayer } from '../hooks/useRadarLayer'
 import { useSpotterLayer, type HoveredSpotter } from '../hooks/useSpotterLayer'
+import { useWatchesLayer } from '../hooks/useWatchesLayer'
 import { useMapInteractions } from '../hooks/useMapInteractions'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
@@ -52,6 +54,7 @@ export function MapView() {
   const radarProvider = s.radarProvider
   const stormReportsEnabled = s.enabledLayers.includes('stormReports')
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
+  const watchesEnabled = s.enabledLayers.includes('spcWatches')
   const alertViewMode = s.alertViewMode
   const setSelectedLiveStreamerId = s.setSelectedLiveStreamerId
   const regionalFocusPackId = s.regionalFocusPackId
@@ -87,6 +90,12 @@ export function MapView() {
     queryFn: fetchSpcDay1Outlook,
     staleTime: 180000,
     enabled: spcOutlookEnabled,
+  })
+  const watchesQ = useQuery({
+    queryKey: ['wwa-watches'],
+    queryFn: fetchWwaWatches,
+    staleTime: 120000,
+    enabled: watchesEnabled,
   })
 
   const alerts = alertsQ.data?.alerts ?? []
@@ -268,6 +277,7 @@ export function MapView() {
   useSpcReportsLayer({ mapRef, reports: reportsQ.data?.reports ?? [], stormReportsEnabled, basemapMode })
   useRadarLayer({ mapRef, radarData: radarQ.data, radarEnabled, selectedRadarFrameTime: s.selectedRadarFrameTime, radarOpacity: s.radarOpacity, basemapMode })
   useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange: setHoveredSpotter })
+  useWatchesLayer({ mapRef, watches: watchesQ.data?.watches ?? [], watchesEnabled, basemapMode })
   useMapInteractions({ mapRef, alertsEnabled, selectAlert: s.selectAlert, requestZoomToAlert: s.requestZoomToAlert, onHoveredAlertChange: setHoveredAlertId })
 
   // ---- JSX ----

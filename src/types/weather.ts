@@ -1,4 +1,4 @@
-export type LayerId = 'nwsAlerts' | 'wwaPolygons' | 'radar' | 'spcOutlook' | 'stormReports'
+export type LayerId = 'nwsAlerts' | 'wwaPolygons' | 'radar' | 'spcOutlook' | 'stormReports' | 'spcWatches'
 export type BasemapMode = 'black' | 'bingRoad' | 'bingAerial' | 'googleRoad' | 'googleSatellite'
 export type RadarProvider = 'rainviewer' | 'level2'
 

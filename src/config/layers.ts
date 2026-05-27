@@ -31,5 +31,11 @@ export const WEATHER_LAYERS: LayerDefinition[] = [
     description: 'SPC daily local storm reports',
     defaultEnabled: true,
   },
+  {
+    id: 'spcWatches',
+    label: 'SPC Watches',
+    description: 'Active tornado and severe thunderstorm watch polygons from WWA service',
+    defaultEnabled: true,
+  },
 ]
 

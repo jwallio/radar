@@ -55,7 +55,7 @@ function UtilityHelpPanel() {
       <h3>Help & Shortcuts</h3>
       <p>Ctrl/Cmd+K opens command palette. Esc closes palette or utility panel.</p>
       <p>Use Edit Mode to move/hide modules; switch back to Operate Mode for live monitoring.</p>
-      <p>Layer shortcuts: 1 alerts, 2 radar, 3 SPC outlook, 4 reports.</p>
+      <p>Layer shortcuts: 1 alerts, 2 radar, 3 SPC outlook, 4 reports, 5 watches.</p>
       <p>Preset shortcuts: S severe-weather, C clean-map.</p>
     </section>
   )
@@ -215,6 +215,7 @@ export function AppShell() {
       { id: 'toggle-radar', label: 'Toggle layer: Radar', detail: 'Shortcut 2', run: () => toggleLayer('radar') },
       { id: 'toggle-spc', label: 'Toggle layer: SPC outlook', detail: 'Shortcut 3', run: () => toggleLayer('spcOutlook') },
       { id: 'toggle-reports', label: 'Toggle layer: Storm reports', detail: 'Shortcut 4', run: () => toggleLayer('stormReports') },
+      { id: 'toggle-watches', label: 'Toggle layer: SPC watches', detail: 'Shortcut 5', run: () => toggleLayer('spcWatches') },
     ]
 
     const dynamicUserPresetActions: CommandPaletteAction[] = userPresets.map((preset) => ({

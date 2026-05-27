@@ -9,12 +9,12 @@ export const WEATHER_PRESETS: LayerPreset[] = [
   {
     id: 'severe-weather',
     label: 'Severe Weather',
-    enabledLayers: ['nwsAlerts', 'spcOutlook', 'stormReports', 'radar'],
+    enabledLayers: ['nwsAlerts', 'spcOutlook', 'stormReports', 'radar', 'spcWatches'],
   },
   {
     id: 'spc-outlook',
     label: 'SPC Outlook',
-    enabledLayers: ['spcOutlook', 'stormReports'],
+    enabledLayers: ['spcOutlook', 'stormReports', 'spcWatches'],
   },
   {
     id: 'clean-map',

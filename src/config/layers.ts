@@ -10,8 +10,8 @@ export const WEATHER_LAYERS: LayerDefinition[] = [
   {
     id: 'wwaPolygons',
     label: 'WWA Polygons',
-    description: 'Watch/warning/advisory polygons',
-    defaultEnabled: false,
+    description: 'Watch/warning/advisory polygons — guaranteed geometry from NOAA MapServer',
+    defaultEnabled: true,
   },
   {
     id: 'radar',

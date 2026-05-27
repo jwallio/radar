@@ -7,7 +7,7 @@ import { fetchNwsAlerts, fetchNwsAlertsByAreas } from '../services/nws'
 import { getBasemap } from '../config/basemaps'
 import { fetchRadarMetadata } from '../services/radar'
 import { fetchSpcDay1Outlook, fetchSpcReports } from '../services/spc'
-import { fetchWwaWatches } from '../services/wwa'
+import { fetchWwaWatches, fetchWwaWarnings } from '../services/wwa'
 import { fetchJsonSafe } from '../services/fetchJson'
 import { useMapStore } from '../state/mapStore'
 import { boundsFromGeometries, boundsFromGeometry } from '../utils/geojson'
@@ -20,6 +20,7 @@ import { useSpcReportsLayer } from '../hooks/useSpcReportsLayer'
 import { useRadarLayer } from '../hooks/useRadarLayer'
 import { useSpotterLayer, type HoveredSpotter } from '../hooks/useSpotterLayer'
 import { useWatchesLayer } from '../hooks/useWatchesLayer'
+import { useWwaWarningLayer } from '../hooks/useWwaWarningLayer'
 import { useMapInteractions } from '../hooks/useMapInteractions'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 
@@ -56,6 +57,7 @@ export function MapView() {
   const stormReportsEnabled = s.enabledLayers.includes('stormReports')
   const spcOutlookEnabled = s.enabledLayers.includes('spcOutlook')
   const watchesEnabled = s.enabledLayers.includes('spcWatches')
+  const wwaPolygonsEnabled = s.enabledLayers.includes('wwaPolygons')
   const alertViewMode = s.alertViewMode
   const setSelectedLiveStreamerId = s.setSelectedLiveStreamerId
   const regionalFocusPackId = s.regionalFocusPackId
@@ -97,6 +99,12 @@ export function MapView() {
     queryFn: fetchWwaWatches,
     staleTime: 120000,
     enabled: watchesEnabled,
+  })
+  const wwaWarningsQ = useQuery({
+    queryKey: ['wwa-warnings'],
+    queryFn: fetchWwaWarnings,
+    staleTime: 120000,
+    enabled: wwaPolygonsEnabled,
   })
 
   const alerts = alertsQ.data?.alerts ?? []
@@ -279,6 +287,7 @@ export function MapView() {
   useRadarLayer({ mapRef, radarData: radarQ.data, radarEnabled, selectedRadarFrameTime: s.selectedRadarFrameTime, radarOpacity: s.radarOpacity, basemapMode })
   useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange: setHoveredSpotter })
   useWatchesLayer({ mapRef, watches: watchesQ.data?.watches ?? [], watchesEnabled, basemapMode })
+  useWwaWarningLayer({ mapRef, warnings: wwaWarningsQ.data?.warnings ?? [], wwaEnabled: wwaPolygonsEnabled, basemapMode })
   useMapInteractions({ mapRef, alertsEnabled, selectAlert: s.selectAlert, requestZoomToAlert: s.requestZoomToAlert, onHoveredAlertChange: setHoveredAlertId })
   useAlertNotifications({ alerts, alertsEnabled })
 

@@ -20,6 +20,10 @@ export const MAP_LAYER_IDS = {
   watchesFill: 'spc-watches-fill',
   watchesLine: 'spc-watches-line',
 
+  wwaSource: 'wwa-polygon-source',
+  wwaFill: 'wwa-polygon-fill',
+  wwaLine: 'wwa-polygon-line',
+
   spotterSource: 'spotter-network-source',
   spotterLayer: 'spotter-network-layer',
   spotterCamLayer: 'spotter-cam-layer',
@@ -41,4 +45,6 @@ export const ALL_LAYER_IDS: readonly MapLayerId[] = [
   MAP_LAYER_IDS.spotterCamLayer,
   MAP_LAYER_IDS.watchesFill,
   MAP_LAYER_IDS.watchesLine,
+  MAP_LAYER_IDS.wwaFill,
+  MAP_LAYER_IDS.wwaLine,
 ]

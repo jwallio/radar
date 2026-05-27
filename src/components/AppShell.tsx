@@ -71,7 +71,7 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
     if (moduleId === 'legendTime') return <LegendTimePanel />
     if (moduleId === 'weatherNews') return <WeatherNewsPanel />
     if (moduleId === 'cameras') return <CameraLinksPanel />
-    if (moduleId === 'scanners') return <ScannerLinksPanel />
+    if (moduleId === 'scanners') return <ScannerLinksPanel embedded />
     const module = WORKSPACE_MODULES.find((item) => item.id === moduleId)
     return module ? <PlaceholderModule module={module} /> : null
   })()

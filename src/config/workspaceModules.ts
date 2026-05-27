@@ -64,13 +64,12 @@ export const WORKSPACE_MODULES: WorkspaceModuleDefinition[] = [
   },
   {
     id: 'scanners',
-    title: 'Scanner Links',
-    description: 'Curated public-safety and weather scanner links grouped by source with regional tags.',
+    title: 'Scanner Monitor',
+    description: 'NOAA Weather Radio direct audio streams and public-safety scanner directory embeds with regional tags.',
     category: 'media',
     defaultZone: 'rightRail',
-    defaultSize: 'compact',
+    defaultSize: 'standard',
     defaultVisible: false,
-    isExternalLinkOnly: true,
   },
   {
     id: 'weatherNews',

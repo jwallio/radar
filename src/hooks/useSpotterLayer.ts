@@ -1,10 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import { MAP_LAYER_IDS } from '../config/mapLayerIds'
 import { SPOTTER_NETWORK_LOCATIONS } from '../config/liveStreamers'
 import { INTEGRATION_FLAGS } from '../config/integrations'
+import { fetchSpotterNetwork } from '../services/spotternetwork'
 
 const ids = MAP_LAYER_IDS
+
+// Refresh interval for live data (ms)
+const REFRESH_INTERVAL = 60_000
 
 interface HoveredSpotter {
   callsign: string
@@ -25,31 +29,82 @@ interface UseSpotterLayerParams {
 export type { HoveredSpotter }
 
 export function useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange }: UseSpotterLayerParams) {
+  const [liveGeoJson, setLiveGeoJson] = useState<GeoJSON.FeatureCollection | null>(null)
+  const [feedError, setFeedError] = useState<string | null>(null)
+  const [spotterCount, setSpotterCount] = useState<number>(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!INTEGRATION_FLAGS.spotterMapOverlays) return
+
+    const fetchFeed = async () => {
+      // Cancel any in-flight request
+      if (abortRef.current) abortRef.current.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      try {
+        const { featureCollection, feed } = await fetchSpotterNetwork()
+        if (!controller.signal.aborted) {
+          setLiveGeoJson(featureCollection)
+          setSpotterCount(feed.count)
+          setFeedError(null)
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return
+        const msg = err instanceof Error ? err.message : 'Unknown fetch error'
+        console.warn('[SpotterNetwork] feed fetch failed:', msg)
+        setFeedError(msg)
+        // Keep showing last-known data or fallback
+      }
+    }
+
+    // Initial fetch
+    fetchFeed()
+
+    // Poll on interval
+    timerRef.current = setInterval(fetchFeed, REFRESH_INTERVAL)
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (abortRef.current) abortRef.current.abort()
+    }
+  }, [])
+
+  // Build the feature collection to render
+  // Priority: live feed > demo fallback
+  const spotterFc: GeoJSON.FeatureCollection | null = liveGeoJson
+    ? liveGeoJson
+    : SPOTTER_NETWORK_LOCATIONS.length > 0
+      ? {
+          type: 'FeatureCollection',
+          features: SPOTTER_NETWORK_LOCATIONS.map((spotter) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [spotter.lon, spotter.lat] },
+            properties: {
+              name: spotter.callsign,
+              displayText: spotter.callsign,
+              status: spotter.status,
+              notes: spotter.notes ?? '',
+              hasLiveCam: spotter.hasLiveCam ? 1 : 0,
+              streamerId: spotter.streamerId ?? '',
+              timestamp: '',
+              heading: 0,
+            },
+          })),
+        }
+      : null
+
+  // Map rendering effect
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
 
-    if (!INTEGRATION_FLAGS.spotterMapOverlays) {
+    if (!INTEGRATION_FLAGS.spotterMapOverlays || !spotterFc) {
       ;[ids.spotterCamLayer, ids.spotterLayer].forEach((id) => map.getLayer(id) && map.removeLayer(id))
       map.getSource(ids.spotterSource) && map.removeSource(ids.spotterSource)
       return
-    }
-
-    const spotterFc: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: SPOTTER_NETWORK_LOCATIONS.map((spotter) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [spotter.lon, spotter.lat] },
-        properties: {
-          id: spotter.id,
-          callsign: spotter.callsign,
-          region: spotter.region,
-          status: spotter.status,
-          notes: spotter.notes ?? '',
-          hasLiveCam: spotter.hasLiveCam ? 1 : 0,
-          streamerId: spotter.streamerId ?? '',
-        },
-      })),
     }
 
     const run = () => {
@@ -94,8 +149,8 @@ export function useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode
         return
       }
       onHoveredSpotterChange({
-        callsign: String(props.callsign ?? 'Unknown'),
-        region: String(props.region ?? 'Unknown region'),
+        callsign: String(props.name ?? props.displayText ?? 'Unknown'),
+        region: String(props.region ?? ''),
         status: String(props.status ?? 'unknown'),
         notes: String(props.notes ?? ''),
         hasLiveCam: Number(props.hasLiveCam ?? 0) === 1,
@@ -127,5 +182,8 @@ export function useSpotterLayer({ mapRef, setSelectedLiveStreamerId, basemapMode
       map.off('mouseout', onOut)
       map.off('click', onClick)
     }
-  }, [setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSelectedLiveStreamerId, basemapMode, onHoveredSpotterChange, spotterFc])
+
+  return { spotterCount, feedError }
 }

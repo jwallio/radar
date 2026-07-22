@@ -159,3 +159,6 @@ def test_gif_export_contains_all_frames(tmp_path: Path) -> None:
     with Image.open(output) as gif:
         assert gif.format == "GIF"
         assert gif.n_frames == 2
+        assert gif.info["duration"] == 180
+        gif.seek(1)
+        assert gif.info["duration"] == 1000

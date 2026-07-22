@@ -275,8 +275,8 @@ def build_loop_gif(
     product_label: str,
     geography: tuple[dict[str, Any], dict[str, Any]] | None = None,
     width: int = 960,
-    frame_duration_ms: int = 320,
-    latest_pause_ms: int = 1150,
+    frame_duration_ms: int = 180,
+    latest_pause_ms: int = 1000,
 ) -> int:
     """Create an atomic, branded GIF from an already-rendered radar sequence."""
 

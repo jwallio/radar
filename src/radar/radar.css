@@ -120,18 +120,22 @@
 .radar-warning-panel dt { color: #a99298; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .radar-warning-panel dd { margin: 0; color: #f3e7e7; font-size: 10px; line-height: 1.35; }
 
-.radar-timeline { position: absolute; bottom: 16px; left: 50%; z-index: 10; width: min(760px, calc(100% - 360px)); padding: 13px 15px 12px; transform: translateX(-50%); border: 1px solid rgba(147, 182, 190, .28); border-radius: 9px; background: rgba(9, 20, 27, .94); box-shadow: 0 12px 35px rgba(0,0,0,.34); backdrop-filter: blur(13px); }
+.radar-timeline { position: absolute; bottom: 16px; left: 50%; z-index: 10; width: min(820px, calc(100% - 360px)); padding: 13px 15px 12px; transform: translateX(-50%); border: 1px solid rgba(147, 182, 190, .28); border-radius: 9px; background: rgba(9, 20, 27, .94); box-shadow: 0 12px 35px rgba(0,0,0,.34); backdrop-filter: blur(13px); }
 .radar-timeline-top strong { color: #e5efed; font-size: 12px; font-weight: 620; }
 .radar-frame-count { color: var(--radar-muted); font-family: ui-monospace, monospace; font-size: 10px; }
 .radar-timeline-range { display: block; width: 100%; margin: 12px 0 3px; accent-color: var(--radar-accent); }
 .radar-timeline-endpoints { display: flex; justify-content: space-between; color: #718b91; font-family: ui-monospace, monospace; font-size: 9px; }
-.radar-control-row { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
-.radar-control-row > button { min-width: 91px; padding: 7px 9px; border: 1px solid rgba(147,182,190,.25); background: rgba(23, 42, 51, .78); color: #d8e6e4; font-size: 11px; }
-.radar-control-row > button:hover, .radar-speed-control button:hover { border-color: var(--radar-border-strong); }
-.radar-control-row > .radar-play-button { border-color: rgba(129,222,208,.5); background: rgba(46, 108, 104, .65); color: #e6fffb; font-weight: 700; }
-.radar-speed-control { display: flex; margin-left: auto; border: 1px solid rgba(147,182,190,.22); border-radius: 6px; overflow: hidden; }
-.radar-speed-control button { min-width: 34px; padding: 7px 4px; border-radius: 0; color: var(--radar-muted); font-size: 10px; }
+.radar-control-row, .radar-transport-control, .radar-playback-options { display: flex; align-items: center; gap: 7px; }
+.radar-control-row { margin-top: 12px; }
+.radar-transport-control > button { min-width: 91px; padding: 7px 9px; border: 1px solid rgba(147,182,190,.25); background: rgba(23, 42, 51, .78); color: #d8e6e4; font-size: 11px; }
+.radar-transport-control > button:hover, .radar-speed-control button:hover { border-color: var(--radar-border-strong); }
+.radar-transport-control > .radar-play-button { border-color: rgba(129,222,208,.5); background: rgba(46, 108, 104, .65); color: #e6fffb; font-weight: 700; }
+.radar-playback-options { min-width: 0; margin-left: auto; }
+.radar-observed-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 6px 8px; border: 1px solid rgba(129,222,208,.28); border-radius: 6px; background: rgba(129,222,208,.1); color: #9edbd4; font-size: 9px; white-space: nowrap; }
+.radar-speed-control { display: flex; border: 1px solid rgba(147,182,190,.22); border-radius: 6px; overflow: hidden; }
+.radar-speed-control button { min-width: 28px; padding: 7px 4px; border-radius: 0; color: var(--radar-muted); font-family: ui-monospace, monospace; font-size: 10px; white-space: nowrap; }
 .radar-speed-control button.active { background: rgba(129,222,208,.18); color: var(--radar-accent); }
+.radar-fps-label { margin-right: -4px; color: #70888e; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
 .radar-download-button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 7px 10px; border: 1px solid rgba(194, 173, 255, .48); border-radius: 6px; background: rgba(100, 74, 149, .28); color: #e9e0ff; font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .radar-download-button:hover { border-color: rgba(211, 196, 255, .78); background: rgba(112, 82, 164, .42); }
 .radar-download-unavailable { color: #6f858b; font-size: 9px; white-space: nowrap; }
@@ -171,13 +175,15 @@
   .radar-data-strip.geography-warning { right: 10px; bottom: 184px; max-width: calc(100% - 20px); }
   .radar-timeline { right: 10px; bottom: 9px; left: 10px; width: auto; padding: 11px 11px 10px; transform: none; }
   .radar-timeline-top strong { font-size: 11px; }
-  .radar-control-row { flex-wrap: wrap; gap: 5px; margin-top: 10px; }
-  .radar-control-row > button { min-width: 0; flex: 1; padding: 8px 5px; font-size: 10px; }
-  .radar-control-row > button span { display: none; }
-  .radar-speed-control { margin-left: 0; }
-  .radar-speed-control button { min-width: 31px; padding: 8px 3px; }
-  .radar-download-button { flex: 1; min-width: 82px; min-height: 32px; }
-  .radar-download-unavailable { flex: 1; text-align: center; }
+  .radar-control-row { flex-direction: column; align-items: stretch; gap: 6px; margin-top: 10px; }
+  .radar-transport-control { width: 100%; gap: 5px; }
+  .radar-transport-control > button { min-width: 0; flex: 1; padding: 8px 5px; font-size: 10px; }
+  .radar-transport-control > button span { display: none; }
+  .radar-playback-options { width: 100%; margin-left: 0; gap: 5px; }
+  .radar-observed-badge { min-height: 32px; }
+  .radar-speed-control button { min-width: 27px; padding: 8px 3px; }
+  .radar-download-button { min-width: 72px; min-height: 32px; padding-inline: 7px; }
+  .radar-download-unavailable { margin-left: auto; text-align: center; }
   .radar-timeline-endpoints { font-size: 8px; }
 }
 
@@ -185,5 +191,6 @@
   .radar-product-name { font-size: 12px; }
   .radar-header-status { display: none; }
   .radar-brand-lockup { flex: 1; }
-  .radar-control-row > button { padding-inline: 4px; }
+  .radar-transport-control > button { padding-inline: 4px; }
+  .radar-speed-control button { min-width: 25px; }
 }

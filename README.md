@@ -5,8 +5,8 @@ Wall Cloud Radar is a static-build-compatible North Carolina radar viewer for `r
 The MVP provides:
 
 - NOAA/NCEP MRMS regional composite-reflectivity imagery processed to PNG.
-- A generated manifest and recent-frame playback with previous, play/pause, next, scrubber, and 0.5×/1×/2× controls.
-- Downloadable, branded animated GIF loops generated with the same Wall Cloud palette.
+- A generated manifest and recent-frame playback with previous, play/pause, next, scrubber, and 2/4/8/20/30 FPS choices using exact observed frames.
+- Downloadable, branded animated GIF loops generated with the same Wall Cloud palette at a concise five-to-six-frame-per-second presentation rate.
 - Selectable historical loop packs sourced from NOAA's public MRMS archive.
 - A second precipitation-type mode backed by the official MRMS PrecipFlag product when it decodes successfully.
 - Independent active NWS warning refreshes for tornado, severe thunderstorm, flash flood, and special marine warnings.
@@ -102,7 +102,9 @@ python scripts/build_radar_frames.py
 
 Use `python scripts/build_radar_frames.py --no-precip-type` for a reflectivity-only run or `--keep-raw` only when troubleshooting decoder inputs. Raw files and local caches are ignored by Git.
 
-Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. The viewer exposes the active product's GIF through **Save GIF**.
+Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. The viewer exposes the active product's GIF through **Save GIF**. GIFs use exact observed frames at 180 ms per frame and hold the newest frame for one second.
+
+Browser playback defaults to 4 FPS and always swaps exact observed MRMS frames directly. The 20 and 30 FPS options preload the complete active sequence for testing, but display refresh and image decoding can still limit the effective rate. No crossfaded or interpolated radar field is shown, written to the manifest, or exported to GIF.
 
 ## Historical radar loops
 

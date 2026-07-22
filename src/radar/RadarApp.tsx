@@ -22,6 +22,10 @@ const GRID_SOURCE_ID = 'wallcloud-grid-source'
 
 const EMPTY_STATE = emptyFeatureCollection()
 const EMPTY_BOUNDS: [[number, number], [number, number]] = [[REGIONAL_BOUNDS[0], REGIONAL_BOUNDS[1]], [REGIONAL_BOUNDS[2], REGIONAL_BOUNDS[3]]]
+const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
+const LATEST_FRAME_HOLD_MS = 900
+
+type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
 function assetUrl(path: string, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
@@ -256,7 +260,7 @@ export function RadarApp() {
   const [productId, setProductId] = useState<RadarProductId>('MergedReflectivityQCComposite')
   const [frameIndex, setFrameIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState<0.5 | 1 | 2>(1)
+  const [playbackFps, setPlaybackFps] = useState<PlaybackFps>(4)
   const [radarOpacity, setRadarOpacity] = useState(0.96)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [layers, setLayers] = useState({ radar: true, warnings: true, counties: true, cities: true, highways: false })
@@ -341,12 +345,12 @@ export function RadarApp() {
 
   useEffect(() => {
     if (!playing || frames.length < 2) return
-    const delay = 900 / speed + (activeIndex === frames.length - 1 ? 650 : 0)
+    const delay = 1_000 / playbackFps + (activeIndex === frames.length - 1 ? LATEST_FRAME_HOLD_MS : 0)
     const timer = window.setTimeout(() => {
       setFrameIndex((index) => index >= frames.length - 1 ? 0 : index + 1)
     }, delay)
     return () => window.clearTimeout(timer)
-  }, [activeIndex, frames.length, playing, speed])
+  }, [activeIndex, frames.length, playbackFps, playing])
 
   useEffect(() => {
     let cancelled = false
@@ -487,14 +491,19 @@ export function RadarApp() {
         coordinates: [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]],
       })
     }
-    if (activeFrame) {
-      const preload = frames.slice(Math.max(0, activeIndex - 2), Math.min(frames.length, activeIndex + 3))
-      preload.forEach((frame) => {
-        const image = new Image()
-        image.src = frameUrl(frame, manifestPath)
-      })
-    }
-  }, [activeFrame, activeIndex, frames, manifestPath, mapReady, radarOpacity])
+  }, [activeFrame, manifestPath, mapReady, radarOpacity])
+
+  useEffect(() => {
+    if (!activeFrame) return
+    const preload = playbackFps >= 20
+      ? frames
+      : frames.slice(Math.max(0, activeIndex - 2), Math.min(frames.length, activeIndex + 3))
+    preload.forEach((frame) => {
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = frameUrl(frame, manifestPath)
+    })
+  }, [activeFrame, activeIndex, frames, manifestPath, playbackFps])
 
   useEffect(() => {
     const map = mapRef.current
@@ -701,18 +710,24 @@ export function RadarApp() {
             aria-label="Radar frame timeline"
           />
           <div className="radar-timeline-endpoints"><span>{formatEasternTime(frames[0]?.valid_time)} ET</span><span>{latestFrame ? `${formatEasternTime(latestFrame.valid_time)} ET · ${isHistorical ? 'end' : 'latest'}` : 'Latest unavailable'}</span></div>
-          <div className="radar-control-row">
-            <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>‹ <span>Previous</span></button>
-            <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
-            <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
-            <div className="radar-speed-control" role="group" aria-label="Playback speed">
-              {[0.5, 1, 2].map((value) => <button key={value} type="button" className={speed === value ? 'active' : ''} onClick={() => setSpeed(value as 0.5 | 1 | 2)}>{value}×</button>)}
+          <div className="radar-control-row" data-playback-mode="observed" data-playback-fps={playbackFps}>
+            <div className="radar-transport-control">
+              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>‹ <span>Previous</span></button>
+              <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
+              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
             </div>
-            {loopDownloadUrl ? (
-              <a className="radar-download-button" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}.gif`}>Save GIF</a>
-            ) : (
-              <span className="radar-download-unavailable" title="Run the updated Python processor to generate a GIF">GIF unavailable</span>
-            )}
+            <div className="radar-playback-options">
+              <span className="radar-observed-badge" title="Playback displays exact observed MRMS frames">Observed</span>
+              <span className="radar-fps-label">FPS</span>
+              <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
+                {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
+              </div>
+              {loopDownloadUrl ? (
+                <a className="radar-download-button" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}.gif`}>Save GIF</a>
+              ) : (
+                <span className="radar-download-unavailable" title="Run the updated Python processor to generate a GIF">GIF unavailable</span>
+              )}
+            </div>
           </div>
           {activeAge !== null && !isLatest && !isHistorical && <div className="radar-playback-note">Playback frame · latest observation is {Math.max(0, latestAge ?? 0)} min old</div>}
         </section>

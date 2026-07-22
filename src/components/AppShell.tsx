@@ -180,10 +180,10 @@ function WorkspaceDropBoard({ activeDropZone, setActiveDropZone, activeDragModul
 export function AppShell() {
   const [activeDropZone, setActiveDropZone] = useState<WorkspaceZoneId | null>(null)
   const [activeDragModuleId, setActiveDragModuleId] = useState<WorkspaceModuleId | null>(null)
-  const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>('workspace')
+  const [activeUtilityTab, setActiveUtilityTab] = useState<UtilityTab | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
-  const [mapBooted, setMapBooted] = useState(false)
+  const [mapBooted, setMapBooted] = useState(true)
 
   const toggleLayer = useMapStore((state) => state.toggleLayer)
   const applyLayerPreset = useMapStore((state) => state.applyPreset)

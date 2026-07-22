@@ -1,0 +1,6 @@
+# MRMS regional ingestion and raster rendering
+cfgrib>=0.9.15
+eccodes>=2.39.0
+numpy>=2.0
+Pillow>=10.0
+xarray>=2024.10

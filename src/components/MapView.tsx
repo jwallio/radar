@@ -25,6 +25,8 @@ import { useMapInteractions } from '../hooks/useMapInteractions'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 
 const conusCenter: [number, number] = [-97.5, 38.5]
+// SW: [-130, 20], NE: [-58, 53] — lower 48 + thin Canada/Mexico/coastal buffer
+const conusMaxBounds: [[number, number], [number, number]] = [[-130, 20], [-58, 53]]
 
 function fmt(v: string | null) {
   if (!v) return 'Unknown'
@@ -188,9 +190,10 @@ export function MapView() {
         layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
       },
       center: conusCenter,
-      zoom: 3.7,
-      minZoom: 2,
+      zoom: 4.0,
+      minZoom: 3,
       maxZoom: 18,
+      maxBounds: conusMaxBounds,
     })
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')
     mapRef.current = map

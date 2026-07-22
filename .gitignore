@@ -26,3 +26,16 @@ dev.err.log
 *.njsproj
 *.sln
 *.sw?
+
+# Generated radar deployment data and local raw-download scratch space
+.radar-tmp/
+.radar-raw/
+__pycache__/
+*.py[cod]
+public/data/radar/frames/*
+!public/data/radar/frames/.gitkeep
+public/data/radar/loops/*
+!public/data/radar/loops/.gitkeep
+public/data/radar/history/*
+!public/data/radar/history/.gitkeep
+!public/data/radar/history/catalog.json

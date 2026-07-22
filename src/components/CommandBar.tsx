@@ -19,13 +19,9 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
   const alerts = useQuery({ queryKey: ['nws-alerts'], queryFn: fetchNwsAlerts, staleTime: 60_000 })
   const currentPresetId = useWorkspaceStore((state) => state.currentPresetId)
   const layoutMode = useWorkspaceStore((state) => state.layoutMode)
-  const toggleLayoutMode = useWorkspaceStore((state) => state.toggleLayoutMode)
+  const setLayoutMode = useWorkspaceStore((state) => state.setLayoutMode)
   const applyWorkspacePreset = useWorkspaceStore((state) => state.applyPreset)
   const userPresets = useWorkspaceStore((state) => state.userPresets)
-  const resetWorkspace = useWorkspaceStore((state) => state.resetWorkspace)
-  const layoutLocked = useWorkspaceStore((state) => state.layoutLocked)
-  const toggleLayoutLocked = useWorkspaceStore((state) => state.toggleLayoutLocked)
-  const pinnedPresetIds = useWorkspaceStore((state) => state.pinnedPresetIds)
 
   const applyLayerPreset = useMapStore((state) => state.applyPreset)
   const setRegionalFocus = useMapStore((state) => state.setRegionalFocus)
@@ -38,17 +34,7 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
   const severeCount = alertList.filter((alert) => alert.severity === 'Extreme' || alert.severity === 'Severe').length
   const presetLabel = WORKSPACE_PRESETS.find((preset) => preset.id === currentPresetId)?.title
     ?? userPresets.find((preset) => preset.id === currentPresetId)?.title
-    ?? 'Custom workspace'
-
-  const pinnedPresets = useMemo(() => {
-    const all = [
-      ...WORKSPACE_PRESETS.map((preset) => ({ id: preset.id, title: preset.title })),
-      ...userPresets.map((preset) => ({ id: preset.id, title: `★ ${preset.title}` })),
-    ]
-    return pinnedPresetIds
-      .map((id) => all.find((preset) => preset.id === id))
-      .filter((item): item is { id: string; title: string } => Boolean(item))
-  }, [pinnedPresetIds, userPresets])
+    ?? 'Custom'
 
   const activeIncidentModeLabel = useMemo(
     () => INCIDENT_MODES.find((mode) => mode.id === activeIncidentModeId)?.label ?? null,
@@ -66,72 +52,22 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
 
   return (
     <header className="command-bar">
+      {/* Left: brand + alert stats */}
       <div className="command-identity">
         <strong>wall.cloud</strong>
-        <span>Weather workspace for U.S. operations</span>
+        <span className="command-alert-stat">
+          {alerts.isLoading ? 'loading...' : `${alertList.length} alerts`}
+          {severeCount > 0 && <span className="command-alert-severe"> · {severeCount} severe</span>}
+        </span>
       </div>
-      <div className="command-status">
-        <span className="workspace-module-badge live">LIVE</span>
-        <span>{alerts.isLoading ? 'Alerts loading' : `${alertList.length} alerts`}</span>
-        <span>{severeCount} severe+</span>
-        <span>{presetLabel}</span>
-        <span>{layoutLocked ? 'Layout locked' : 'Layout unlocked'}</span>
-      </div>
-      <label className="command-preset-picker">
-        <span>Preset</span>
-        <select
-          value={currentPresetId ?? ''}
-          onChange={(event) => {
-            if (event.currentTarget.value) applyWorkspacePreset(event.currentTarget.value)
-            setActiveIncidentMode(null)
-          }}
-        >
-          <option value="">Custom</option>
-          {WORKSPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.title}</option>)}
-          {userPresets.map((preset) => <option key={preset.id} value={preset.id}>★ {preset.title}</option>)}
-        </select>
-      </label>
-      <div className="command-actions">
-        <button type="button" onClick={onOpenCommandPalette}>⌘/Ctrl+K</button>
-        <button type="button" onClick={() => onToggleUtilityTab('workspace')} className={activeUtilityTab === 'workspace' ? 'active' : ''}>Workspace</button>
-        <button type="button" onClick={() => onToggleUtilityTab('layers')} className={activeUtilityTab === 'layers' ? 'active' : ''}>Layers</button>
-        <button type="button" onClick={() => onToggleUtilityTab('help')} className={activeUtilityTab === 'help' ? 'active' : ''}>Help</button>
-        {activeUtilityTab && <button type="button" onClick={onCloseUtility}>Close Panel</button>}
-        <button type="button" onClick={toggleLayoutMode}>{layoutMode === 'edit' ? 'Edit Mode' : 'Operate Mode'}</button>
-        <button type="button" onClick={toggleLayoutLocked}>{layoutLocked ? 'Unlock Layout' : 'Lock Layout'}</button>
-        <button type="button" onClick={resetWorkspace}>Reset</button>
-      </div>
-      {pinnedPresets.length > 0 && (
-        <div className="command-pinned-presets" aria-label="Pinned ops layouts">
-          <span>Ops layouts</span>
-          {pinnedPresets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={currentPresetId === preset.id ? 'active' : ''}
-              onClick={() => {
-                applyWorkspacePreset(preset.id)
-                setActiveIncidentMode(null)
-              }}
-            >
-              {preset.title}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="command-incident-modes" aria-label="Incident modes">
-        <span>Incident mode</span>
-        {activeIncidentModeLabel && (
-          <small>
-            Active: {activeIncidentModeLabel}
-            {activeIncidentModeAppliedLabel ? ` · ${activeIncidentModeAppliedLabel}` : ''}
-          </small>
-        )}
+
+      {/* Center: incident mode chips + active mode indicator */}
+      <div className="command-incident-row">
         {INCIDENT_MODES.map((mode) => (
           <button
             key={mode.id}
             type="button"
-            className={activeIncidentModeId === mode.id ? 'active' : ''}
+            className={`command-incident-chip ${activeIncidentModeId === mode.id ? 'active' : ''}`}
             onClick={() => {
               applyWorkspacePreset(mode.workspacePresetId)
               applyLayerPreset(mode.layerPresetId)
@@ -143,6 +79,58 @@ export function CommandBar({ activeUtilityTab, onToggleUtilityTab, onCloseUtilit
             {mode.label}
           </button>
         ))}
+        {activeIncidentModeLabel && (
+          <span className="command-incident-active-label">
+            Active: {activeIncidentModeLabel}{activeIncidentModeAppliedLabel ? ` · ${activeIncidentModeAppliedLabel}` : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Right: preset picker + mode toggle + utility */}
+      <div className="command-actions">
+        <select
+          className="command-preset-select"
+          value={currentPresetId ?? ''}
+          onChange={(event) => {
+            if (event.currentTarget.value) applyWorkspacePreset(event.currentTarget.value)
+            setActiveIncidentMode(null)
+          }}
+        >
+          <option value="">{presetLabel}</option>
+          <optgroup label="Built-in">
+            {WORKSPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.title}</option>)}
+          </optgroup>
+          {userPresets.length > 0 && (
+            <optgroup label="Saved">
+              {userPresets.map((preset) => <option key={preset.id} value={preset.id}>★ {preset.title}</option>)}
+            </optgroup>
+          )}
+        </select>
+
+        <button
+          type="button"
+          className={`command-mode-toggle ${layoutMode === 'edit' ? 'edit-mode' : ''}`}
+          onClick={() => setLayoutMode(layoutMode === 'edit' ? 'operate' : 'edit')}
+        >
+          {layoutMode === 'edit' ? 'Exit Edit' : 'Edit Layout'}
+        </button>
+
+        <button type="button" className="command-palette-btn" onClick={onOpenCommandPalette}>
+          ⌘K
+        </button>
+
+        <div className="command-utility-group">
+          <button
+            type="button"
+            className={activeUtilityTab === 'workspace' ? 'active' : ''}
+            onClick={() => onToggleUtilityTab('workspace')}
+          >
+            Workspace
+          </button>
+          {activeUtilityTab && (
+            <button type="button" onClick={onCloseUtility}>✕</button>
+          )}
+        </div>
       </div>
     </header>
   )

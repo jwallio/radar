@@ -1,0 +1,79 @@
+name: Refresh and deploy MRMS radar
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub Actions schedules are best-effort; this targets roughly five minutes.
+    - cron: '*/5 * * * *'
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out application source
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Restore generated historical packs
+        uses: actions/cache/restore@v4
+        with:
+          path: public/data/radar/history
+          key: radar-history-${{ runner.os }}-restore-${{ github.run_id }}
+          restore-keys: |
+            radar-history-${{ runner.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install radar processor dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Build generated regional radar artifact
+        env:
+          MRMS_MAX_FRAMES: '30'
+          MRMS_RETENTION_MINUTES: '90'
+          MRMS_INCLUDE_PRECIP_TYPE: 'true'
+        run: python scripts/build_radar_frames.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build static site
+        env:
+          VITE_BASE_PATH: /
+        run: npm run build
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

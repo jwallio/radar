@@ -1,0 +1,113 @@
+name: Build and deploy a historical radar loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: ISO-8601 start with timezone (example 2025-06-19T14:00:00-04:00)
+        required: true
+        type: string
+      end:
+        description: ISO-8601 end with timezone
+        required: true
+        type: string
+      label:
+        description: Optional viewer label
+        required: false
+        type: string
+      max_frames:
+        description: Maximum evenly sampled frames
+        required: true
+        default: '45'
+        type: string
+      precipitation_type:
+        description: Also build precipitation-type frames
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build-history-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Restore previously generated historical packs
+        uses: actions/cache/restore@v4
+        with:
+          path: public/data/radar/history
+          key: radar-history-${{ runner.os }}-restore-${{ github.run_id }}
+          restore-keys: |
+            radar-history-${{ runner.os }}-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install radar processor dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Build current live radar
+        env:
+          MRMS_MAX_FRAMES: '30'
+          MRMS_RETENTION_MINUTES: '90'
+          MRMS_INCLUDE_PRECIP_TYPE: 'true'
+        run: python scripts/build_radar_frames.py
+
+      - name: Build requested historical loop
+        shell: bash
+        env:
+          HISTORY_START: ${{ inputs.start }}
+          HISTORY_END: ${{ inputs.end }}
+          HISTORY_LABEL: ${{ inputs.label }}
+          HISTORY_MAX_FRAMES: ${{ inputs.max_frames }}
+          HISTORY_PRECIPITATION_TYPE: ${{ inputs.precipitation_type }}
+        run: |
+          args=(--start "$HISTORY_START" --end "$HISTORY_END" --max-frames "$HISTORY_MAX_FRAMES")
+          if [[ -n "$HISTORY_LABEL" ]]; then args+=(--label "$HISTORY_LABEL"); fi
+          if [[ "$HISTORY_PRECIPITATION_TYPE" != "true" ]]; then args+=(--no-precip-type); fi
+          python scripts/build_historical_radar.py "${args[@]}"
+
+      - name: Save historical packs for future live refreshes
+        uses: actions/cache/save@v4
+        with:
+          path: public/data/radar/history
+          key: radar-history-${{ runner.os }}-${{ github.run_id }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - name: Build static site
+        env:
+          VITE_BASE_PATH: /
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -70,8 +70,9 @@ function readWorkspacePreferences(): WorkspacePreferences {
   return defaults
 }
 
-function readLayoutMode(raw: unknown): LayoutMode {
-  return raw === 'edit' ? 'edit' : 'operate'
+function readLayoutMode(_raw: unknown): LayoutMode {
+  // Always start in operate mode — never restore edit mode from storage
+  return 'operate'
 }
 
 function readLayoutLocked(raw: unknown): boolean {

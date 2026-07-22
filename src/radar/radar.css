@@ -1,0 +1,189 @@
+.radar-app {
+  --radar-bg: #091219;
+  --radar-surface: rgba(12, 23, 31, 0.94);
+  --radar-surface-soft: rgba(18, 32, 42, 0.88);
+  --radar-border: rgba(150, 184, 194, 0.22);
+  --radar-border-strong: rgba(150, 210, 208, 0.42);
+  --radar-text: #edf5f3;
+  --radar-muted: #8da7ad;
+  --radar-accent: #81ded0;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100svh;
+  overflow: hidden;
+  background: var(--radar-bg);
+  color: var(--radar-text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.radar-app *, .radar-app *::before, .radar-app *::after { box-sizing: border-box; }
+.radar-app button, .radar-app select, .radar-app input { font: inherit; }
+.radar-app button { border: 0; border-radius: 7px; color: var(--radar-text); background: transparent; cursor: pointer; }
+.radar-app button:focus-visible, .radar-app input:focus-visible, .radar-app select:focus-visible { outline: 2px solid var(--radar-accent); outline-offset: 2px; }
+.radar-app button:disabled { opacity: .42; cursor: not-allowed; }
+
+.radar-header {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 62px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(146, 184, 193, .19);
+  background: rgba(8, 18, 24, .96);
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .18);
+}
+
+.radar-brand-lockup, .radar-header-status, .radar-header-actions { display: flex; align-items: center; }
+.radar-brand-lockup { gap: 11px; min-width: 230px; }
+.radar-mark { position: relative; display: grid; place-items: center; width: 29px; height: 29px; overflow: hidden; border: 1px solid rgba(129, 222, 208, .6); border-radius: 50%; background: rgba(42, 92, 95, .24); }
+.radar-mark::after { content: ""; position: absolute; top: 50%; left: 50%; width: 3px; height: 3px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--radar-accent); box-shadow: 0 0 6px var(--radar-accent); }
+.radar-mark i { position: absolute; display: block; border: 1px solid var(--radar-accent); border-bottom-color: transparent; border-left-color: transparent; border-radius: 50%; transform: rotate(-45deg); opacity: .8; }
+.radar-mark i:nth-child(1) { width: 12px; height: 12px; }
+.radar-mark i:nth-child(2) { width: 20px; height: 20px; opacity: .55; }
+.radar-mark i:nth-child(3) { width: 28px; height: 28px; opacity: .3; }
+.radar-product-name { font-size: 14px; font-weight: 760; letter-spacing: .03em; }
+.radar-region-name { margin-top: 2px; color: var(--radar-muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.radar-region-name span { color: #637d84; letter-spacing: .04em; }
+.radar-header-status { gap: 14px; padding-left: 18px; border-left: 1px solid var(--radar-border); }
+.radar-freshness { display: flex; align-items: center; gap: 7px; color: #e7c980; font-size: 10px; font-weight: 760; letter-spacing: .12em; }
+.radar-freshness.live { color: var(--radar-accent); }
+.radar-freshness.historical { color: #c2adff; }
+.radar-freshness.unavailable { color: #f28d86; }
+.radar-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
+.radar-valid-time { color: #dbe8e7; font-size: 12px; font-variant-numeric: tabular-nums; }
+.radar-header-actions { gap: 12px; min-width: 230px; justify-content: flex-end; }
+.radar-warning-count { color: var(--radar-muted); font-size: 11px; white-space: nowrap; }
+.radar-settings-button { padding: 7px 10px; border: 1px solid var(--radar-border); background: rgba(21, 39, 47, .72) !important; color: #d8ebea !important; font-size: 11px !important; }
+.radar-settings-button:hover { border-color: var(--radar-border-strong); }
+.radar-sliders-icon { display: inline-block; margin-right: 5px; color: var(--radar-accent); font-size: 15px; line-height: 0; transform: rotate(90deg); }
+
+.radar-map-area { position: absolute; inset: 62px 0 0; overflow: hidden; }
+.radar-map { position: absolute; inset: 0; background: #e5edf4; }
+.radar-map .maplibregl-ctrl-group { overflow: hidden; border: 1px solid rgba(147, 182, 190, .24); border-radius: 7px; background: rgba(12, 23, 30, .86); box-shadow: 0 3px 12px rgba(0,0,0,.2); }
+.radar-map .maplibregl-ctrl button { width: 29px; height: 29px; }
+.radar-map .maplibregl-ctrl-attrib { max-width: 260px; border-radius: 5px 0 0 0; background: rgba(9, 18, 24, .78); color: #8fa6aa; font-size: 9px; }
+.radar-map .maplibregl-ctrl-attrib a { color: #a8c9c8; }
+.radar-map-badge { position: absolute; top: 16px; left: 18px; z-index: 4; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid rgba(153, 190, 194, .24); border-radius: 6px; background: rgba(9, 19, 25, .76); color: #e2edeb; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(8px); }
+.radar-map-badge > span:first-child { color: var(--radar-accent); font-weight: 800; }
+.radar-badge-divider { width: 1px; height: 12px; background: var(--radar-border); }
+.radar-data-strip { position: absolute; top: 16px; left: 50%; z-index: 6; display: flex; gap: 8px; align-items: center; max-width: min(620px, calc(100% - 36px)); padding: 7px 10px; transform: translateX(-50%); border: 1px solid rgba(232, 174, 100, .4); border-radius: 6px; background: rgba(42, 29, 18, .9); color: #f5d8a5; font-size: 11px; box-shadow: 0 5px 16px rgba(0,0,0,.18); }
+.radar-data-strip strong { white-space: nowrap; }
+.radar-data-strip.stale { border-color: rgba(232, 197, 108, .46); background: rgba(48, 37, 18, .9); color: #f1d795; }
+.radar-data-strip.geography-warning { top: auto; right: 18px; bottom: 164px; left: auto; transform: none; font-size: 10px; }
+.radar-unavailable { position: absolute; top: 50%; left: 50%; z-index: 5; display: grid; gap: 6px; width: min(360px, calc(100% - 40px)); padding: 24px; transform: translate(-50%, -58%); border: 1px solid rgba(148, 185, 193, .26); border-radius: 10px; background: rgba(10, 22, 29, .9); box-shadow: 0 14px 34px rgba(0,0,0,.28); text-align: center; backdrop-filter: blur(10px); }
+.radar-unavailable strong { font-size: 15px; }
+.radar-unavailable span, .radar-unavailable small { color: var(--radar-muted); font-size: 12px; line-height: 1.45; }
+.radar-unavailable small { overflow: hidden; color: #d9a58d; font-family: ui-monospace, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.radar-unavailable-icon { color: var(--radar-accent); font-size: 25px; }
+
+.radar-legend { position: absolute; top: 50%; left: 17px; z-index: 4; display: grid; grid-template-columns: 27px 25px; grid-template-rows: auto 1fr; gap: 6px 7px; padding: 10px 9px; transform: translateY(-56%); border: 1px solid rgba(147, 182, 190, .22); border-radius: 6px; background: rgba(9, 19, 25, .82); box-shadow: 0 6px 18px rgba(0,0,0,.2); backdrop-filter: blur(7px); }
+.radar-legend-heading { grid-column: 1 / span 2; color: #d8e7e6; font-size: 9px; font-weight: 800; letter-spacing: .13em; text-align: center; }
+.radar-legend-swatches { display: flex; flex-direction: column; width: 13px; height: 196px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 3px; }
+.radar-legend-swatches span { flex: 1; min-height: 1px; }
+.radar-legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #b9ced0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; line-height: 1; }
+
+.radar-settings { position: absolute; top: 16px; right: 17px; z-index: 10; display: flex; flex-direction: column; width: 268px; max-height: calc(100% - 190px); overflow: auto; padding: 14px; border: 1px solid rgba(147, 182, 190, .26); border-radius: 9px; background: var(--radar-surface); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.radar-settings-head, .radar-timeline-top, .radar-warning-panel-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.radar-panel-kicker { display: block; margin-bottom: 4px; color: var(--radar-accent); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.radar-settings h2, .radar-warning-panel h2 { margin: 0; font-size: 14px; font-weight: 680; }
+.radar-icon-button { width: 24px; height: 24px; color: var(--radar-muted) !important; font-size: 20px !important; line-height: 1; }
+.radar-icon-button:hover { color: var(--radar-text) !important; background: rgba(255,255,255,.07) !important; }
+.radar-mobile-close { display: none; }
+.radar-field-label { display: flex; align-items: center; justify-content: space-between; margin: 17px 0 6px; color: #c9d9d9; font-size: 10px; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; }
+.radar-field-label output { color: var(--radar-accent); font-family: ui-monospace, monospace; font-size: 10px; }
+.radar-select { width: 100%; padding: 9px 10px; border: 1px solid rgba(147, 182, 190, .3); border-radius: 6px; background: #101f27; color: var(--radar-text); font-size: 12px; }
+.radar-select option { background: #101f27; }
+.radar-field-note { margin: 7px 0 0; color: var(--radar-muted); font-size: 10px; line-height: 1.4; }
+.radar-field-note.error { color: #e1ab91; }
+.radar-layer-list { display: grid; gap: 2px; margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(147,182,190,.14); }
+.radar-layer-row { display: grid; grid-template-columns: 15px 1fr; align-items: center; gap: 8px; min-height: 42px; cursor: pointer; }
+.radar-layer-row input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.radar-checkbox { position: relative; width: 14px; height: 14px; border: 1px solid rgba(147,182,190,.55); border-radius: 3px; background: rgba(9,18,24,.6); }
+.radar-layer-row input:checked + .radar-checkbox { border-color: var(--radar-accent); background: rgba(67, 157, 149, .78); }
+.radar-layer-row input:checked + .radar-checkbox::after { content: ""; position: absolute; top: 2px; left: 4px; width: 4px; height: 7px; border: solid #08231f; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.radar-layer-row:has(input:disabled) { cursor: not-allowed; opacity: .48; }
+.radar-layer-row > span:last-child { display: grid; gap: 2px; }
+.radar-layer-row strong { color: #e0ecea; font-size: 12px; font-weight: 600; }
+.radar-layer-row small { color: #7f999f; font-size: 9px; }
+.radar-range { width: 100%; accent-color: var(--radar-accent); }
+.radar-source-note { margin: 17px 0 0; padding-top: 10px; border-top: 1px solid rgba(147,182,190,.14); color: #718a90; font-size: 9px; line-height: 1.45; }
+
+.radar-warning-panel { position: absolute; top: 16px; right: 300px; z-index: 9; width: min(310px, calc(100% - 330px)); padding: 14px; border: 1px solid rgba(241, 70, 93, .46); border-radius: 9px; background: rgba(25, 19, 24, .94); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.radar-warning-panel h2 { color: #ffe8e8; }
+.radar-warning-headline { margin: 13px 0 10px; color: #e6cfd0; font-size: 11px; line-height: 1.4; }
+.radar-warning-panel dl { display: grid; gap: 7px; margin: 0; }
+.radar-warning-panel dl div { display: grid; grid-template-columns: 65px 1fr; gap: 8px; }
+.radar-warning-panel dt { color: #a99298; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.radar-warning-panel dd { margin: 0; color: #f3e7e7; font-size: 10px; line-height: 1.35; }
+
+.radar-timeline { position: absolute; bottom: 16px; left: 50%; z-index: 10; width: min(760px, calc(100% - 360px)); padding: 13px 15px 12px; transform: translateX(-50%); border: 1px solid rgba(147, 182, 190, .28); border-radius: 9px; background: rgba(9, 20, 27, .94); box-shadow: 0 12px 35px rgba(0,0,0,.34); backdrop-filter: blur(13px); }
+.radar-timeline-top strong { color: #e5efed; font-size: 12px; font-weight: 620; }
+.radar-frame-count { color: var(--radar-muted); font-family: ui-monospace, monospace; font-size: 10px; }
+.radar-timeline-range { display: block; width: 100%; margin: 12px 0 3px; accent-color: var(--radar-accent); }
+.radar-timeline-endpoints { display: flex; justify-content: space-between; color: #718b91; font-family: ui-monospace, monospace; font-size: 9px; }
+.radar-control-row { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
+.radar-control-row > button { min-width: 91px; padding: 7px 9px; border: 1px solid rgba(147,182,190,.25); background: rgba(23, 42, 51, .78); color: #d8e6e4; font-size: 11px; }
+.radar-control-row > button:hover, .radar-speed-control button:hover { border-color: var(--radar-border-strong); }
+.radar-control-row > .radar-play-button { border-color: rgba(129,222,208,.5); background: rgba(46, 108, 104, .65); color: #e6fffb; font-weight: 700; }
+.radar-speed-control { display: flex; margin-left: auto; border: 1px solid rgba(147,182,190,.22); border-radius: 6px; overflow: hidden; }
+.radar-speed-control button { min-width: 34px; padding: 7px 4px; border-radius: 0; color: var(--radar-muted); font-size: 10px; }
+.radar-speed-control button.active { background: rgba(129,222,208,.18); color: var(--radar-accent); }
+.radar-download-button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 7px 10px; border: 1px solid rgba(194, 173, 255, .48); border-radius: 6px; background: rgba(100, 74, 149, .28); color: #e9e0ff; font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.radar-download-button:hover { border-color: rgba(211, 196, 255, .78); background: rgba(112, 82, 164, .42); }
+.radar-download-unavailable { color: #6f858b; font-size: 9px; white-space: nowrap; }
+.radar-playback-note { margin: 9px 0 -2px; color: #d4aa79; font-size: 9px; text-align: center; }
+
+@media (max-width: 900px) {
+  .radar-header { padding: 0 12px; }
+  .radar-brand-lockup { min-width: 0; }
+  .radar-header-status { gap: 7px; padding-left: 10px; }
+  .radar-header-actions { min-width: 0; }
+  .radar-warning-count { display: none; }
+  .radar-timeline { width: min(680px, calc(100% - 330px)); }
+  .radar-warning-panel { right: 17px; width: min(310px, calc(100% - 335px)); }
+}
+
+@media (max-width: 680px) {
+  .radar-header { height: 58px; gap: 8px; }
+  .radar-map-area { inset: 58px 0 0; }
+  .radar-product-name { font-size: 13px; }
+  .radar-region-name { font-size: 9px; }
+  .radar-region-name span { display: none; }
+  .radar-mark { width: 26px; height: 26px; }
+  .radar-header-status { display: grid; justify-items: end; gap: 1px; margin-left: auto; padding-left: 0; border-left: 0; }
+  .radar-freshness { font-size: 9px; letter-spacing: .08em; }
+  .radar-valid-time { font-size: 10px; }
+  .radar-settings-button { padding: 7px 8px; font-size: 10px !important; }
+  .radar-sliders-icon { display: none; }
+  .radar-map-badge { top: 10px; left: 10px; padding: 6px 7px; font-size: 8px; }
+  .radar-legend { top: auto; right: 10px; bottom: 216px; left: auto; transform: none; grid-template-columns: 23px 22px; padding: 8px 7px; }
+  .radar-legend-swatches { height: 168px; width: 11px; }
+  .radar-legend-labels { font-size: 8px; }
+  .radar-settings { top: 10px; right: 10px; bottom: auto; width: min(310px, calc(100% - 20px)); max-height: calc(100% - 20px); transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
+  .radar-settings.open { transform: translateX(0); }
+  .radar-mobile-close { display: block; }
+  .radar-warning-panel { top: 10px; right: 10px; width: min(310px, calc(100% - 20px)); }
+  .radar-data-strip { top: 50px; max-width: calc(100% - 20px); font-size: 10px; }
+  .radar-data-strip.geography-warning { right: 10px; bottom: 184px; max-width: calc(100% - 20px); }
+  .radar-timeline { right: 10px; bottom: 9px; left: 10px; width: auto; padding: 11px 11px 10px; transform: none; }
+  .radar-timeline-top strong { font-size: 11px; }
+  .radar-control-row { flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .radar-control-row > button { min-width: 0; flex: 1; padding: 8px 5px; font-size: 10px; }
+  .radar-control-row > button span { display: none; }
+  .radar-speed-control { margin-left: 0; }
+  .radar-speed-control button { min-width: 31px; padding: 8px 3px; }
+  .radar-download-button { flex: 1; min-width: 82px; min-height: 32px; }
+  .radar-download-unavailable { flex: 1; text-align: center; }
+  .radar-timeline-endpoints { font-size: 8px; }
+}
+
+@media (max-width: 390px) {
+  .radar-product-name { font-size: 12px; }
+  .radar-header-status { display: none; }
+  .radar-brand-lockup { flex: 1; }
+  .radar-control-row > button { padding-inline: 4px; }
+}

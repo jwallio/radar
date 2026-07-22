@@ -1,5 +1,5 @@
-import { AppShell } from '../components/AppShell'
+import { RadarApp } from '../radar/RadarApp'
 
 export default function App() {
-  return <AppShell />
+  return <RadarApp />
 }

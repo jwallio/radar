@@ -41,18 +41,9 @@ function lzwEncode(indices: Uint8Array): Uint8Array {
   const output: number[] = []
   let bitBuffer = 0
   let bitCount = 0
-  let codeSize = minimumCodeSize + 1
-  let nextCode = endCode + 1
-  let dictionary = new Map<number, number>()
-
-  const resetDictionary = () => {
-    dictionary = new Map<number, number>()
-    codeSize = minimumCodeSize + 1
-    nextCode = endCode + 1
-  }
   const writeCode = (code: number) => {
     bitBuffer |= code << bitCount
-    bitCount += codeSize
+    bitCount += minimumCodeSize + 1
     while (bitCount >= 8) {
       output.push(bitBuffer & 0xff)
       bitBuffer >>= 8
@@ -60,34 +51,15 @@ function lzwEncode(indices: Uint8Array): Uint8Array {
     }
   }
 
-  resetDictionary()
+  // Emit one literal pixel between clear codes. This is intentionally
+  // conservative: it avoids decoder-specific dictionary/code-size edge cases
+  // while keeping the browser-side export dependency-free and deterministic.
   writeCode(clearCode)
-  if (!indices.length) {
-    writeCode(endCode)
-  } else {
-    let current = indices[0]
-    for (let index = 1; index < indices.length; index += 1) {
-      const next = indices[index]
-      const candidate = (current << 8) | next
-      const candidateCode = dictionary.get(candidate)
-      if (candidateCode !== undefined) {
-        current = candidateCode
-        continue
-      }
-      writeCode(current)
-      if (nextCode < 4096) {
-        dictionary.set(candidate, nextCode)
-        nextCode += 1
-        if (nextCode === (1 << codeSize) && codeSize < 12) codeSize += 1
-      } else {
-        writeCode(clearCode)
-        resetDictionary()
-      }
-      current = next
-    }
-    writeCode(current)
-    writeCode(endCode)
-  }
+  indices.forEach((index) => {
+    writeCode(index)
+    writeCode(clearCode)
+  })
+  writeCode(endCode)
   if (bitCount > 0) output.push(bitBuffer & 0xff)
   return Uint8Array.from(output)
 }

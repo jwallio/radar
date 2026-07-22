@@ -308,6 +308,22 @@ function captureMapCanvas(map: maplibregl.Map): ImageData {
   return context.getImageData(0, 0, width, height)
 }
 
+function hasVisibleMapCapture(image: ImageData): boolean {
+  const pixelCount = image.data.length / 4
+  const sampleStep = Math.max(1, Math.floor(pixelCount / 10_000))
+  let samples = 0
+  let visible = 0
+  let brightness = 0
+  for (let pixel = 0; pixel < pixelCount; pixel += sampleStep) {
+    const source = pixel * 4
+    const value = image.data[source] + image.data[source + 1] + image.data[source + 2]
+    brightness += value
+    samples += 1
+    if (image.data[source + 3] > 0 && value > 24) visible += 1
+  }
+  return samples > 0 && visible / samples > 0.05 && brightness / samples > 24
+}
+
 async function captureRadarFallback(
   map: maplibregl.Map,
   frame: RadarFrameManifest,
@@ -795,6 +811,7 @@ export function RadarApp() {
       },
       center: MAP_CENTER,
       zoom: 6.25,
+      canvasContextAttributes: { preserveDrawingBuffer: true },
       minZoom: 5.2,
       maxZoom: 12,
       maxBounds: [[REGIONAL_BOUNDS[0] - 1, REGIONAL_BOUNDS[1] - 1], [REGIONAL_BOUNDS[2] + 1, REGIONAL_BOUNDS[3] + 1]],
@@ -980,7 +997,9 @@ export function RadarApp() {
           if (!radarSourceReady) throw new Error('Radar image source is not ready')
           updateRadarMapImage(map, frame, manifestPath)
           await waitForMapPaint(map)
-          captured.push(captureMapCanvas(map))
+          const mapCapture = captureMapCanvas(map)
+          if (!hasVisibleMapCapture(mapCapture)) throw new Error('Map canvas did not contain rendered pixels')
+          captured.push(mapCapture)
         } catch {
           usedRadarOnlyFallback = true
           captured.push(await captureRadarFallback(map, frame, manifestPath))

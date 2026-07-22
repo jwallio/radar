@@ -109,8 +109,19 @@
 .radar-layer-row > span:last-child { display: grid; gap: 2px; }
 .radar-layer-row strong { color: #e0ecea; font-size: 12px; font-weight: 600; }
 .radar-layer-row small { color: #7f999f; font-size: 9px; }
+.radar-layer-section-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 9px 0 2px; padding-top: 8px; border-top: 1px solid rgba(147,182,190,.12); color: #b6cecc; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.radar-layer-section-heading:first-child { margin-top: 0; border-top: 0; }
+.radar-layer-section-heading small { color: #6f898e; font-size: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .radar-range { width: 100%; accent-color: var(--radar-accent); }
 .radar-source-note { margin: 17px 0 0; padding-top: 10px; border-top: 1px solid rgba(147,182,190,.14); color: #718a90; font-size: 9px; line-height: 1.45; }
+
+.radar-analysis-legends { position: absolute; bottom: 164px; left: 65px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; max-width: min(640px, calc(100% - 410px)); max-height: 126px; overflow: auto; }
+.radar-analysis-legend { min-width: 118px; padding: 7px 8px; border: 1px solid rgba(147,182,190,.24); border-radius: 6px; background: rgba(9,19,25,.84); box-shadow: 0 5px 16px rgba(0,0,0,.2); backdrop-filter: blur(7px); }
+.radar-analysis-legend-title { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; color: #d8e7e6; font-size: 8px; font-weight: 760; letter-spacing: .04em; white-space: nowrap; }
+.radar-analysis-legend-title span { color: #7e9a9e; font-family: ui-monospace, monospace; font-size: 7px; font-weight: 500; }
+.radar-analysis-legend-swatches { display: flex; height: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 2px; }
+.radar-analysis-legend-swatches span { flex: 1; }
+.radar-analysis-legend-labels { display: flex; justify-content: space-between; margin-top: 3px; color: #9ab3b5; font-family: ui-monospace, monospace; font-size: 7px; }
 
 .radar-warning-panel { position: absolute; top: 16px; right: 300px; z-index: 9; width: min(310px, calc(100% - 330px)); padding: 14px; border: 1px solid rgba(241, 70, 93, .46); border-radius: 9px; background: rgba(25, 19, 24, .94); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
 .radar-warning-panel h2 { color: #ffe8e8; }
@@ -119,6 +130,11 @@
 .radar-warning-panel dl div { display: grid; grid-template-columns: 65px 1fr; gap: 8px; }
 .radar-warning-panel dt { color: #a99298; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .radar-warning-panel dd { margin: 0; color: #f3e7e7; font-size: 10px; line-height: 1.35; }
+.radar-observation-panel { position: absolute; right: 300px; bottom: 166px; z-index: 9; width: min(310px, calc(100% - 330px)); padding: 14px; border: 1px solid rgba(71, 190, 190, .42); border-radius: 9px; background: rgba(12, 26, 30, .94); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.radar-observation-panel h2 { color: #e4f5f2; }
+.radar-observation-panel .radar-warning-headline { color: #c4dfdc; }
+.radar-observation-panel dt { color: #86a9aa; }
+.radar-observation-panel dd { color: #e5f2ef; }
 
 .radar-timeline { position: absolute; bottom: 16px; left: 50%; z-index: 10; width: min(820px, calc(100% - 360px)); padding: 13px 15px 12px; transform: translateX(-50%); border: 1px solid rgba(147, 182, 190, .28); border-radius: 9px; background: rgba(9, 20, 27, .94); box-shadow: 0 12px 35px rgba(0,0,0,.34); backdrop-filter: blur(13px); }
 .radar-timeline-top strong { color: #e5efed; font-size: 12px; font-weight: 620; }
@@ -138,6 +154,8 @@
 .radar-fps-label { margin-right: -4px; color: #70888e; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
 .radar-download-button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 7px 10px; border: 1px solid rgba(194, 173, 255, .48); border-radius: 6px; background: rgba(100, 74, 149, .28); color: #e9e0ff; font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .radar-download-button:hover { border-color: rgba(211, 196, 255, .78); background: rgba(112, 82, 164, .42); }
+.radar-static-download { color: #aabac0; font-size: 9px; text-decoration: none; white-space: nowrap; }
+.radar-static-download:hover { color: #e5f0ef; text-decoration: underline; }
 .radar-download-unavailable { color: #6f858b; font-size: 9px; white-space: nowrap; }
 .radar-playback-note { margin: 9px 0 -2px; color: #d4aa79; font-size: 9px; text-align: center; }
 
@@ -168,9 +186,12 @@
   .radar-legend-swatches { height: 168px; width: 11px; }
   .radar-legend-labels { font-size: 8px; }
   .radar-settings { top: 10px; right: 10px; bottom: auto; width: min(310px, calc(100% - 20px)); max-height: calc(100% - 20px); transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
-  .radar-settings.open { transform: translateX(0); }
+  .radar-settings.open { z-index: 30; transform: translateX(0); }
   .radar-mobile-close { display: block; }
   .radar-warning-panel { top: 10px; right: 10px; width: min(310px, calc(100% - 20px)); }
+  .radar-observation-panel { top: 52px; right: 10px; bottom: auto; width: min(310px, calc(100% - 20px)); }
+  .radar-analysis-legends { right: 10px; bottom: 216px; left: 10px; max-width: calc(100% - 20px); max-height: 92px; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .radar-analysis-legend { min-width: 142px; }
   .radar-data-strip { top: 50px; max-width: calc(100% - 20px); font-size: 10px; }
   .radar-data-strip.geography-warning { right: 10px; bottom: 184px; max-width: calc(100% - 20px); }
   .radar-timeline { right: 10px; bottom: 9px; left: 10px; width: auto; padding: 11px 11px 10px; transform: none; }
@@ -183,6 +204,7 @@
   .radar-observed-badge { min-height: 32px; }
   .radar-speed-control button { min-width: 27px; padding: 8px 3px; }
   .radar-download-button { min-width: 72px; min-height: 32px; padding-inline: 7px; }
+  .radar-static-download { font-size: 8px; }
   .radar-download-unavailable { margin-left: auto; text-align: center; }
   .radar-timeline-endpoints { font-size: 8px; }
 }

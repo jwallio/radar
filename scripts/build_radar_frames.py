@@ -11,8 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from radar_processing.config import PRODUCTS, ProcessingConfig, load_config  # noqa: E402
+from radar_processing.config import ANALYSIS_PRODUCT_IDS, PRODUCTS, ProcessingConfig, load_config  # noqa: E402
 from radar_processing.mrms import RemoteFrame, list_product_frames, select_recent_frames  # noqa: E402
+from radar_processing.observations import build_buoy_observations  # noqa: E402
 from radar_processing.pipeline import PRECIP_ID, REFLECTIVITY_ID, build_radar_dataset  # noqa: E402
 
 
@@ -49,11 +50,34 @@ def _process(config: ProcessingConfig) -> int:
         except RuntimeError as exc:
             LOGGER.warning("PrecipFlag listing unavailable; mode will be disabled: %s", exc)
 
+    auxiliary_frames: dict[str, RemoteFrame] = {}
+    for product_id in ANALYSIS_PRODUCT_IDS:
+        try:
+            candidates = list_product_frames(PRODUCTS[product_id], config)
+            selected = select_recent_frames(
+                candidates,
+                retention_minutes=config.retention_minutes,
+                max_frames=1,
+            )
+            if selected:
+                auxiliary_frames[product_id] = selected[-1]
+            else:
+                LOGGER.warning("No current MRMS frame available for %s", product_id)
+        except RuntimeError as exc:
+            LOGGER.warning("%s listing unavailable; layer will be marked unavailable: %s", product_id, exc)
+
     sources = {
         "mrms_directory": config.mrms_base_url,
-        "reflectivity": f"{config.mrms_base_url}/{PRODUCTS[REFLECTIVITY_ID].directory}/",
-        "precip_flag": f"{config.mrms_base_url}/{PRODUCTS[PRECIP_ID].directory}/",
     }
+    sources.update(
+        {
+            product_id: f"{config.mrms_base_url}/{PRODUCTS[product_id].directory}/"
+            for product_id in PRODUCTS
+        }
+    )
+    # Keep descriptive aliases for older consumers of the generated manifest.
+    sources["reflectivity"] = sources[REFLECTIVITY_ID]
+    sources["precip_flag"] = sources[PRECIP_ID]
     build_radar_dataset(
         config,
         reflectivity_frames,
@@ -63,7 +87,15 @@ def _process(config: ProcessingConfig) -> int:
         dataset_id="live",
         label="Live / recent radar",
         sources=sources,
+        auxiliary_frames=auxiliary_frames,
     )
+    try:
+        build_buoy_observations(
+            config,
+            config.root / "public" / "data" / "observations" / "buoys.json",
+        )
+    except Exception as exc:  # noqa: BLE001 - observations are optional to the radar refresh
+        LOGGER.warning("NDBC buoy refresh failed; preserving radar output: %s", exc)
     return 0
 
 

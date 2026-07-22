@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { CARTO_LIGHT_TILES, CITIES_GEOJSON, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS } from './config'
-import { emptyFeatureCollection, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalWarnings, warningsFeatureCollection } from './data'
-import type { RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarProductId, RadarWarning } from './types'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES_GEOJSON, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
+import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
+import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
+import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarWarning, SurfaceObservation } from './types'
 import './radar.css'
 
 const LIVE_MANIFEST_PATH = `${import.meta.env.BASE_URL}data/radar/manifest.json`
 const HISTORY_CATALOG_PATH = `${import.meta.env.BASE_URL}data/radar/history/catalog.json`
+const BUOY_DATA_PATH = `${import.meta.env.BASE_URL}data/observations/buoys.json`
 const RADAR_SOURCE_ID = 'wallcloud-radar-image'
 const RADAR_LAYER_ID = 'wallcloud-radar-layer'
 const WARNING_SOURCE_ID = 'wallcloud-warning-source'
@@ -19,11 +21,16 @@ const COUNTY_SOURCE_ID = 'wallcloud-county-source'
 const HIGHWAY_SOURCE_ID = 'wallcloud-highway-source'
 const CITY_SOURCE_ID = 'wallcloud-city-source'
 const GRID_SOURCE_ID = 'wallcloud-grid-source'
+const SURFACE_SOURCE_ID = 'wallcloud-surface-source'
+const SURFACE_DOT_ID = 'wallcloud-surface-dot'
+const SURFACE_LABEL_ID = 'wallcloud-surface-label'
+const BUOY_SOURCE_ID = 'wallcloud-buoy-source'
+const BUOY_DOT_ID = 'wallcloud-buoy-dot'
+const BUOY_LABEL_ID = 'wallcloud-buoy-label'
 
 const EMPTY_STATE = emptyFeatureCollection()
 const EMPTY_BOUNDS: [[number, number], [number, number]] = [[REGIONAL_BOUNDS[0], REGIONAL_BOUNDS[1]], [REGIONAL_BOUNDS[2], REGIONAL_BOUNDS[3]]]
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
-const LATEST_FRAME_HOLD_MS = 900
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
@@ -162,6 +169,63 @@ function createMapSources(map: maplibregl.Map): void {
     paint: { 'text-color': ['case', ['get', 'primary'], '#172129', '#53616a'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.55 },
   })
 
+  map.addSource(SURFACE_SOURCE_ID, { type: 'geojson', data: EMPTY_STATE })
+  map.addLayer({
+    id: SURFACE_DOT_ID,
+    type: 'circle',
+    source: SURFACE_SOURCE_ID,
+    minzoom: 5.8,
+    paint: {
+      'circle-radius': 4.4,
+      'circle-color': '#0b8d9e',
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1.2,
+      'circle-opacity': 0.94,
+    },
+  })
+  map.addLayer({
+    id: SURFACE_LABEL_ID,
+    type: 'symbol',
+    source: SURFACE_SOURCE_ID,
+    minzoom: 7,
+    layout: {
+      'text-field': ['get', 'station'],
+      'text-size': 9,
+      'text-offset': [0.8, 0],
+      'text-anchor': 'left',
+      'text-allow-overlap': false,
+    },
+    paint: { 'text-color': '#096d79', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 },
+  })
+
+  map.addSource(BUOY_SOURCE_ID, { type: 'geojson', data: EMPTY_STATE })
+  map.addLayer({
+    id: BUOY_DOT_ID,
+    type: 'circle',
+    source: BUOY_SOURCE_ID,
+    paint: {
+      'circle-radius': 5.2,
+      'circle-color': '#d2772e',
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1.5,
+      'circle-opacity': 0.96,
+    },
+  })
+  map.addLayer({
+    id: BUOY_LABEL_ID,
+    type: 'symbol',
+    source: BUOY_SOURCE_ID,
+    minzoom: 6.3,
+    layout: {
+      'text-field': ['get', 'id'],
+      'text-size': 9,
+      'text-offset': [0.85, 0],
+      'text-anchor': 'left',
+      'text-allow-overlap': false,
+    },
+    paint: { 'text-color': '#9b531d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 },
+  })
+
   map.addSource(WARNING_SOURCE_ID, { type: 'geojson', data: EMPTY_STATE })
   map.addLayer({
     id: WARNING_FILL_ID,
@@ -204,8 +268,229 @@ function setLayerVisibility(map: maplibregl.Map, ids: string[], visible: boolean
   })
 }
 
-function productFrames(manifest: RadarManifest | null, productId: RadarProductId): RadarFrameManifest[] {
+function productFrames(manifest: RadarManifest | null, productId: RadarManifestProductId): RadarFrameManifest[] {
   return manifest?.products[productId]?.frames ?? (productId === 'MergedReflectivityQCComposite' ? manifest?.frames ?? [] : [])
+}
+
+function analysisSourceId(productId: string): string {
+  return `wallcloud-analysis-source-${productId.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`
+}
+
+function analysisLayerId(productId: string): string {
+  return `wallcloud-analysis-layer-${productId.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`
+}
+
+function imageCoordinates(bounds: [number, number, number, number]): [[number, number], [number, number], [number, number], [number, number]] {
+  return [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]]
+}
+
+function loadBrowserImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error(`Unable to load radar frame ${url}`))
+    image.src = url
+  })
+}
+
+function captureMapCanvas(map: maplibregl.Map): ImageData {
+  const source = map.getCanvas()
+  const scale = Math.min(1, GIF_WIDTH_LIMIT / source.width, GIF_HEIGHT_LIMIT / source.height)
+  const width = Math.max(1, Math.round(source.width * scale))
+  const height = Math.max(1, Math.round(source.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Browser canvas is unavailable')
+  context.drawImage(source, 0, 0, width, height)
+  return context.getImageData(0, 0, width, height)
+}
+
+async function captureRadarFallback(
+  map: maplibregl.Map,
+  frame: RadarFrameManifest,
+  manifestPath: string,
+): Promise<ImageData> {
+  const image = await loadBrowserImage(frameUrl(frame, manifestPath))
+  const sourceCanvas = map.getCanvas()
+  const scale = Math.min(1, GIF_WIDTH_LIMIT / sourceCanvas.width, GIF_HEIGHT_LIMIT / sourceCanvas.height)
+  const width = Math.max(1, Math.round(sourceCanvas.width * scale))
+  const height = Math.max(1, Math.round(sourceCanvas.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Browser canvas is unavailable')
+  context.fillStyle = '#e5edf4'
+  context.fillRect(0, 0, width, height)
+
+  const view = map.getBounds()
+  const [west, south, east, north] = frame.bounds
+  const viewWest = Math.max(west, view.getWest())
+  const viewEast = Math.min(east, view.getEast())
+  const viewSouth = Math.max(south, view.getSouth())
+  const viewNorth = Math.min(north, view.getNorth())
+  if (viewWest < viewEast && viewSouth < viewNorth) {
+    const sourceX = (viewWest - west) / (east - west) * image.naturalWidth
+    const sourceY = (north - viewNorth) / (north - south) * image.naturalHeight
+    const sourceWidth = (viewEast - viewWest) / (east - west) * image.naturalWidth
+    const sourceHeight = (viewNorth - viewSouth) / (north - south) * image.naturalHeight
+    context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height)
+  } else {
+    context.drawImage(image, 0, 0, width, height)
+  }
+  return context.getImageData(0, 0, width, height)
+}
+
+function updateRadarMapImage(map: maplibregl.Map, frame: RadarFrameManifest, manifestPath: string): void {
+  const source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | undefined
+  if (!source) throw new Error('Radar image source is not ready')
+  source.updateImage({ url: frameUrl(frame, manifestPath), coordinates: imageCoordinates(frame.bounds) })
+}
+
+function waitForMapPaint(map: maplibregl.Map): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    let timer = 0
+    const finish = () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      map.off('idle', finish)
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))
+    }
+    map.once('idle', finish)
+    timer = window.setTimeout(finish, 450)
+    map.triggerRepaint()
+  })
+}
+
+function surfaceFeatureCollection(observations: SurfaceObservation[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: observations.map((observation) => ({
+      type: 'Feature',
+      id: observation.id,
+      geometry: { type: 'Point', coordinates: [observation.lon, observation.lat] },
+      properties: {
+        id: observation.id,
+        station: observation.station,
+        name: observation.name,
+        observedAt: observation.observedAt ?? '',
+        temperatureC: observation.temperatureC,
+        textDescription: observation.textDescription,
+      },
+    })),
+  }
+}
+
+function buoyFeatureCollection(observations: BuoyObservation[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: observations.map((observation) => ({
+      type: 'Feature',
+      id: observation.id,
+      geometry: { type: 'Point', coordinates: [observation.lon, observation.lat] },
+      properties: {
+        id: observation.id,
+        name: observation.name,
+        observedAt: observation.observedAt ?? '',
+      },
+    })),
+  }
+}
+
+function formatNumber(value: number | null | undefined, suffix = ''): string {
+  return value === null || value === undefined || !Number.isFinite(value) ? '—' : `${value.toFixed(1)}${suffix}`
+}
+
+function formatTemperature(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  return `${Math.round(value * 9 / 5 + 32)}°F`
+}
+
+function formatWind(value: number | null | undefined, unit: 'kmh' | 'mps'): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  const mph = unit === 'kmh' ? value * 0.621371 : value * 2.23694
+  return `${Math.round(mph)} mph`
+}
+
+function RadarAnalysisLegends({
+  layers,
+  manifest,
+  isHistorical,
+}: {
+  layers: Record<AnalysisLayerKey, boolean>
+  manifest: RadarManifest | null
+  isHistorical: boolean
+}) {
+  const active = ANALYSIS_LAYER_DEFINITIONS.filter((definition) => {
+    const product = manifest?.products[definition.productId]
+    return !isHistorical && layers[definition.key] && Boolean(product?.frames.length)
+  })
+  if (!active.length) return null
+  return (
+    <div className="radar-analysis-legends" aria-label="Active storm analysis legends">
+      {active.map((definition) => (
+        <div className="radar-analysis-legend" key={definition.key}>
+          <div className="radar-analysis-legend-title">{definition.label} <span>{definition.unit}</span></div>
+          <div className="radar-analysis-legend-swatches">
+            {definition.legend.map((entry) => <span key={entry.label} style={{ backgroundColor: entry.color }} title={`${entry.label} ${definition.unit}`} />)}
+          </div>
+          <div className="radar-analysis-legend-labels">
+            {definition.legend.map((entry) => <span key={entry.label}>{entry.label}</span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function RadarObservationPanel({
+  observation,
+  buoy,
+  onClose,
+}: {
+  observation: SurfaceObservation | null
+  buoy: BuoyObservation | null
+  onClose: () => void
+}) {
+  if (!observation && !buoy) return null
+  if (observation) {
+    return (
+      <section className="radar-observation-panel" aria-live="polite">
+        <div className="radar-warning-panel-top">
+          <div><span className="radar-panel-kicker">NWS surface observation</span><h2>{observation.name}</h2></div>
+          <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close observation details">×</button>
+        </div>
+        <p className="radar-warning-headline">{observation.textDescription} · {formatEasternDateTime(observation.observedAt)}</p>
+        <dl>
+          <div><dt>Temp / dewpoint</dt><dd>{formatTemperature(observation.temperatureC)} / {formatTemperature(observation.dewpointC)}</dd></div>
+          <div><dt>Wind</dt><dd>{formatWind(observation.windSpeedKmh, 'kmh')}{observation.windDirectionDeg === null ? '' : ` from ${Math.round(observation.windDirectionDeg)}°`}</dd></div>
+          <div><dt>Gust</dt><dd>{formatWind(observation.windGustKmh, 'kmh')}</dd></div>
+          <div><dt>Pressure / RH</dt><dd>{formatNumber(observation.pressureHpa, ' hPa')} / {formatNumber(observation.humidityPercent, '%')}</dd></div>
+        </dl>
+      </section>
+    )
+  }
+  if (!buoy) return null
+  return (
+    <section className="radar-observation-panel" aria-live="polite">
+      <div className="radar-warning-panel-top">
+        <div><span className="radar-panel-kicker">NOAA buoy</span><h2>{buoy.name}</h2></div>
+        <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close buoy details">×</button>
+      </div>
+      <p className="radar-warning-headline">Latest report · {formatEasternDateTime(buoy.observedAt)}</p>
+      <dl>
+        <div><dt>Wind</dt><dd>{formatWind(buoy.windSpeedMps, 'mps')}{buoy.windDirectionDeg === null ? '' : ` from ${Math.round(buoy.windDirectionDeg)}°`}</dd></div>
+        <div><dt>Gust / waves</dt><dd>{formatWind(buoy.windGustMps, 'mps')} / {formatNumber(buoy.waveHeightM, ' m')}</dd></div>
+        <div><dt>Period / pressure</dt><dd>{formatNumber(buoy.dominantPeriodS, ' s')} / {formatNumber(buoy.pressureHpa, ' hPa')}</dd></div>
+        <div><dt>Air / water</dt><dd>{formatTemperature(buoy.airTemperatureC)} / {formatTemperature(buoy.waterTemperatureC)}</dd></div>
+      </dl>
+    </section>
+  )
 }
 
 function freshWarningPanel(warning: RadarWarning | null, onClose: () => void): ReactElement | null {
@@ -262,8 +547,26 @@ export function RadarApp() {
   const [playing, setPlaying] = useState(false)
   const [playbackFps, setPlaybackFps] = useState<PlaybackFps>(4)
   const [radarOpacity, setRadarOpacity] = useState(0.96)
+  const [gifExporting, setGifExporting] = useState(false)
+  const [gifExportProgress, setGifExportProgress] = useState(0)
+  const [gifExportError, setGifExportError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [layers, setLayers] = useState({ radar: true, warnings: true, counties: true, cities: true, highways: false })
+  const [layers, setLayers] = useState({
+    radar: true,
+    warnings: true,
+    counties: true,
+    cities: true,
+    highways: false,
+    rainfall: false,
+    shearLow: false,
+    shearMid: false,
+    rotation: false,
+    hailMesh: false,
+    hailPosh: false,
+    lightning: false,
+    surface: false,
+    buoys: false,
+  })
   const [warnings, setWarnings] = useState<RadarWarning[]>([])
   const [warningStatus, setWarningStatus] = useState<'loading' | 'ready' | 'degraded'>('loading')
   const [warningErrors, setWarningErrors] = useState<string[]>([])
@@ -274,12 +577,21 @@ export function RadarApp() {
   const [highways, setHighways] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
   const [highwaysLoading, setHighwaysLoading] = useState(false)
   const [highwaysError, setHighwaysError] = useState<string | null>(null)
+  const [surfaceObservations, setSurfaceObservations] = useState<SurfaceObservation[]>([])
+  const [surfaceLoading, setSurfaceLoading] = useState(false)
+  const [surfaceError, setSurfaceError] = useState<string | null>(null)
+  const [buoys, setBuoys] = useState<BuoyObservation[]>([])
+  const [buoyError, setBuoyError] = useState<string | null>(null)
+  const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null)
+  const [selectedBuoyId, setSelectedBuoyId] = useState<string | null>(null)
 
   const frames = useMemo(() => productFrames(manifest, productId), [manifest, productId])
   const activeIndex = frames.length ? Math.min(Math.max(frameIndex, 0), frames.length - 1) : 0
   const activeFrame = frames[activeIndex] ?? null
   const latestFrame = frames[frames.length - 1] ?? null
   const selectedWarning = selectedWarningId ? warnings.find((warning) => warning.id === selectedWarningId) ?? null : null
+  const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
+  const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const isHistorical = manifest?.mode === 'historical' || datasetId !== 'live'
   const latestAge = ageMinutes(manifest?.latest_valid_time)
   const activeAge = ageMinutes(activeFrame?.valid_time)
@@ -422,6 +734,55 @@ export function RadarApp() {
   }, [highways.features.length, highwaysLoading, layers.highways])
 
   useEffect(() => {
+    if (!layers.surface || isHistorical) return
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      setSurfaceLoading(true)
+      try {
+        const result = await fetchRegionalSurfaceObservations(controller.signal)
+        if (cancelled) return
+        if (result.observations.length || !surfaceObservations.length) setSurfaceObservations(result.observations)
+        setSurfaceError(result.errors.length ? result.errors[0] : null)
+      } catch (error: unknown) {
+        if (!cancelled && error instanceof Error && error.name !== 'AbortError') setSurfaceError(error.message)
+      } finally {
+        if (!cancelled) setSurfaceLoading(false)
+      }
+    }
+    void load()
+    const refresh = window.setInterval(() => { void load() }, 600_000)
+    return () => {
+      cancelled = true
+      controller.abort()
+      window.clearInterval(refresh)
+    }
+  }, [isHistorical, layers.surface, surfaceObservations.length])
+
+  useEffect(() => {
+    if (!layers.buoys || isHistorical) return
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const result = await fetchBuoyObservations(BUOY_DATA_PATH, controller.signal)
+        if (cancelled) return
+        setBuoys(result.stations)
+        setBuoyError(result.status === 'unavailable' ? result.notes ?? 'NOAA buoy data unavailable' : null)
+      } catch (error: unknown) {
+        if (!cancelled && error instanceof Error && error.name !== 'AbortError') setBuoyError(error.message)
+      }
+    }
+    void load()
+    const refresh = window.setInterval(() => { void load() }, 600_000)
+    return () => {
+      cancelled = true
+      controller.abort()
+      window.clearInterval(refresh)
+    }
+  }, [isHistorical, layers.buoys])
+
+  useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: mapContainer.current,
@@ -454,6 +815,24 @@ export function RadarApp() {
     })
     map.on('mouseenter', WARNING_FILL_ID, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', WARNING_FILL_ID, () => { map.getCanvas().style.cursor = '' })
+    map.on('click', SURFACE_DOT_ID, (event) => {
+      const id = event.features?.[0]?.properties?.id
+      if (id) {
+        setSelectedBuoyId(null)
+        setSelectedObservationId(String(id))
+      }
+    })
+    map.on('mouseenter', SURFACE_DOT_ID, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', SURFACE_DOT_ID, () => { map.getCanvas().style.cursor = '' })
+    map.on('click', BUOY_DOT_ID, (event) => {
+      const id = event.features?.[0]?.properties?.id
+      if (id) {
+        setSelectedObservationId(null)
+        setSelectedBuoyId(String(id))
+      }
+    })
+    map.on('mouseenter', BUOY_DOT_ID, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', BUOY_DOT_ID, () => { map.getCanvas().style.cursor = '' })
     map.on('error', (event) => {
       if (event.error?.message && !event.error.message.toLowerCase().includes('tile')) setMapError(event.error.message)
     })
@@ -494,6 +873,34 @@ export function RadarApp() {
   }, [activeFrame, manifestPath, mapReady, radarOpacity])
 
   useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
+      const frame = productFrames(manifest, definition.productId).at(-1)
+      if (!frame) return
+      const sourceId = analysisSourceId(definition.productId)
+      const layerId = analysisLayerId(definition.productId)
+      const coordinates = imageCoordinates(frame.bounds)
+      const source = map.getSource(sourceId) as maplibregl.ImageSource | undefined
+      if (!source) {
+        map.addSource(sourceId, {
+          type: 'image',
+          url: frameUrl(frame, manifestPath),
+          coordinates,
+        })
+        map.addLayer({
+          id: layerId,
+          type: 'raster',
+          source: sourceId,
+          paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
+        }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
+      } else {
+        source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
+      }
+    })
+  }, [manifest, manifestPath, mapReady])
+
+  useEffect(() => {
     if (!activeFrame) return
     const preload = playbackFps >= 20
       ? frames
@@ -514,7 +921,13 @@ export function RadarApp() {
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label'], layers.cities)
     setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways)
     setLayerVisibility(map, [WARNING_FILL_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
-  }, [activeFrame, isHistorical, layers, mapReady, radarOpacity])
+    setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
+    setLayerVisibility(map, [BUOY_DOT_ID, BUOY_LABEL_ID], layers.buoys && !isHistorical)
+    ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
+      const frame = productFrames(manifest, definition.productId).at(-1)
+      setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && !isHistorical && Boolean(frame))
+    })
+  }, [activeFrame, isHistorical, layers, manifest, mapReady, radarOpacity])
 
   useEffect(() => {
     const map = mapRef.current
@@ -523,11 +936,15 @@ export function RadarApp() {
     const countySource = map.getSource(COUNTY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
     const highwaySource = map.getSource(HIGHWAY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
     const citySource = map.getSource(CITY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+    const surfaceSource = map.getSource(SURFACE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+    const buoySource = map.getSource(BUOY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
     const warningSource = map.getSource(WARNING_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
     stateSource?.setData(states)
     countySource?.setData(counties)
     highwaySource?.setData(highways)
     citySource?.setData(CITIES_GEOJSON)
+    surfaceSource?.setData(surfaceFeatureCollection(surfaceObservations))
+    buoySource?.setData(buoyFeatureCollection(buoys))
     warningSource?.setData(warningsFeatureCollection(warnings))
     if (map.getLayer(WARNING_FILL_ID)) {
       map.setPaintProperty(WARNING_FILL_ID, 'fill-opacity', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 0.25, 0.13])
@@ -535,12 +952,68 @@ export function RadarApp() {
     if (map.getLayer(WARNING_LINE_ID)) {
       map.setPaintProperty(WARNING_LINE_ID, 'line-width', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 3.4, 1.8])
     }
-  }, [counties, highways, mapReady, selectedWarningId, states, warnings])
+  }, [buoys, counties, highways, mapReady, selectedWarningId, states, surfaceObservations, warnings])
 
   const selectedProduct = manifest?.products[productId]
   const dataUnavailable = !manifest || manifest.status !== 'ready' || !activeFrame
   const dataStale = !isHistorical && latestAge !== null && latestAge > 15
   const loopDownloadUrl = selectedProduct?.loop_url ? assetUrl(selectedProduct.loop_url, manifestPath) : null
+
+  const exportGif = async () => {
+    const map = mapRef.current
+    if (gifExporting || !map || !frames.length) return
+    const originalIndex = activeIndex
+    const originalFrame = activeFrame
+    const wasPlaying = playing
+    let usedRadarOnlyFallback = false
+    setGifExporting(true)
+    setGifExportProgress(0)
+    setGifExportError(null)
+    setPlaying(false)
+    try {
+      await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
+      const captured: ImageData[] = []
+      for (let index = 0; index < frames.length; index += 1) {
+        const frame = frames[index]
+        const radarSourceReady = Boolean(map.getSource(RADAR_SOURCE_ID))
+        try {
+          if (!radarSourceReady) throw new Error('Radar image source is not ready')
+          updateRadarMapImage(map, frame, manifestPath)
+          await waitForMapPaint(map)
+          captured.push(captureMapCanvas(map))
+        } catch {
+          usedRadarOnlyFallback = true
+          captured.push(await captureRadarFallback(map, frame, manifestPath))
+        }
+        setGifExportProgress(Math.round((index + 1) / frames.length * 100))
+      }
+      const blob = encodeGif(captured, playbackFps)
+      const zoom = Math.round(map.getZoom() * 10) / 10
+      const safeDataset = (manifest?.dataset_id ?? 'live').replace(/[^a-z0-9-]+/gi, '-')
+      const safeProduct = productId.replace(/[^a-z0-9-]+/gi, '-')
+      const filename = `wall-cloud-${safeDataset}-${safeProduct}-z${zoom.toFixed(1).replace('.', 'p')}-${playbackFps}fps.gif`
+      const downloadUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = downloadUrl
+      anchor.download = filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2_000)
+      if (usedRadarOnlyFallback) setGifExportError('GIF saved from the radar viewport; external map tiles could not be included.')
+    } catch (error: unknown) {
+      setGifExportError(error instanceof Error ? error.message : 'GIF export failed')
+    } finally {
+      try {
+        if (originalFrame && map.getSource(RADAR_SOURCE_ID)) updateRadarMapImage(map, originalFrame, manifestPath)
+      } catch {
+        // The map can still be loading while a fallback GIF is being exported.
+      }
+      setFrameIndex(originalIndex)
+      setPlaying(wasPlaying)
+      setGifExporting(false)
+    }
+  }
 
   const toggleLayer = (key: keyof typeof layers) => {
     if (key === 'highways' && !layers.highways) setHighwaysLoading(true)
@@ -606,6 +1079,11 @@ export function RadarApp() {
         {geographyError && <div className="radar-data-strip geography-warning">Boundary data unavailable · radar remains available</div>}
 
         <RadarLegend productId={productId} />
+        <RadarAnalysisLegends
+          layers={layers}
+          manifest={manifest}
+          isHistorical={isHistorical}
+        />
 
         <aside className={`radar-settings ${settingsOpen ? 'open' : ''}`} aria-label="Radar controls and layers">
           <div className="radar-settings-head">
@@ -663,8 +1141,39 @@ export function RadarApp() {
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
 
           <div className="radar-layer-list">
+            <div className="radar-layer-section-heading">Storm analysis <small>latest generated analysis</small></div>
+            {ANALYSIS_LAYER_DEFINITIONS.map((definition) => {
+              const product = manifest?.products[definition.productId]
+              const ready = product?.status === 'ready' || product?.status === 'partial'
+              const note = isHistorical
+                ? 'Unavailable during historical playback'
+                : ready
+                  ? definition.note
+                  : product?.notes ?? 'Processor needed'
+              return (
+                <label key={definition.key} className="radar-layer-row">
+                  <input type="checkbox" checked={layers[definition.key]} onChange={() => toggleLayer(definition.key)} disabled={isHistorical || !ready} />
+                  <span className="radar-checkbox" aria-hidden="true" />
+                  <span><strong>{definition.label}</strong><small>{note}</small></span>
+                </label>
+              )
+            })}
+
+            <div className="radar-layer-section-heading">Observations <small>click a marker for details</small></div>
+            <label className="radar-layer-row">
+              <input type="checkbox" checked={layers.surface} onChange={() => toggleLayer('surface')} disabled={isHistorical} />
+              <span className="radar-checkbox" aria-hidden="true" />
+              <span><strong>Surface observations</strong><small>{isHistorical ? 'Unavailable during historical playback' : surfaceLoading ? 'Loading NWS stations…' : surfaceError ? 'NWS refresh degraded' : `${surfaceObservations.length || 'No'} stations · refreshes independently`}</small></span>
+            </label>
+            <label className="radar-layer-row">
+              <input type="checkbox" checked={layers.buoys} onChange={() => toggleLayer('buoys')} disabled={isHistorical} />
+              <span className="radar-checkbox" aria-hidden="true" />
+              <span><strong>Buoys</strong><small>{isHistorical ? 'Unavailable during historical playback' : buoyError ?? `${buoys.length || 'No'} NOAA NDBC stations`}</small></span>
+            </label>
+
+            <div className="radar-layer-section-heading">Map overlays</div>
             {([
-              ['radar', 'Radar', 'MRMS raster frame'],
+              ['radar', 'Radar', 'MRMS observed raster frame'],
               ['warnings', 'Warnings', isHistorical ? 'Unavailable for historical playback' : warningStatus === 'degraded' ? 'NWS refresh degraded' : 'NWS active polygons'],
               ['counties', 'Counties', 'Census boundary overlay'],
               ['cities', 'Cities', 'Priority NC locations'],
@@ -682,10 +1191,20 @@ export function RadarApp() {
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}
           {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}
+          {surfaceError && <p className="radar-field-note error">Surface observations: {surfaceError}</p>}
+          {buoyError && <p className="radar-field-note error">Buoys: {buoyError}</p>}
           <p className="radar-source-note">Radar: NOAA/NCEP MRMS · alerts: National Weather Service · boundaries: U.S. Census TIGERweb</p>
         </aside>
 
         {freshWarningPanel(selectedWarning, () => setSelectedWarningId(null))}
+        <RadarObservationPanel
+          observation={selectedObservation}
+          buoy={selectedBuoy}
+          onClose={() => {
+            setSelectedObservationId(null)
+            setSelectedBuoyId(null)
+          }}
+        />
 
         <section className="radar-timeline" aria-label="Radar animation controls">
           <div className="radar-timeline-top">
@@ -722,13 +1241,15 @@ export function RadarApp() {
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
                 {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
               </div>
+              <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length} title="Save the current map viewport at the selected playback FPS">
+                {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
+              </button>
               {loopDownloadUrl ? (
-                <a className="radar-download-button" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}.gif`}>Save GIF</a>
-              ) : (
-                <span className="radar-download-unavailable" title="Run the updated Python processor to generate a GIF">GIF unavailable</span>
-              )}
+                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered branded regional loop">Branded loop</a>
+              ) : null}
             </div>
           </div>
+          {gifExportError && <div className="radar-playback-note">{gifExportError}</div>}
           {activeAge !== null && !isLatest && !isHistorical && <div className="radar-playback-note">Playback frame · latest observation is {Math.max(0, latestAge ?? 0)} min old</div>}
         </section>
       </main>

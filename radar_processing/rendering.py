@@ -81,6 +81,111 @@ MIXED_COLORS = np.array(
     dtype=np.uint8,
 )
 
+# These analysis palettes are intentionally separate from the primary radar
+# palette. They keep weak signal transparent and reserve the hottest colors for
+# values that are operationally meaningful. The units follow the MRMS product
+# table: millimetres, percent, flashes/km²/min, or 0.001/s for shear products.
+ANALYSIS_PALETTES: dict[str, tuple[np.ndarray, np.ndarray]] = {
+    "MultiSensor_QPE_01H_Pass1": (
+        np.array([0.1, 1, 2.5, 5, 10, 25, 50], dtype=np.float32),
+        np.array(
+            [
+                [38, 173, 111, 118],
+                [0, 177, 231, 148],
+                [22, 114, 242, 176],
+                [255, 221, 49, 198],
+                [255, 151, 31, 218],
+                [235, 54, 52, 235],
+                [171, 55, 194, 248],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "MergedAzShear_0-2kmAGL": (
+        np.array([0.5, 1, 2, 4, 6, 8], dtype=np.float32),
+        np.array(
+            [
+                [69, 213, 204, 135],
+                [34, 191, 112, 164],
+                [190, 224, 50, 188],
+                [255, 183, 30, 211],
+                [239, 62, 47, 232],
+                [202, 44, 180, 248],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "MergedAzShear_3-6kmAGL": (
+        np.array([0.5, 1, 2, 4, 6, 8], dtype=np.float32),
+        np.array(
+            [
+                [91, 207, 233, 125],
+                [63, 175, 211, 151],
+                [53, 198, 126, 174],
+                [238, 216, 54, 202],
+                [255, 127, 35, 226],
+                [205, 49, 173, 245],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "RotationTrack30min": (
+        np.array([0.5, 1, 2, 4, 6, 8], dtype=np.float32),
+        np.array(
+            [
+                [77, 205, 212, 128],
+                [40, 194, 117, 153],
+                [206, 225, 44, 180],
+                [255, 168, 28, 205],
+                [241, 54, 52, 230],
+                [182, 43, 183, 248],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "MESH": (
+        np.array([5, 10, 20, 30, 50, 75], dtype=np.float32),
+        np.array(
+            [
+                [255, 236, 89, 140],
+                [255, 213, 44, 174],
+                [255, 155, 29, 198],
+                [238, 55, 47, 220],
+                [207, 42, 170, 240],
+                [105, 48, 175, 250],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "POSH": (
+        np.array([10, 30, 50, 70, 90], dtype=np.float32),
+        np.array(
+            [
+                [255, 236, 89, 120],
+                [255, 213, 44, 154],
+                [255, 151, 29, 185],
+                [238, 55, 47, 218],
+                [207, 42, 170, 246],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+    "NLDN_CG_005min_AvgDensity": (
+        np.array([0.01, 0.05, 0.1, 0.25, 0.5, 1.0], dtype=np.float32),
+        np.array(
+            [
+                [255, 246, 137, 130],
+                [255, 219, 55, 158],
+                [255, 154, 28, 186],
+                [239, 58, 47, 211],
+                [210, 39, 167, 235],
+                [104, 44, 176, 250],
+            ],
+            dtype=np.uint8,
+        ),
+    ),
+}
+
 PRECIP_FLAG_CATEGORIES: dict[int, str] = {
     0: "none",
     1: "rain",
@@ -160,6 +265,36 @@ def _palette_for_reflectivity(values: np.ndarray) -> np.ndarray:
     return rgba
 
 
+def _palette_for_scalar(values: np.ndarray, stops: np.ndarray, colors: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float32)
+    indices = np.searchsorted(stops, values, side="right") - 1
+    indices = np.clip(indices, 0, len(colors) - 1)
+    rgba = colors[indices].copy()
+    valid = np.isfinite(values) & (values >= stops[0])
+    rgba[~valid] = [0, 0, 0, 0]
+    return rgba
+
+
+def _normalize_analysis_values(product_id: str, values: np.ndarray) -> np.ndarray:
+    """Normalize azimuthal-shear values to the MRMS table's 0.001/s unit."""
+
+    normalized = np.asarray(values, dtype=np.float32)
+    if product_id not in {"MergedAzShear_0-2kmAGL", "MergedAzShear_3-6kmAGL", "RotationTrack30min"}:
+        return normalized
+    finite = normalized[np.isfinite(normalized)]
+    if finite.size and float(np.nanmax(np.abs(finite))) <= 0.5:
+        normalized = normalized * 1000.0
+    return normalized
+
+
+def _palette_for_analysis(product_id: str, values: np.ndarray) -> np.ndarray:
+    try:
+        stops, colors = ANALYSIS_PALETTES[product_id]
+    except KeyError as exc:
+        raise ValueError(f"No palette is configured for MRMS analysis product {product_id!r}") from exc
+    return _palette_for_scalar(_normalize_analysis_values(product_id, values), stops, colors)
+
+
 def _palette_for_precip_type(reflectivity: np.ndarray, flags: np.ndarray) -> np.ndarray:
     reflectivity = np.asarray(reflectivity, dtype=np.float32)
     flags = np.asarray(flags, dtype=np.float32)
@@ -212,7 +347,27 @@ def render_precip_type(
     return RenderedRaster(actual_bounds, reflectivity.shape[1], reflectivity.shape[0])
 
 
+def render_analysis(
+    product_id: str,
+    input_path: Path,
+    output_path: Path,
+    region: RegionBounds,
+) -> RenderedRaster:
+    """Render one latest-only MRMS scalar analysis product."""
+
+    values, actual_bounds = _crop_dataset(input_path, region)
+    _save_rgba(_palette_for_analysis(product_id, values), output_path)
+    return RenderedRaster(actual_bounds, values.shape[1], values.shape[0])
+
+
 def palette_category_for_tests(flag: int | float) -> str:
     """Small named wrapper used by unit tests and future processors."""
 
     return precip_category(flag)
+
+
+def analysis_palette_for_tests(product_id: str, value: float) -> tuple[int, int, int, int]:
+    """Expose deterministic palette mapping without requiring a GRIB2 fixture."""
+
+    rgba = _palette_for_analysis(product_id, np.asarray([[value]], dtype=np.float32))[0, 0]
+    return tuple(int(channel) for channel in rgba)

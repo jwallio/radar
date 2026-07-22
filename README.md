@@ -7,8 +7,11 @@ The MVP provides:
 - NOAA/NCEP MRMS regional composite-reflectivity imagery processed to PNG.
 - A generated manifest and recent-frame playback with previous, play/pause, next, scrubber, and 2/4/8/20/30 FPS choices using exact observed frames.
 - Downloadable, branded animated GIF loops generated with the same Wall Cloud palette at a concise five-to-six-frame-per-second presentation rate.
+- Client-side **Save GIF** export that follows the current map zoom/pan and selected viewer FPS, with a radar-only fallback when external tiles cannot be captured.
 - Selectable historical loop packs sourced from NOAA's public MRMS archive.
 - A second precipitation-type mode backed by the official MRMS PrecipFlag product when it decodes successfully.
+- Latest-analysis overlays for one-hour MRMS rainfall, 0–2 km and 3–6 km azimuthal shear, 30-minute rotation tracks, MESH, POSH, and five-minute NLDN cloud-to-ground lightning density.
+- Clickable NWS surface observations and NOAA NDBC buoy observations, refreshed independently from radar playback.
 - Independent active NWS warning refreshes for tornado, severe thunderstorm, flash flood, and special marine warnings.
 - Census TIGERweb state/county overlays, priority city labels, and an on-demand highway overlay.
 - Responsive dark operational controls over a high-contrast light radar canvas for desktop, tablet, and mobile use.
@@ -36,10 +39,18 @@ Radar URLs are centralized in `radar_processing/config.py` and are based on the 
 - [MRMS 2D product directory](https://mrms.ncep.noaa.gov/2D/)
 - [MergedReflectivityQCComposite](https://mrms.ncep.noaa.gov/2D/MergedReflectivityQCComposite/)
 - [PrecipFlag](https://mrms.ncep.noaa.gov/2D/PrecipFlag/)
+- [MultiSensor_QPE_01H_Pass1](https://mrms.ncep.noaa.gov/2D/MultiSensor_QPE_01H_Pass1/)
+- [MergedAzShear_0-2kmAGL](https://mrms.ncep.noaa.gov/2D/MergedAzShear_0-2kmAGL/)
+- [MergedAzShear_3-6kmAGL](https://mrms.ncep.noaa.gov/2D/MergedAzShear_3-6kmAGL/)
+- [RotationTrack30min](https://mrms.ncep.noaa.gov/2D/RotationTrack30min/)
+- [MESH](https://mrms.ncep.noaa.gov/2D/MESH/)
+- [POSH](https://mrms.ncep.noaa.gov/2D/POSH/)
+- [NLDN_CG_005min_AvgDensity](https://mrms.ncep.noaa.gov/2D/NLDN_CG_005min_AvgDensity/)
 - [NOAA MRMS archive on NODD/AWS](https://registry.opendata.aws/noaa-mrms-pds/)
 - [MRMS operational flag table](https://www.nssl.noaa.gov/projects/mrms/operational/tables.php)
 - [NWS API documentation](https://www.weather.gov/documentation/services-web-api)
 - [NWS active alerts endpoint](https://api.weather.gov/alerts/active)
+- [NOAA NDBC active stations](https://www.ndbc.noaa.gov/activestations.xml) and [realtime station observations](https://www.ndbc.noaa.gov/docs/ndbc_web_data_guide.pdf)
 - [Census TIGERweb State/County service](https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer)
 - [Census TIGERweb Transportation service](https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer)
 
@@ -64,6 +75,12 @@ npm run dev
 
 The dev server is available at `http://localhost:5173` by default. The processor uses a temporary directory for raw downloads and removes raw GRIB2 files after rendering. It writes only generated PNGs and the manifest to `public/data/radar`.
 
+`build_radar_frames.py` also refreshes the optional static buoy feed at `public/data/observations/buoys.json`. To refresh that feed without downloading MRMS data:
+
+```powershell
+python scripts/build_buoy_observations.py
+```
+
 Useful frontend checks:
 
 ```powershell
@@ -81,11 +98,13 @@ The processor is intentionally split into focused modules:
 - `radar_processing/config.py` — region, product, retention, and environment configuration.
 - `radar_processing/mrms.py` — official directory listing parsing, timestamp matching, retries, and atomic downloads.
 - `radar_processing/rendering.py` — cfgrib/eccodes crop, two-dBZ Wall Cloud palettes, PNG rendering, and PrecipFlag classification.
+- `radar_processing/observations.py` — NOAA NDBC active-station filtering and realtime text parsing for the coastal buoy feed.
 - `radar_processing/animation.py` — branded GIF composition with Census boundaries, city labels, valid times, and legends.
 - `radar_processing/pipeline.py` — shared live/historical rendering and output rotation.
 - `radar_processing/history.py` — historical dataset IDs and catalog maintenance.
 - `radar_processing/manifest.py` — deterministic frame ordering, retention, missing-file filtering, stale detection, and atomic JSON replacement.
 - `scripts/build_radar_frames.py` — orchestration and CLI.
+- `scripts/build_buoy_observations.py` — standalone NDBC feed refresh CLI.
 
 Default region is `[-86.5, 32.5, -73.5, 39.5]` as west/south/east/north. Defaults retain 90 minutes of source history and render up to 30 frames, which is approximately 60 minutes at the current two-minute MRMS cadence. Set `MRMS_MAX_FRAMES=45` to target approximately 90 minutes.
 
@@ -102,9 +121,11 @@ python scripts/build_radar_frames.py
 
 Use `python scripts/build_radar_frames.py --no-precip-type` for a reflectivity-only run or `--keep-raw` only when troubleshooting decoder inputs. Raw files and local caches are ignored by Git.
 
-Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. The viewer exposes the active product's GIF through **Save GIF**. GIFs use exact observed frames at 180 ms per frame and hold the newest frame for one second.
+Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed regional reference loops. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, using the selected 2/4/8/20/30 FPS setting and the same latest-frame hold as browser playback. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
 
 Browser playback defaults to 4 FPS and always swaps exact observed MRMS frames directly. The 20 and 30 FPS options preload the complete active sequence for testing, but display refresh and image decoding can still limit the effective rate. No crossfaded or interpolated radar field is shown, written to the manifest, or exported to GIF.
+
+Viewport GIF export is client-side and does not send radar data to a server. If external basemap tiles prevent canvas capture because of browser security rules, the export falls back to the zoom/pan-cropped local radar raster and reports that in the control area.
 
 ## Historical radar loops
 
@@ -135,12 +156,14 @@ The script downloads only the selected archive frames, crops the NC region, crea
   "latest_valid_time": "2026-07-21T22:00:00Z",
   "products": {
     "MergedReflectivityQCComposite": { "status": "ready", "frames": [], "loop_url": "./loops/composite-reflectivity.gif" },
-    "PrecipFlag": { "status": "ready", "frames": [] }
+    "PrecipFlag": { "status": "ready", "frames": [] },
+    "MultiSensor_QPE_01H_Pass1": { "status": "ready", "frames": [] },
+    "MESH": { "status": "ready", "frames": [] }
   }
 }
 ```
 
-The frontend uses relative frame URLs, so the same artifact works at a custom-domain root or a GitHub Pages project path. Missing manifests, missing frame files, stale timestamps, and partial PrecipFlag output are surfaced as meaningful UI states.
+The frontend uses relative frame URLs, so the same artifact works at a custom-domain root or a GitHub Pages project path. The seven storm-analysis products are latest-only overlays in the live MVP; the primary reflectivity and PrecipFlag products retain the animated sequence. Missing manifests, missing frame files, stale timestamps, partial PrecipFlag output, and unavailable analysis layers are surfaced as meaningful UI states.
 
 ## Testing
 
@@ -150,7 +173,7 @@ Run the focused Python tests with:
 python -m pytest -q tests/test_radar_processing.py
 ```
 
-The tests cover chronological ordering, retention, missing frame handling, stale timestamps, regional bounds, two-dBZ palette spacing, archive-list parsing, historical catalog updates, GIF animation output, and NOAA PrecipFlag category mapping. Live and historical processor smoke tests produced decoded PNGs, GIFs, and atomic manifests from official NOAA sources.
+The tests cover chronological ordering, retention, missing frame handling, stale timestamps, regional bounds, two-dBZ palette spacing, analysis-product configuration and palette mapping, NDBC parsing, archive-list parsing, historical catalog updates, GIF animation output, and NOAA PrecipFlag category mapping. Live processor smoke testing verified official directory listings and decoded one current raster for each new MRMS analysis layer.
 
 ## GitHub Actions and Pages
 
@@ -179,6 +202,10 @@ Enable GitHub Pages with **GitHub Actions** as the build source. The scheduled w
 - MRMS source files are full CONUS GRIB2 downloads; this pass crops to the NC regional domain after decode because the official directory does not expose a browser-friendly regional subset.
 - cfgrib/eccodes includes a native dependency. `requirements.txt` uses the portable Python packages/wheels available for Windows and GitHub Actions Linux; if a local Python distribution cannot load ecCodes, use a current Conda environment or the documented Linux CI setup.
 - PrecipFlag provides published flag classes such as rain, snow, convection, hail, and cool stratiform rain. Unknown/non-published values fall back to reflectivity colors and are not labeled as a fabricated precipitation type.
+- Derived storm-analysis layers are generated as the latest available frame only. They are not historical or animated yet; historical playback intentionally disables them so current analyses are never mixed into an old loop.
+- Lightning uses official NLDN cloud-to-ground five-minute average density. It is not a total-cloud-lightning feed and should not be interpreted as a complete strike count.
+- Surface observations use a bounded, sampled set of NWS stations to keep browser requests reasonable. Values may be delayed or missing at individual stations.
+- NDBC buoy data is generated server-side into static JSON because the upstream station list/realtime text files are not a dependable browser-facing API. A failed buoy refresh leaves the layer unavailable without blocking radar deployment.
 - NWS alerts are fetched client-side, so an ad-blocker, CORS issue, rate limit, or upstream outage can degrade warning refresh while leaving the last successful result visible.
 - The static MVP uses CARTO raster basemap tiles and Census TIGERweb overlays at runtime. A future production deployment should proxy or cache these sources if traffic requires stronger availability guarantees.
 - GitHub Actions is not a real-time scheduler. A worker or persistent object-store pipeline is recommended for lower-latency updates.

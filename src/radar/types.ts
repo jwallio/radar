@@ -1,5 +1,16 @@
 export type RadarProductId = 'MergedReflectivityQCComposite' | 'PrecipFlag'
 
+export type RadarAnalysisProductId =
+  | 'MultiSensor_QPE_01H_Pass1'
+  | 'MergedAzShear_0-2kmAGL'
+  | 'MergedAzShear_3-6kmAGL'
+  | 'RotationTrack30min'
+  | 'MESH'
+  | 'POSH'
+  | 'NLDN_CG_005min_AvgDensity'
+
+export type RadarManifestProductId = RadarProductId | RadarAnalysisProductId
+
 export interface RadarFrameManifest {
   id: string
   valid_time: string
@@ -31,7 +42,7 @@ export interface RadarManifest {
   end_time?: string | null
   region: { west: number; south: number; east: number; north: number }
   product: RadarProductId
-  products: Partial<Record<RadarProductId, RadarProductManifest>>
+  products: Partial<Record<RadarManifestProductId, RadarProductManifest>>
   frames: RadarFrameManifest[]
   sources?: Record<string, string>
   errors?: string[]
@@ -69,4 +80,51 @@ export interface WarningsResult {
   warnings: RadarWarning[]
   fetchedAt: string
   errors: string[]
+}
+
+export interface SurfaceObservation {
+  id: string
+  station: string
+  name: string
+  observedAt: string | null
+  lon: number
+  lat: number
+  temperatureC: number | null
+  dewpointC: number | null
+  windDirectionDeg: number | null
+  windSpeedKmh: number | null
+  windGustKmh: number | null
+  pressureHpa: number | null
+  humidityPercent: number | null
+  textDescription: string
+}
+
+export interface SurfaceObservationsResult {
+  observations: SurfaceObservation[]
+  fetchedAt: string
+  errors: string[]
+}
+
+export interface BuoyObservation {
+  id: string
+  name: string
+  observedAt: string | null
+  lon: number
+  lat: number
+  windDirectionDeg: number | null
+  windSpeedMps: number | null
+  windGustMps: number | null
+  waveHeightM: number | null
+  dominantPeriodS: number | null
+  airTemperatureC: number | null
+  waterTemperatureC: number | null
+  pressureHpa: number | null
+}
+
+export interface BuoyObservationsResult {
+  status: 'ready' | 'unavailable'
+  generatedAt: string | null
+  source?: string
+  stations: BuoyObservation[]
+  notes?: string
 }

@@ -1,4 +1,4 @@
-import type { RadarProductId } from './types'
+import type { RadarAnalysisProductId, RadarProductId } from './types'
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
 export const MAP_CENTER: [number, number] = [-79.45, 35.65]
@@ -44,6 +44,125 @@ export const PRECIP_LEGEND = [
   { label: 'Rain', color: '#2dbb60' },
   { label: 'Snow', color: '#45aef0' },
   { label: 'Cool / hail', color: '#e852b1' },
+]
+
+export type AnalysisLayerKey =
+  | 'rainfall'
+  | 'shearLow'
+  | 'shearMid'
+  | 'rotation'
+  | 'hailMesh'
+  | 'hailPosh'
+  | 'lightning'
+
+export interface AnalysisLayerDefinition {
+  key: AnalysisLayerKey
+  productId: RadarAnalysisProductId
+  label: string
+  note: string
+  unit: string
+  legend: Array<{ label: string; color: string }>
+}
+
+export const ANALYSIS_LAYER_DEFINITIONS: AnalysisLayerDefinition[] = [
+  {
+    key: 'rainfall',
+    productId: 'MultiSensor_QPE_01H_Pass1',
+    label: 'Rainfall accumulation',
+    note: 'MRMS 1-hour QPE · latest analysis',
+    unit: 'mm',
+    legend: [
+      { label: '50+', color: '#ab37c2' },
+      { label: '25', color: '#eb3634' },
+      { label: '10', color: '#ff971f' },
+      { label: '5', color: '#ffdd31' },
+      { label: '1', color: '#16b1e7' },
+    ],
+  },
+  {
+    key: 'shearLow',
+    productId: 'MergedAzShear_0-2kmAGL',
+    label: 'Low-level azimuthal shear',
+    note: 'MRMS 0–2 km · latest analysis',
+    unit: '0.001 s⁻¹',
+    legend: [
+      { label: '8+', color: '#ca2cb4' },
+      { label: '6', color: '#ef3e2f' },
+      { label: '4', color: '#ffb51e' },
+      { label: '2', color: '#bee032' },
+      { label: '0.5', color: '#45d5cc' },
+    ],
+  },
+  {
+    key: 'shearMid',
+    productId: 'MergedAzShear_3-6kmAGL',
+    label: 'Mid-level azimuthal shear',
+    note: 'MRMS 3–6 km · latest analysis',
+    unit: '0.001 s⁻¹',
+    legend: [
+      { label: '8+', color: '#cd31ad' },
+      { label: '6', color: '#ff7f23' },
+      { label: '4', color: '#eed636' },
+      { label: '2', color: '#35c67e' },
+      { label: '0.5', color: '#5bcfe9' },
+    ],
+  },
+  {
+    key: 'rotation',
+    productId: 'RotationTrack30min',
+    label: 'Rotation tracks',
+    note: 'MRMS 30-minute track · latest analysis',
+    unit: '0.001 s⁻¹',
+    legend: [
+      { label: '8+', color: '#b62bb7' },
+      { label: '6', color: '#f13634' },
+      { label: '4', color: '#ffa91c' },
+      { label: '2', color: '#cee12d' },
+      { label: '0.5', color: '#4bcdd4' },
+    ],
+  },
+  {
+    key: 'hailMesh',
+    productId: 'MESH',
+    label: 'MESH hail',
+    note: 'Estimated maximum hail size · latest analysis',
+    unit: 'mm',
+    legend: [
+      { label: '75+', color: '#6930af' },
+      { label: '50', color: '#cf2aaa' },
+      { label: '30', color: '#ee372f' },
+      { label: '20', color: '#ff9b1d' },
+      { label: '10', color: '#ffd52c' },
+    ],
+  },
+  {
+    key: 'hailPosh',
+    productId: 'POSH',
+    label: 'POSH hail probability',
+    note: 'Severe hail probability · latest analysis',
+    unit: '%',
+    legend: [
+      { label: '90+', color: '#cf2aaa' },
+      { label: '70', color: '#ee372f' },
+      { label: '50', color: '#ff9b1d' },
+      { label: '30', color: '#ffd52c' },
+      { label: '10', color: '#ffec59' },
+    ],
+  },
+  {
+    key: 'lightning',
+    productId: 'NLDN_CG_005min_AvgDensity',
+    label: 'Lightning',
+    note: 'NLDN cloud-to-ground density · 5 min',
+    unit: 'flashes/km²/min',
+    legend: [
+      { label: '1+', color: '#682cb0' },
+      { label: '0.5', color: '#d227a7' },
+      { label: '0.25', color: '#ef3a2f' },
+      { label: '0.1', color: '#ff9a1d' },
+      { label: '0.01', color: '#fff689' },
+    ],
+  },
 ]
 
 export interface CityDefinition {

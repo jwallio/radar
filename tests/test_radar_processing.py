@@ -6,11 +6,12 @@ import numpy as np
 from PIL import Image
 
 from radar_processing.animation import build_loop_gif
-from radar_processing.config import DEFAULT_REGION
+from radar_processing.config import ANALYSIS_PRODUCT_IDS, DEFAULT_REGION, PRODUCTS
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
 from radar_processing.mrms import _archive_listing, sample_frames
-from radar_processing.rendering import REFLECTIVITY_STOPS, palette_category_for_tests
+from radar_processing.observations import _parse_realtime
+from radar_processing.rendering import REFLECTIVITY_STOPS, analysis_palette_for_tests, palette_category_for_tests
 
 
 def frame(timestamp: datetime, filename: str) -> dict[str, object]:
@@ -56,6 +57,30 @@ def test_regional_bounds_cover_the_requested_area() -> None:
     assert DEFAULT_REGION.east > -75.4
     assert DEFAULT_REGION.south < 34.0
     assert DEFAULT_REGION.north > 37.8
+
+
+def test_analysis_products_are_configured_for_latest_only_rendering() -> None:
+    assert len(ANALYSIS_PRODUCT_IDS) == 7
+    assert all(PRODUCTS[product_id].render_kind not in {"scalar", "reflectivity", "precip_type"} for product_id in ANALYSIS_PRODUCT_IDS)
+    assert PRODUCTS["MESH"].directory == "MESH"
+    assert PRODUCTS["NLDN_CG_005min_AvgDensity"].filename_prefix.startswith("MRMS_NLDN_CG")
+
+
+def test_analysis_palettes_map_weak_signal_to_transparent_and_higher_values_to_color() -> None:
+    assert analysis_palette_for_tests("MESH", 1)[3] == 0
+    assert analysis_palette_for_tests("MESH", 30)[3] > 0
+    # Shear products may decode as physical s^-1; the renderer normalizes that
+    # representation to the operational 0.001/s scale before palette lookup.
+    assert analysis_palette_for_tests("MergedAzShear_0-2kmAGL", 0.004)[3] > 0
+
+
+def test_ndbc_realtime_parser_extracts_latest_observation() -> None:
+    payload = b"""#YY  MM DD hh mm WDIR WSPD GST WVHT DPD ATMP WTMP PRES\n#yr mo dy hr mn degT m/s m/s m sec degC degC hPa\n2026 07 22 18 40 210 8.4 11.2 1.3 8.0 28.0 26.2 1012.4\n"""
+    parsed = _parse_realtime(payload)
+    assert parsed is not None
+    assert parsed["observed_at"] == "2026-07-22T18:40:00Z"
+    assert parsed["wind_speed_mps"] == 8.4
+    assert parsed["wave_height_m"] == 1.3
 
 
 def test_precipitation_flag_categories_use_published_codes() -> None:

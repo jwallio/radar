@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .animation import build_loop_gif, fetch_export_geography
-from .config import PRODUCTS, ProcessingConfig
+from .config import ANALYSIS_PRODUCT_IDS, PRODUCTS, ProcessingConfig
 from .manifest import build_manifest, filter_existing_frames, sort_frame_records, write_json_atomic
 from .mrms import RemoteFrame, download_file, match_closest_frame
-from .rendering import render_precip_type, render_reflectivity
+from .rendering import render_analysis, render_precip_type, render_reflectivity
 
 
 LOGGER = logging.getLogger("wallcloud.radar.pipeline")
@@ -30,9 +30,16 @@ def _safe_stem(frame: RemoteFrame) -> str:
     return frame.valid_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _frame_payload(frame: RemoteFrame, filename: str, bounds: list[float], **extra: object) -> dict[str, object]:
+def _frame_payload(
+    frame: RemoteFrame,
+    filename: str,
+    bounds: list[float],
+    *,
+    frame_id_prefix: str = "mrms",
+    **extra: object,
+) -> dict[str, object]:
     payload: dict[str, object] = {
-        "id": f"mrms-{_safe_stem(frame)}",
+        "id": f"{frame_id_prefix}-{_safe_stem(frame)}",
         "valid_time": frame.timestamp_iso,
         "url": f"./frames/{filename}",
         "bounds": bounds,
@@ -59,20 +66,24 @@ def _download_and_decompress(
 
 
 def _product_payloads(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
-    return {
-        REFLECTIVITY_ID: {
-            "label": PRODUCTS[REFLECTIVITY_ID].label,
+    """Create a stable manifest contract for every configured MRMS product."""
+
+    payloads: dict[str, dict[str, Any]] = {}
+    for product_id, definition in PRODUCTS.items():
+        payload: dict[str, Any] = {
+            "label": definition.label,
             "status": "unavailable",
             "frames": [],
-            "source_url": sources["reflectivity"],
-        },
-        PRECIP_ID: {
-            "label": PRODUCTS[PRECIP_ID].label,
-            "status": "unavailable",
-            "frames": [],
-            "source_url": sources["precip_flag"],
-        },
-    }
+        }
+        source_url = sources.get(product_id)
+        if source_url:
+            payload["source_url"] = source_url
+        payloads[product_id] = payload
+    return payloads
+
+
+def _safe_product_stem(product_id: str) -> str:
+    return "".join(character.lower() if character.isalnum() else "-" for character in product_id).strip("-")
 
 
 def _rotate_outputs(frame_dir: Path, loop_dir: Path, products: dict[str, dict[str, Any]]) -> None:
@@ -105,6 +116,7 @@ def build_radar_dataset(
     dataset_id: str,
     label: str,
     sources: dict[str, str],
+    auxiliary_frames: dict[str, RemoteFrame] | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
 ) -> dict[str, Any]:
@@ -183,6 +195,37 @@ def build_radar_dataset(
                 errors.append(message)
                 LOGGER.warning(message)
 
+        # Analysis products are deliberately latest-only for the live MVP. A
+        # full animation of every derived product would multiply GRIB2
+        # downloads and processing time without improving the primary loop.
+        for product_id, frame in (auxiliary_frames or {}).items():
+            if product_id not in ANALYSIS_PRODUCT_IDS:
+                LOGGER.warning("Ignoring unconfigured auxiliary MRMS product %s", product_id)
+                continue
+            filename = f"analysis-{_safe_product_stem(product_id)}-{_safe_stem(frame)}.png"
+            output_path = frame_dir / filename
+            try:
+                grib_path = _download_and_decompress(
+                    frame,
+                    product_id=product_id,
+                    raw_dir=raw_dir,
+                    config=config,
+                )
+                rendered = render_analysis(product_id, grib_path, output_path, config.region)
+                products[product_id]["frames"] = [
+                    _frame_payload(
+                        frame,
+                        filename,
+                        rendered.manifest_bounds(),
+                        frame_id_prefix=f"analysis-{_safe_product_stem(product_id)}",
+                    )
+                ]
+                LOGGER.info("Rendered latest %s analysis %s", product_id, frame.timestamp_iso)
+            except Exception as exc:  # noqa: BLE001 - one layer must not discard the radar loop
+                message = f"{product_id} {frame.filename}: {exc}"
+                errors.append(message)
+                LOGGER.warning(message)
+
         for product_id, product in products.items():
             frames = sort_frame_records(filter_existing_frames(product["frames"], frame_dir))
             product["frames"] = frames
@@ -194,6 +237,8 @@ def build_radar_dataset(
                 )
             elif product_id == PRECIP_ID:
                 product["notes"] = "Precipitation-type processing unavailable for this dataset."
+            elif product_id in ANALYSIS_PRODUCT_IDS:
+                product["notes"] = "Latest analysis frame unavailable for this dataset."
 
         reflectivity_payload = products[REFLECTIVITY_ID]["frames"]
         if not reflectivity_payload:
@@ -213,7 +258,10 @@ def build_radar_dataset(
         for product_id, product in products.items():
             if not product["frames"]:
                 continue
-            loop_path = loop_dir / loop_names[product_id]
+            loop_name = loop_names.get(product_id)
+            if not loop_name:
+                continue
+            loop_path = loop_dir / loop_name
             try:
                 frame_count = build_loop_gif(
                     product["frames"],

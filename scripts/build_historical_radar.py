@@ -96,9 +96,15 @@ def main() -> int:
     output_dir = history_root / dataset_id
     sources = {
         "mrms_archive": config.mrms_archive_base_url,
-        "reflectivity": f"{config.mrms_archive_base_url}/{PRODUCTS[REFLECTIVITY_ID].archive_prefix}/",
-        "precip_flag": f"{config.mrms_archive_base_url}/{PRODUCTS[PRECIP_ID].archive_prefix}/",
     }
+    sources.update(
+        {
+            product_id: f"{config.mrms_archive_base_url}/{PRODUCTS[product_id].archive_prefix}/"
+            for product_id in PRODUCTS
+        }
+    )
+    sources["reflectivity"] = sources[REFLECTIVITY_ID]
+    sources["precip_flag"] = sources[PRECIP_ID]
     manifest = build_radar_dataset(
         config,
         reflectivity_frames,

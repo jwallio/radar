@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "status": "ready",
+  "status": "unavailable",
   "mode": "live",
   "dataset_id": "live",
   "label": "Live / recent radar",
-  "generated_at": "2026-07-22T12:41:26Z",
-  "latest_valid_time": "2026-07-22T12:38:39Z",
-  "start_time": "2026-07-22T12:16:41Z",
-  "end_time": "2026-07-22T12:38:39Z",
+  "generated_at": null,
+  "latest_valid_time": null,
+  "start_time": null,
+  "end_time": null,
   "region": {
     "west": -86.5,
     "south": 32.5,
@@ -18,292 +18,72 @@
   "products": {
     "MergedReflectivityQCComposite": {
       "label": "Composite Reflectivity",
-      "status": "ready",
-      "frames": [
-        {
-          "id": "mrms-20260722T121641Z",
-          "valid_time": "2026-07-22T12:16:41Z",
-          "url": "./frames/reflectivity-20260722T121641Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T121838Z",
-          "valid_time": "2026-07-22T12:18:38Z",
-          "url": "./frames/reflectivity-20260722T121838Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T122036Z",
-          "valid_time": "2026-07-22T12:20:36Z",
-          "url": "./frames/reflectivity-20260722T122036Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T122240Z",
-          "valid_time": "2026-07-22T12:22:40Z",
-          "url": "./frames/reflectivity-20260722T122240Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T122440Z",
-          "valid_time": "2026-07-22T12:24:40Z",
-          "url": "./frames/reflectivity-20260722T122440Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T122641Z",
-          "valid_time": "2026-07-22T12:26:41Z",
-          "url": "./frames/reflectivity-20260722T122641Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T122839Z",
-          "valid_time": "2026-07-22T12:28:39Z",
-          "url": "./frames/reflectivity-20260722T122839Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T123039Z",
-          "valid_time": "2026-07-22T12:30:39Z",
-          "url": "./frames/reflectivity-20260722T123039Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T123240Z",
-          "valid_time": "2026-07-22T12:32:40Z",
-          "url": "./frames/reflectivity-20260722T123240Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T123439Z",
-          "valid_time": "2026-07-22T12:34:39Z",
-          "url": "./frames/reflectivity-20260722T123439Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T123640Z",
-          "valid_time": "2026-07-22T12:36:40Z",
-          "url": "./frames/reflectivity-20260722T123640Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        },
-        {
-          "id": "mrms-20260722T123839Z",
-          "valid_time": "2026-07-22T12:38:39Z",
-          "url": "./frames/reflectivity-20260722T123839Z.png",
-          "bounds": [
-            -86.50000124291728,
-            32.500000000004476,
-            -73.50000161440653,
-            39.500000000003084
-          ]
-        }
-      ],
-      "source_url": "https://mrms.ncep.noaa.gov/2D/MergedReflectivityQCComposite/",
-      "loop_url": "./loops/composite-reflectivity.gif",
-      "loop_frame_count": 12,
-      "loop_size_bytes": 938397
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/MergedReflectivityQCComposite/"
     },
     "PrecipFlag": {
       "label": "Precipitation Type",
       "status": "unavailable",
       "frames": [],
       "source_url": "https://mrms.ncep.noaa.gov/2D/PrecipFlag/",
-      "notes": "Precipitation-type processing unavailable for this dataset."
+      "notes": "Precipitation-type processing unavailable until the processor runs."
+    },
+    "MultiSensor_QPE_01H_Pass1": {
+      "label": "Rainfall · 1 hour",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/MultiSensor_QPE_01H_Pass1/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "MergedAzShear_0-2kmAGL": {
+      "label": "Low-level Azimuthal Shear",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/MergedAzShear_0-2kmAGL/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "MergedAzShear_3-6kmAGL": {
+      "label": "Mid-level Azimuthal Shear",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/MergedAzShear_3-6kmAGL/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "RotationTrack30min": {
+      "label": "Rotation Track · 30 min",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/RotationTrack30min/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "MESH": {
+      "label": "MESH · estimated hail size",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/MESH/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "POSH": {
+      "label": "POSH · severe hail probability",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/POSH/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
+    },
+    "NLDN_CG_005min_AvgDensity": {
+      "label": "Lightning · 5 min density",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://mrms.ncep.noaa.gov/2D/NLDN_CG_005min_AvgDensity/",
+      "notes": "Latest analysis frame unavailable until the processor runs."
     }
   },
-  "frames": [
-    {
-      "id": "mrms-20260722T121641Z",
-      "valid_time": "2026-07-22T12:16:41Z",
-      "url": "./frames/reflectivity-20260722T121641Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T121838Z",
-      "valid_time": "2026-07-22T12:18:38Z",
-      "url": "./frames/reflectivity-20260722T121838Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T122036Z",
-      "valid_time": "2026-07-22T12:20:36Z",
-      "url": "./frames/reflectivity-20260722T122036Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T122240Z",
-      "valid_time": "2026-07-22T12:22:40Z",
-      "url": "./frames/reflectivity-20260722T122240Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T122440Z",
-      "valid_time": "2026-07-22T12:24:40Z",
-      "url": "./frames/reflectivity-20260722T122440Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T122641Z",
-      "valid_time": "2026-07-22T12:26:41Z",
-      "url": "./frames/reflectivity-20260722T122641Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T122839Z",
-      "valid_time": "2026-07-22T12:28:39Z",
-      "url": "./frames/reflectivity-20260722T122839Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T123039Z",
-      "valid_time": "2026-07-22T12:30:39Z",
-      "url": "./frames/reflectivity-20260722T123039Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T123240Z",
-      "valid_time": "2026-07-22T12:32:40Z",
-      "url": "./frames/reflectivity-20260722T123240Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T123439Z",
-      "valid_time": "2026-07-22T12:34:39Z",
-      "url": "./frames/reflectivity-20260722T123439Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T123640Z",
-      "valid_time": "2026-07-22T12:36:40Z",
-      "url": "./frames/reflectivity-20260722T123640Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    },
-    {
-      "id": "mrms-20260722T123839Z",
-      "valid_time": "2026-07-22T12:38:39Z",
-      "url": "./frames/reflectivity-20260722T123839Z.png",
-      "bounds": [
-        -86.50000124291728,
-        32.500000000004476,
-        -73.50000161440653,
-        39.500000000003084
-      ]
-    }
-  ],
+  "frames": [],
   "sources": {
-    "mrms_directory": "https://mrms.ncep.noaa.gov/2D",
-    "reflectivity": "https://mrms.ncep.noaa.gov/2D/MergedReflectivityQCComposite/",
-    "precip_flag": "https://mrms.ncep.noaa.gov/2D/PrecipFlag/"
+    "mrms_directory": "https://mrms.ncep.noaa.gov/2D"
   },
-  "errors": []
+  "errors": [
+    "No generated radar artifact is present yet. Run the MRMS processor or the scheduled radar refresh workflow."
+  ]
 }

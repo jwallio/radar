@@ -25,6 +25,7 @@ class ProductDefinition:
     directory: str
     filename_prefix: str
     archive_prefix: str
+    render_kind: str = "scalar"
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         directory="MergedReflectivityQCComposite",
         filename_prefix="MRMS_MergedReflectivityQCComposite",
         archive_prefix="CONUS/MergedReflectivityQCComposite_00.50",
+        render_kind="reflectivity",
     ),
     "PrecipFlag": ProductDefinition(
         product_id="PrecipFlag",
@@ -59,8 +61,76 @@ PRODUCTS: dict[str, ProductDefinition] = {
         directory="PrecipFlag",
         filename_prefix="MRMS_PrecipFlag",
         archive_prefix="CONUS/PrecipFlag_00.00",
+        render_kind="precip_type",
+    ),
+    "MultiSensor_QPE_01H_Pass1": ProductDefinition(
+        product_id="MultiSensor_QPE_01H_Pass1",
+        label="Rainfall · 1 hour",
+        directory="MultiSensor_QPE_01H_Pass1",
+        filename_prefix="MRMS_MultiSensor_QPE_01H_Pass1",
+        archive_prefix="CONUS/MultiSensor_QPE_01H_Pass1",
+        render_kind="qpe",
+    ),
+    "MergedAzShear_0-2kmAGL": ProductDefinition(
+        product_id="MergedAzShear_0-2kmAGL",
+        label="Low-level Azimuthal Shear",
+        directory="MergedAzShear_0-2kmAGL",
+        filename_prefix="MRMS_MergedAzShear_0-2kmAGL",
+        archive_prefix="CONUS/MergedAzShear_0-2kmAGL_00.50",
+        render_kind="azshear",
+    ),
+    "MergedAzShear_3-6kmAGL": ProductDefinition(
+        product_id="MergedAzShear_3-6kmAGL",
+        label="Mid-level Azimuthal Shear",
+        directory="MergedAzShear_3-6kmAGL",
+        filename_prefix="MRMS_MergedAzShear_3-6kmAGL",
+        archive_prefix="CONUS/MergedAzShear_3-6kmAGL_00.50",
+        render_kind="azshear",
+    ),
+    "RotationTrack30min": ProductDefinition(
+        product_id="RotationTrack30min",
+        label="Rotation Track · 30 min",
+        directory="RotationTrack30min",
+        filename_prefix="MRMS_RotationTrack30min",
+        archive_prefix="CONUS/RotationTrack30min_00.50",
+        render_kind="rotation",
+    ),
+    "MESH": ProductDefinition(
+        product_id="MESH",
+        label="MESH · estimated hail size",
+        directory="MESH",
+        filename_prefix="MRMS_MESH",
+        archive_prefix="CONUS/MESH_00.50",
+        render_kind="mesh",
+    ),
+    "POSH": ProductDefinition(
+        product_id="POSH",
+        label="POSH · severe hail probability",
+        directory="POSH",
+        filename_prefix="MRMS_POSH",
+        archive_prefix="CONUS/POSH_00.50",
+        render_kind="posh",
+    ),
+    "NLDN_CG_005min_AvgDensity": ProductDefinition(
+        product_id="NLDN_CG_005min_AvgDensity",
+        label="Lightning · 5 min density",
+        directory="NLDN_CG_005min_AvgDensity",
+        filename_prefix="MRMS_NLDN_CG_005min_AvgDensity",
+        archive_prefix="CONUS/NLDN_CG_005min_AvgDensity_00.00",
+        render_kind="lightning",
     ),
 }
+
+PRIMARY_PRODUCT_IDS: tuple[str, ...] = ("MergedReflectivityQCComposite", "PrecipFlag")
+ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
+    "MultiSensor_QPE_01H_Pass1",
+    "MergedAzShear_0-2kmAGL",
+    "MergedAzShear_3-6kmAGL",
+    "RotationTrack30min",
+    "MESH",
+    "POSH",
+    "NLDN_CG_005min_AvgDensity",
+)
 
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
 DEFAULT_MRMS_BASE_URL = "https://mrms.ncep.noaa.gov/2D"

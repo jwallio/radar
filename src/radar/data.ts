@@ -7,7 +7,16 @@ import {
   REGIONAL_BOUNDS,
   WARNING_EVENTS,
 } from './config'
-import type { RadarHistoryCatalog, RadarManifest, RadarWarning, WarningsResult } from './types'
+import type {
+  BuoyObservation,
+  BuoyObservationsResult,
+  RadarHistoryCatalog,
+  RadarManifest,
+  RadarWarning,
+  SurfaceObservation,
+  SurfaceObservationsResult,
+  WarningsResult,
+} from './types'
 
 const REQUEST_TIMEOUT_MS = 20_000
 
@@ -28,6 +37,46 @@ interface NwsAlertFeature {
 
 interface NwsAlertResponse {
   features?: NwsAlertFeature[]
+}
+
+interface NwsStationFeature {
+  id?: string
+  geometry?: { type: 'Point'; coordinates: [number, number] } | null
+  properties?: {
+    stationIdentifier?: string
+    name?: string
+  }
+}
+
+interface NwsStationResponse {
+  features?: NwsStationFeature[]
+}
+
+interface NwsQuantity {
+  value?: number | null
+  unitCode?: string | null
+}
+
+interface NwsObservationResponse {
+  properties?: {
+    timestamp?: string | null
+    textDescription?: string | null
+    temperature?: NwsQuantity | null
+    dewpoint?: NwsQuantity | null
+    windDirection?: NwsQuantity | null
+    windSpeed?: NwsQuantity | null
+    windGust?: NwsQuantity | null
+    barometricPressure?: NwsQuantity | null
+    relativeHumidity?: NwsQuantity | null
+  }
+}
+
+interface BuoyFeedPayload {
+  status: 'ready' | 'unavailable'
+  generated_at?: string | null
+  source?: string
+  stations?: Array<Record<string, unknown>>
+  notes?: string
 }
 
 function emptyFeatureCollection(): GeoJSON.FeatureCollection {
@@ -180,6 +229,149 @@ export async function fetchRegionalGeography(signal?: AbortSignal): Promise<{
 
 export async function fetchRegionalHighways(signal?: AbortSignal): Promise<GeoJSON.FeatureCollection> {
   return fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_TRANSPORTATION_BASE, 0, 'NAME,BASENAME'), signal)
+}
+
+function quantityValue(quantity: NwsQuantity | null | undefined): number | null {
+  const value = quantity?.value
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function windSpeedKmh(quantity: NwsQuantity | null | undefined): number | null {
+  const value = quantityValue(quantity)
+  if (value === null) return null
+  const unit = quantity?.unitCode?.toLowerCase() ?? ''
+  return unit.includes('m_s') || unit.includes('m/s') ? value * 3.6 : value
+}
+
+function pressureHpa(quantity: NwsQuantity | null | undefined): number | null {
+  const value = quantityValue(quantity)
+  if (value === null) return null
+  const unit = quantity?.unitCode?.toLowerCase() ?? ''
+  return unit.includes('pa') && !unit.includes('hpa') ? value / 100 : value
+}
+
+function stationInRegion(feature: NwsStationFeature): boolean {
+  const coordinates = feature.geometry?.coordinates
+  if (!coordinates) return false
+  const [lon, lat] = coordinates
+  return lon >= REGIONAL_BOUNDS[0] && lon <= REGIONAL_BOUNDS[2]
+    && lat >= REGIONAL_BOUNDS[1] && lat <= REGIONAL_BOUNDS[3]
+}
+
+function chooseSurfaceStations(features: NwsStationFeature[], limit = 48): NwsStationFeature[] {
+  const unique = new Map<string, NwsStationFeature>()
+  features
+    .filter(stationInRegion)
+    .forEach((feature) => {
+      const id = feature.properties?.stationIdentifier ?? feature.id
+      if (id && !unique.has(id)) unique.set(id, feature)
+    })
+
+  const candidates = Array.from(unique.values()).sort((a, b) => {
+    const aAirport = (a.properties?.stationIdentifier ?? '').startsWith('K') ? 0 : 1
+    const bAirport = (b.properties?.stationIdentifier ?? '').startsWith('K') ? 0 : 1
+    return aAirport - bAirport
+  })
+  const selected: NwsStationFeature[] = []
+  const buckets = new Set<string>()
+  for (const station of candidates) {
+    const [lon, lat] = station.geometry?.coordinates ?? [0, 0]
+    const bucket = `${Math.floor((lon - REGIONAL_BOUNDS[0]) / 1.25)}:${Math.floor((lat - REGIONAL_BOUNDS[1]) / 1)}`
+    if (buckets.has(bucket)) continue
+    buckets.add(bucket)
+    selected.push(station)
+    if (selected.length >= limit) return selected
+  }
+  return selected.concat(candidates.filter((station) => !selected.includes(station))).slice(0, limit)
+}
+
+async function fetchLatestSurfaceObservation(station: NwsStationFeature, signal?: AbortSignal): Promise<SurfaceObservation> {
+  const stationId = station.properties?.stationIdentifier ?? station.id
+  if (!stationId) throw new Error('NWS station has no identifier')
+  const response = await fetchJson<NwsObservationResponse>(
+    `https://api.weather.gov/stations/${encodeURIComponent(stationId)}/observations/latest`,
+    signal,
+  )
+  const properties = response.properties ?? {}
+  const coordinates = station.geometry?.coordinates
+  if (!coordinates) throw new Error(`NWS station ${stationId} has no coordinates`)
+  return {
+    id: stationId,
+    station: stationId,
+    name: station.properties?.name ?? stationId,
+    observedAt: properties.timestamp ?? null,
+    lon: coordinates[0],
+    lat: coordinates[1],
+    temperatureC: quantityValue(properties.temperature),
+    dewpointC: quantityValue(properties.dewpoint),
+    windDirectionDeg: quantityValue(properties.windDirection),
+    windSpeedKmh: windSpeedKmh(properties.windSpeed),
+    windGustKmh: windSpeedKmh(properties.windGust),
+    pressureHpa: pressureHpa(properties.barometricPressure),
+    humidityPercent: quantityValue(properties.relativeHumidity),
+    textDescription: properties.textDescription ?? 'Observation available',
+  }
+}
+
+export async function fetchRegionalSurfaceObservations(signal?: AbortSignal): Promise<SurfaceObservationsResult> {
+  const stationResults = await Promise.allSettled(
+    NWS_ALERT_AREAS.map(async (state) => fetchJson<NwsStationResponse>(
+      `https://api.weather.gov/stations?state=${state}&limit=500`,
+      signal,
+    )),
+  )
+  const errors: string[] = []
+  const stationFeatures: NwsStationFeature[] = []
+  stationResults.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      errors.push(`NWS stations ${NWS_ALERT_AREAS[index]}: ${result.reason instanceof Error ? result.reason.message : 'request failed'}`)
+    } else {
+      stationFeatures.push(...(result.value.features ?? []))
+    }
+  })
+
+  const observations = await Promise.allSettled(
+    chooseSurfaceStations(stationFeatures).map((station) => fetchLatestSurfaceObservation(station, signal)),
+  )
+  const ready: SurfaceObservation[] = []
+  observations.forEach((result) => {
+    if (result.status === 'fulfilled') ready.push(result.value)
+    else errors.push(`NWS observation: ${result.reason instanceof Error ? result.reason.message : 'request failed'}`)
+  })
+  return { observations: ready, fetchedAt: new Date().toISOString(), errors: errors.slice(0, 12) }
+}
+
+export async function fetchBuoyObservations(path: string, signal?: AbortSignal): Promise<BuoyObservationsResult> {
+  const payload = await fetchJson<BuoyFeedPayload>(path, signal)
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.stations)) {
+    throw new Error('Buoy observation feed has an unsupported shape')
+  }
+  const numberValue = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+  const value = (station: Record<string, unknown>, camel: string, snake: string): unknown => station[camel] ?? station[snake]
+  const stations: BuoyObservation[] = payload.stations
+    .map((station) => ({
+      id: String(station.id ?? ''),
+      name: String(station.name ?? station.id ?? 'NOAA buoy'),
+      observedAt: typeof value(station, 'observedAt', 'observed_at') === 'string' ? String(value(station, 'observedAt', 'observed_at')) : null,
+      lon: numberValue(station.lon) ?? 0,
+      lat: numberValue(station.lat) ?? 0,
+      windDirectionDeg: numberValue(value(station, 'windDirectionDeg', 'wind_direction_deg')),
+      windSpeedMps: numberValue(value(station, 'windSpeedMps', 'wind_speed_mps')),
+      windGustMps: numberValue(value(station, 'windGustMps', 'wind_gust_mps')),
+      waveHeightM: numberValue(value(station, 'waveHeightM', 'wave_height_m')),
+      dominantPeriodS: numberValue(value(station, 'dominantPeriodS', 'dominant_period_s')),
+      airTemperatureC: numberValue(value(station, 'airTemperatureC', 'air_temp_c')),
+      waterTemperatureC: numberValue(value(station, 'waterTemperatureC', 'water_temp_c')),
+      pressureHpa: numberValue(value(station, 'pressureHpa', 'pressure_hpa')),
+    }))
+    .filter((station) => station.id && station.lon >= REGIONAL_BOUNDS[0] && station.lon <= REGIONAL_BOUNDS[2] && station.lat >= REGIONAL_BOUNDS[1] && station.lat <= REGIONAL_BOUNDS[3])
+  return {
+    status: payload.status,
+    generatedAt: payload.generated_at ?? null,
+    source: payload.source,
+    stations,
+    notes: payload.notes,
+  }
 }
 
 export function warningsFeatureCollection(warnings: RadarWarning[]): GeoJSON.FeatureCollection {

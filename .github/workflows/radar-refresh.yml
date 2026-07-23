@@ -1,4 +1,4 @@
-name: Refresh and deploy MRMS radar
+name: Refresh and deploy MRMS and KRAX radar
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   refresh-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -33,7 +33,9 @@ jobs:
       - name: Restore generated historical packs
         uses: actions/cache/restore@v4
         with:
-          path: public/data/radar/history
+          path: |
+            public/data/radar/history
+            public/data/radar/krax/history
           key: radar-history-${{ runner.os }}-restore-${{ github.run_id }}
           restore-keys: |
             radar-history-${{ runner.os }}-
@@ -43,10 +45,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-nexrad.txt
 
       - name: Install radar processor dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-nexrad.txt
 
       - name: Build generated regional radar artifact
         env:
@@ -54,6 +56,14 @@ jobs:
           MRMS_RETENTION_MINUTES: '90'
           MRMS_INCLUDE_PRECIP_TYPE: 'true'
         run: python scripts/build_radar_frames.py
+
+      - name: Build generated KRAX Level II artifact
+        continue-on-error: true
+        env:
+          NEXRAD_MAX_FRAMES: '18'
+          NEXRAD_RETENTION_MINUTES: '90'
+          NEXRAD_IMAGE_WIDTH: '1200'
+        run: python scripts/build_krax_radar.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

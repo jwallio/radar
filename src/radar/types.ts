@@ -1,4 +1,10 @@
-export type RadarProductId = 'MergedReflectivityQCComposite' | 'PrecipFlag' | 'MultiSensor_QPE_01H_Pass1'
+export type RadarSourceId = 'mrms' | 'krax'
+
+export type RadarProductId =
+  | 'MergedReflectivityQCComposite'
+  | 'PrecipFlag'
+  | 'MultiSensor_QPE_01H_Pass1'
+  | 'NEXRADLevel2BaseReflectivity'
 
 export type RadarAnalysisProductId =
   | 'MultiSensor_QPE_01H_Pass1'
@@ -28,12 +34,15 @@ export interface RadarProductManifest {
   loop_url?: string
   loop_frame_count?: number
   loop_size_bytes?: number
+  site?: string
 }
 
 export interface RadarManifest {
   schema_version: number
   status: 'ready' | 'unavailable'
   mode?: 'live' | 'historical'
+  source?: 'nexrad-level2' | 'mrms'
+  site?: string
   dataset_id?: string
   label?: string
   generated_at: string | null
@@ -46,6 +55,13 @@ export interface RadarManifest {
   frames: RadarFrameManifest[]
   sources?: Record<string, string>
   errors?: string[]
+  radar?: {
+    latitude?: number
+    longitude?: number
+    sweep_count?: number
+    field?: string
+    elevation_degrees?: number
+  }
 }
 
 export interface RadarHistoryEntry {
@@ -56,6 +72,8 @@ export interface RadarHistoryEntry {
   frame_count: number
   products: RadarProductId[]
   manifest_url: string
+  source?: 'nexrad-level2' | 'mrms'
+  site?: string
 }
 
 export interface RadarHistoryCatalog {

@@ -2,19 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, INITIAL_VIEW_BOUNDS, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, INITIAL_VIEW_BOUNDS, INITIAL_VIEW_PAN, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
-import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarWarning, SurfaceObservation } from './types'
+import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
 import './radar.css'
 
-const LIVE_MANIFEST_PATH = `${import.meta.env.BASE_URL}data/radar/manifest.json`
-const HISTORY_CATALOG_PATH = `${import.meta.env.BASE_URL}data/radar/history/catalog.json`
+const LIVE_MANIFEST_PATHS: Record<RadarSourceId, string> = {
+  mrms: `${import.meta.env.BASE_URL}data/radar/manifest.json`,
+  krax: `${import.meta.env.BASE_URL}data/radar/krax/manifest.json`,
+}
+const HISTORY_CATALOG_PATHS: Record<RadarSourceId, string> = {
+  mrms: `${import.meta.env.BASE_URL}data/radar/history/catalog.json`,
+  krax: `${import.meta.env.BASE_URL}data/radar/krax/history/catalog.json`,
+}
 const BUOY_DATA_PATH = `${import.meta.env.BASE_URL}data/observations/buoys.json`
 const RADAR_SOURCE_ID = 'wallcloud-radar-image'
 const RADAR_LAYER_ID = 'wallcloud-radar-layer'
 const WARNING_SOURCE_ID = 'wallcloud-warning-source'
 const WARNING_FILL_ID = 'wallcloud-warning-fill'
+const WARNING_CASING_ID = 'wallcloud-warning-casing'
 const WARNING_LINE_ID = 'wallcloud-warning-line'
 const STATE_SOURCE_ID = 'wallcloud-state-source'
 const COUNTY_SOURCE_ID = 'wallcloud-county-source'
@@ -44,8 +51,8 @@ function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {
   return new URL(frame.url, manifestUrl).toString()
 }
 
-function historicalManifestUrl(manifestUrl: string): string {
-  const catalogUrl = new URL(HISTORY_CATALOG_PATH, window.location.href)
+function historicalManifestUrl(manifestUrl: string, sourceId: RadarSourceId): string {
+  const catalogUrl = new URL(HISTORY_CATALOG_PATHS[sourceId], window.location.href)
   return new URL(manifestUrl, catalogUrl).toString()
 }
 
@@ -256,7 +263,17 @@ function createMapSources(map: maplibregl.Map): void {
         'Special Marine Warning', '#f3cf54',
         '#e8edf0',
       ],
-      'fill-opacity': ['case', ['==', ['get', 'id'], '__none__'], 0.12, 0.14],
+      'fill-opacity': ['case', ['==', ['get', 'id'], '__none__'], 0.18, 0.22],
+    },
+  })
+  map.addLayer({
+    id: WARNING_CASING_ID,
+    type: 'line',
+    source: WARNING_SOURCE_ID,
+    paint: {
+      'line-color': '#07151b',
+      'line-width': 5.6,
+      'line-opacity': 0.9,
     },
   })
   map.addLayer({
@@ -272,8 +289,8 @@ function createMapSources(map: maplibregl.Map): void {
         'Special Marine Warning', '#f3cf54',
         '#e8edf0',
       ],
-      'line-width': 1.8,
-      'line-opacity': 0.88,
+      'line-width': 2.7,
+      'line-opacity': 0.98,
     },
   })
 }
@@ -285,7 +302,7 @@ function setLayerVisibility(map: maplibregl.Map, ids: string[], visible: boolean
 }
 
 function productFrames(manifest: RadarManifest | null, productId: RadarManifestProductId): RadarFrameManifest[] {
-  return manifest?.products[productId]?.frames ?? (productId === 'MergedReflectivityQCComposite' ? manifest?.frames ?? [] : [])
+  return manifest?.products[productId]?.frames ?? (productId === manifest?.product ? manifest.frames ?? [] : [])
 }
 
 function analysisSourceId(productId: string): string {
@@ -424,9 +441,18 @@ function drawExportWarnings(
       bounds,
       width,
       height,
+      '#07151b',
+      5,
+    )
+    drawExportGeometry(
+      context,
+      { type: 'FeatureCollection', features: [feature] },
+      bounds,
+      width,
+      height,
       style.line,
-      2,
-      style.fill,
+      2.6,
+      style.fill.replace(/\.18\)/, '.25)').replace(/\.16\)/, '.22)'),
     )
   })
 }
@@ -535,33 +561,33 @@ async function captureExportMap(
 
 const SHARE_GIF_WIDTH = 720
 const SHARE_GIF_MAP_HEIGHT = 480
-const SHARE_GIF_HEADER_HEIGHT = 48
+const SHARE_GIF_HEADER_HEIGHT = 40
 const SHARE_GIF_FOOTER_HEIGHT = 78
+const SHARE_BRAND_NAVY = '#102a43'
+const SHARE_FRAME_BORDER = '#243746'
 
-function shareProductDetails(productId: RadarProductId): { label: string; unit: string; legend: Array<{ label: string; color: string }> } {
-  if (productId === 'PrecipFlag') return { label: 'Precipitation Type', unit: 'TYPE', legend: PRECIP_LEGEND }
-  if (productId === 'MultiSensor_QPE_01H_Pass1') return { label: '1-hour Rainfall', unit: 'mm', legend: RAINFALL_LEGEND }
-  return { label: 'Composite Reflectivity', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
+function shareProductDetails(productId: RadarProductId): { label: string; source: string; resolution: string; unit: string; legend: Array<{ label: string; color: string }> } {
+  if (productId === 'PrecipFlag') return { label: 'Precipitation Type', source: 'MRMS', resolution: '1 km', unit: 'TYPE', legend: PRECIP_LEGEND }
+  if (productId === 'MultiSensor_QPE_01H_Pass1') return { label: '1-hour Rainfall', source: 'MRMS', resolution: '1 km', unit: 'mm', legend: RAINFALL_LEGEND }
+  if (productId === 'NEXRADLevel2BaseReflectivity') return { label: 'Base Reflectivity', source: 'KRAX Level II', resolution: 'native', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
+  return { label: 'Composite Reflectivity', source: 'MRMS', resolution: '1 km', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
 }
 
 function formatShareValidTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'VALID TIME UNKNOWN'
-  const eastern = new Intl.DateTimeFormat('en-US', {
+  const formatted = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
-    month: 'short',
-    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  }).format(date)
-  const zulu = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date).replace(':', '')
-  return `${eastern} ET · ${zulu}Z`
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => formatted.find((item) => item.type === type)?.value ?? ''
+  return `${part('hour')}:${part('minute')} ${part('dayPeriod')} ET · ${part('weekday')} ${part('day')} ${part('month')} ${part('year')}`
 }
 
 function composeShareFrame(
@@ -589,18 +615,22 @@ function composeShareFrame(
 
   context.fillStyle = '#e9eff2'
   context.fillRect(0, 0, output.width, output.height)
-  context.fillStyle = '#f7fafb'
+  context.fillStyle = '#ffffff'
   context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
-  context.fillStyle = '#0b6e72'
-  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 3, output.width, 3)
-  context.fillStyle = '#10252e'
+  context.fillStyle = SHARE_FRAME_BORDER
+  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 1, output.width, 1)
+  context.fillStyle = SHARE_BRAND_NAVY
   context.font = '800 15px Arial, sans-serif'
-  context.fillText('WALL CLOUD RADAR', 20, 20)
-  context.font = '600 12px Arial, sans-serif'
-  context.fillText(`North Carolina · ${details.label} (${details.unit})`, 20, 38)
+  context.fillText('wall.cloud', 14, 24)
+  context.fillStyle = '#b0bcc4'
+  context.fillRect(126, 9, 1, 22)
+  context.fillStyle = '#1c2730'
+  context.font = '600 11px Arial, sans-serif'
+  context.fillText(`North Carolina · ${details.source} · ${details.resolution} · ${details.label} (${details.unit})`, 138, 24)
   context.textAlign = 'right'
-  context.font = '700 12px Arial, sans-serif'
-  context.fillText(`VALID ${formatShareValidTime(frame.valid_time)}`, output.width - 20, 28)
+  context.font = '700 11px Arial, sans-serif'
+  context.fillStyle = '#1c2730'
+  context.fillText(`Valid: ${formatShareValidTime(frame.valid_time)}`, output.width - 14, 24)
   context.textAlign = 'left'
 
   const scale = Math.max(SHARE_GIF_WIDTH / source.width, SHARE_GIF_MAP_HEIGHT / source.height)
@@ -614,11 +644,16 @@ function composeShareFrame(
   context.imageSmoothingQuality = 'high'
   context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
   context.imageSmoothingEnabled = true
+  context.strokeStyle = SHARE_FRAME_BORDER
+  context.lineWidth = 1
+  context.strokeRect(0.5, SHARE_GIF_HEADER_HEIGHT + 0.5, output.width - 1, SHARE_GIF_MAP_HEIGHT - 1)
 
   const footerY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT
-  context.fillStyle = '#0d2029'
+  context.fillStyle = '#ffffff'
   context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
-  context.fillStyle = '#a7c2c5'
+  context.fillStyle = SHARE_FRAME_BORDER
+  context.fillRect(0, footerY, output.width, 1)
+  context.fillStyle = '#51616e'
   context.font = '700 9px Arial, sans-serif'
   context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} · OBSERVED FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 16)
 
@@ -633,17 +668,20 @@ function composeShareFrame(
   })
   context.strokeStyle = 'rgba(255,255,255,.35)'
   context.strokeRect(legendX, legendY, legendWidth, 14)
-  context.fillStyle = '#e4eeee'
+  context.fillStyle = '#2d3b45'
   context.font = '8px Arial, sans-serif'
   legendEntries.forEach((entry, index) => {
     context.textAlign = index === 0 ? 'left' : index === legendEntries.length - 1 ? 'right' : 'center'
     context.fillText(entry.label, legendX + (index + (index === 0 ? 0 : index === legendEntries.length - 1 ? 1 : 0.5)) * swatchWidth, legendY + 27)
   })
   context.textAlign = 'right'
-  context.fillStyle = '#8faeb2'
+  context.fillStyle = SHARE_BRAND_NAVY
   context.font = '700 9px Arial, sans-serif'
-  context.fillText('WALL CLOUD · NC', output.width - 20, footerY + 66)
+  context.fillText('wall.cloud · NC', output.width - 20, footerY + 66)
   context.textAlign = 'left'
+  context.strokeStyle = SHARE_FRAME_BORDER
+  context.lineWidth = 1
+  context.strokeRect(0.5, 0.5, output.width - 1, output.height - 1)
   return context.getImageData(0, 0, output.width, output.height)
 }
 
@@ -846,9 +884,10 @@ export function RadarApp() {
   const [mapError, setMapError] = useState<string | null>(null)
   const [manifest, setManifest] = useState<RadarManifest | null>(null)
   const [manifestError, setManifestError] = useState<string | null>(null)
-  const [manifestPath, setManifestPath] = useState(LIVE_MANIFEST_PATH)
-  const [historyCatalog, setHistoryCatalog] = useState<RadarHistoryCatalog | null>(null)
-  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [sourceId, setSourceId] = useState<RadarSourceId>('mrms')
+  const [manifestPath, setManifestPath] = useState(LIVE_MANIFEST_PATHS.mrms)
+  const [historyCatalogs, setHistoryCatalogs] = useState<Record<RadarSourceId, RadarHistoryCatalog | null>>({ mrms: null, krax: null })
+  const [historyErrors, setHistoryErrors] = useState<Record<RadarSourceId, string | null>>({ mrms: null, krax: null })
   const [datasetId, setDatasetId] = useState('live')
   const [productId, setProductId] = useState<RadarProductId>('MergedReflectivityQCComposite')
   const [frameIndex, setFrameIndex] = useState(0)
@@ -893,6 +932,11 @@ export function RadarApp() {
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null)
   const [selectedBuoyId, setSelectedBuoyId] = useState<string | null>(null)
 
+  const historyCatalog = historyCatalogs[sourceId]
+  const historyError = historyErrors[sourceId]
+  const isKrax = sourceId === 'krax'
+  const sourceLabel = isKrax ? 'KRAX Level II' : 'MRMS'
+
   const frames = useMemo(() => productFrames(manifest, productId), [manifest, productId])
   const activeIndex = frames.length ? Math.min(Math.max(frameIndex, 0), frames.length - 1) : 0
   const activeFrame = frames[activeIndex] ?? null
@@ -916,16 +960,23 @@ export function RadarApp() {
 
   useEffect(() => {
     let cancelled = false
-    fetchHistoryCatalog(HISTORY_CATALOG_PATH)
-      .then((catalog) => {
-        if (!cancelled) {
-          setHistoryCatalog(catalog)
-          setHistoryError(null)
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setHistoryError(error instanceof Error ? error.message : 'Historical catalog request failed')
-      })
+    ;(['mrms', 'krax'] as RadarSourceId[]).forEach((source) => {
+      fetchHistoryCatalog(HISTORY_CATALOG_PATHS[source])
+        .then((catalog) => {
+          if (!cancelled) {
+            setHistoryCatalogs((current) => ({ ...current, [source]: catalog }))
+            setHistoryErrors((current) => ({ ...current, [source]: null }))
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setHistoryErrors((current) => ({
+              ...current,
+              [source]: error instanceof Error ? error.message : 'Historical catalog request failed',
+            }))
+          }
+        })
+    })
     return () => { cancelled = true }
   }, [])
 
@@ -933,9 +984,9 @@ export function RadarApp() {
     let cancelled = false
     const historyEntry = historyCatalog?.datasets.find((dataset) => dataset.id === datasetId)
     const nextManifestPath = datasetId === 'live'
-      ? LIVE_MANIFEST_PATH
+      ? LIVE_MANIFEST_PATHS[sourceId]
       : historyEntry
-        ? historicalManifestUrl(historyEntry.manifest_url)
+        ? historicalManifestUrl(historyEntry.manifest_url, sourceId)
         : null
     const load = async () => {
       if (!nextManifestPath) {
@@ -961,7 +1012,7 @@ export function RadarApp() {
       cancelled = true
       if (refresh !== null) window.clearInterval(refresh)
     }
-  }, [datasetId, historyCatalog, productId])
+  }, [datasetId, historyCatalog, productId, sourceId])
 
   useEffect(() => {
     if (!playing || frames.length < 2) return
@@ -1110,10 +1161,11 @@ export function RadarApp() {
       attributionControl: false,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA MRMS · NWS' }), 'bottom-right')
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA radar · NWS' }), 'bottom-right')
     map.on('load', () => {
       createMapSources(map)
       map.fitBounds(INITIAL_VIEW_BOUNDS, { padding: { top: 24, right: 24, bottom: 170, left: 24 }, duration: 0 })
+      map.panBy(INITIAL_VIEW_PAN, { duration: 0 })
       map.resize()
       setMapReady(true)
     })
@@ -1229,7 +1281,7 @@ export function RadarApp() {
     setLayerVisibility(map, ['wallcloud-county-line'], layers.counties)
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
     setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways)
-    setLayerVisibility(map, [WARNING_FILL_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
+    setLayerVisibility(map, [WARNING_FILL_ID, WARNING_CASING_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
     setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
     setLayerVisibility(map, [BUOY_DOT_ID, BUOY_LABEL_ID], layers.buoys && !isHistorical)
     ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
@@ -1256,10 +1308,13 @@ export function RadarApp() {
     buoySource?.setData(buoyFeatureCollection(buoys))
     warningSource?.setData(warningsFeatureCollection(warnings))
     if (map.getLayer(WARNING_FILL_ID)) {
-      map.setPaintProperty(WARNING_FILL_ID, 'fill-opacity', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 0.25, 0.13])
+      map.setPaintProperty(WARNING_FILL_ID, 'fill-opacity', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 0.34, 0.22])
+    }
+    if (map.getLayer(WARNING_CASING_ID)) {
+      map.setPaintProperty(WARNING_CASING_ID, 'line-width', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 7.2, 5.6])
     }
     if (map.getLayer(WARNING_LINE_ID)) {
-      map.setPaintProperty(WARNING_LINE_ID, 'line-width', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 3.4, 1.8])
+      map.setPaintProperty(WARNING_LINE_ID, 'line-width', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 4.2, 2.7])
     }
   }, [buoys, counties, highways, mapReady, selectedWarningId, states, surfaceObservations, warnings])
 
@@ -1356,7 +1411,7 @@ export function RadarApp() {
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>
           <div>
             <div className="radar-product-name">Wall Cloud Radar</div>
-            <div className="radar-region-name">North Carolina <span>/ {isHistorical ? 'archive loop' : 'regional view'}</span></div>
+            <div className="radar-region-name">North Carolina <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'KRAX single-site' : 'regional view'}</span></div>
           </div>
         </div>
         <div className="radar-header-status">
@@ -1377,7 +1432,7 @@ export function RadarApp() {
         <div ref={mapContainer} className="radar-map" aria-label="Interactive North Carolina radar map" />
 
         <div className="radar-map-badge">
-          <span>{isHistorical ? 'MRMS archive' : 'MRMS live'}</span>
+          <span>{sourceLabel} {isHistorical ? 'archive' : 'live'}</span>
           <span className="radar-badge-divider" />
           <span>{selectedProduct?.label ?? 'Composite Reflectivity'}</span>
         </div>
@@ -1400,7 +1455,7 @@ export function RadarApp() {
           <div className="radar-unavailable" role="status">
             <div className="radar-unavailable-icon">◎</div>
             <strong>Radar imagery unavailable</strong>
-            <span>{isHistorical ? 'That historical pack has no usable radar frames.' : 'The map is ready. Run the MRMS processor or wait for the next generated data artifact.'}</span>
+            <span>{isHistorical ? 'That historical pack has no usable radar frames.' : `The map is ready. Run the ${isKrax ? 'KRAX Level II' : 'MRMS'} processor or wait for the next generated data artifact.`}</span>
             {manifest?.errors?.[0] && <small>{manifest.errors[0]}</small>}
           </div>
         )}
@@ -1423,6 +1478,36 @@ export function RadarApp() {
             <button type="button" className="radar-icon-button radar-mobile-close" onClick={() => setSettingsOpen(false)} aria-label="Close layers panel">×</button>
           </div>
 
+          <label className="radar-field-label" htmlFor="radar-source">Radar source</label>
+          <select
+            id="radar-source"
+            className="radar-select"
+            value={sourceId}
+            onChange={(event) => {
+              const nextSource = event.target.value as RadarSourceId
+              setSourceId(nextSource)
+              setDatasetId('live')
+              setProductId(nextSource === 'krax' ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
+              setFrameIndex(0)
+              setPlaying(false)
+              setSelectedWarningId(null)
+              setLayers((current) => ({
+                ...current,
+                warnings: true,
+                rainfall: false,
+                shearLow: false,
+                shearMid: false,
+                rotation: false,
+                hailMesh: false,
+                hailPosh: false,
+                lightning: false,
+              }))
+            }}
+          >
+            <option value="mrms">MRMS regional mosaic</option>
+            <option value="krax">KRAX Level II</option>
+          </select>
+
           <label className="radar-field-label" htmlFor="radar-dataset">Loop source</label>
           <select
             id="radar-dataset"
@@ -1433,11 +1518,11 @@ export function RadarApp() {
               setDatasetId(nextDatasetId)
               setLayers((current) => ({ ...current, warnings: nextDatasetId === 'live' }))
               setSelectedWarningId(null)
-              setProductId('MergedReflectivityQCComposite')
+              setProductId(isKrax ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
               setPlaying(false)
             }}
           >
-            <option value="live">Live / recent radar</option>
+            <option value="live">Live / recent {sourceLabel}</option>
             {(historyCatalog?.datasets.length ?? 0) > 0 && (
               <optgroup label="Historical loops">
                 {historyCatalog?.datasets.map((dataset) => (
@@ -1446,7 +1531,7 @@ export function RadarApp() {
               </optgroup>
             )}
           </select>
-          {!historyCatalog?.datasets.length && <p className="radar-field-note">No historical packs are generated yet. Use the historical Python command documented in the README.</p>}
+          {!historyCatalog?.datasets.length && <p className="radar-field-note">No {sourceLabel} historical packs are generated yet. Use the historical Python command or GitHub workflow documented in the README.</p>}
           {historyError && <p className="radar-field-note error">Historical catalog unavailable: {historyError}</p>}
 
           <label className="radar-field-label" htmlFor="radar-product">Product</label>
@@ -1461,7 +1546,7 @@ export function RadarApp() {
               setPlaying(false)
             }}
           >
-            {PRODUCT_OPTIONS.map((option) => {
+            {PRODUCT_OPTIONS.filter((option) => option.source === sourceId).map((option) => {
               const status = manifest?.products[option.id]?.status
               const ready = option.id === 'MergedReflectivityQCComposite' || status === 'ready' || status === 'partial'
               return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · processor needed'}</option>
@@ -1469,6 +1554,7 @@ export function RadarApp() {
           </select>
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
           {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
+          {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Native KRAX Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}
 
           <div className="radar-layer-list">
             <div className="radar-layer-section-heading">Storm analysis <small>latest generated analysis</small></div>
@@ -1503,7 +1589,7 @@ export function RadarApp() {
 
             <div className="radar-layer-section-heading">Map overlays</div>
             {([
-              ['radar', 'Radar', 'MRMS observed raster frame'],
+              ['radar', 'Radar', `${sourceLabel} observed raster frame`],
               ['warnings', 'Warnings', isHistorical ? 'Unavailable for historical playback' : warningStatus === 'degraded' ? 'NWS refresh degraded' : 'NWS active polygons'],
               ['counties', 'Counties', 'Census boundary overlay'],
               ['cities', 'Cities', 'Priority NC locations'],
@@ -1523,7 +1609,7 @@ export function RadarApp() {
           {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}
           {surfaceError && <p className="radar-field-note error">Surface observations: {surfaceError}</p>}
           {buoyError && <p className="radar-field-note error">Buoys: {buoyError}</p>}
-          <p className="radar-source-note">Radar: NOAA/NCEP MRMS · alerts: National Weather Service · boundaries: U.S. Census TIGERweb</p>
+          <p className="radar-source-note">Radar: {isKrax ? 'NOAA NEXRAD Level II via the Unidata public archive' : 'NOAA/NCEP MRMS'} · alerts: National Weather Service · boundaries: U.S. Census TIGERweb</p>
         </aside>
 
         {freshWarningPanel(selectedWarning, () => setSelectedWarningId(null))}
@@ -1566,7 +1652,7 @@ export function RadarApp() {
               <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
             </div>
             <div className="radar-playback-options">
-              <span className="radar-observed-badge" title="Playback displays exact observed MRMS frames">Observed</span>
+              <span className="radar-observed-badge" title={`Playback displays exact observed ${sourceLabel} frames`}>Observed</span>
               <span className="radar-fps-label">FPS</span>
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
                 {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
@@ -1575,12 +1661,15 @@ export function RadarApp() {
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (
-                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered branded regional loop">Branded loop</a>
+                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered reference-style NC loop">Branded loop</a>
               ) : null}
             </div>
           </div>
-          {gifExportError && <div className="radar-playback-note">{gifExportError}</div>}
-          {activeAge !== null && !isLatest && !isHistorical && <div className="radar-playback-note">Playback frame · latest observation is {Math.max(0, latestAge ?? 0)} min old</div>}
+          <div className="radar-playback-note" aria-live="polite" aria-hidden={!gifExportError && !(activeAge !== null && !isLatest && !isHistorical)}>
+            {gifExportError ?? (activeAge !== null && !isLatest && !isHistorical
+              ? `Playback frame · latest observation is ${Math.max(0, latestAge ?? 0)} min old`
+              : '\u00a0')}
+          </div>
         </section>
       </main>
     </div>

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "unavailable",
+  "mode": "live",
+  "source": "nexrad-level2",
+  "site": "KRAX",
+  "dataset_id": "krax-live",
+  "label": "KRAX Level II · Live / recent",
+  "generated_at": null,
+  "latest_valid_time": null,
+  "start_time": null,
+  "end_time": null,
+  "region": {
+    "west": -84.5,
+    "south": 33.0,
+    "east": -74.0,
+    "north": 38.0
+  },
+  "product": "NEXRADLevel2BaseReflectivity",
+  "products": {
+    "NEXRADLevel2BaseReflectivity": {
+      "label": "KRAX Base Reflectivity",
+      "status": "unavailable",
+      "frames": [],
+      "source_url": "https://unidata-nexrad-level2.s3.amazonaws.com",
+      "site": "KRAX",
+      "notes": "Run the KRAX Level II processor to generate recent completed volume scans."
+    }
+  },
+  "frames": [],
+  "sources": {
+    "nexrad_archive": "https://unidata-nexrad-level2.s3.amazonaws.com",
+    "nexrad_realtime_chunks": "https://unidata-nexrad-level2-chunks.s3.amazonaws.com"
+  },
+  "errors": [
+    "No generated KRAX artifact is present yet. Run python scripts/build_krax_radar.py."
+  ]
+}

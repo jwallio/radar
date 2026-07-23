@@ -157,7 +157,7 @@
 .radar-static-download { color: #aabac0; font-size: 9px; text-decoration: none; white-space: nowrap; }
 .radar-static-download:hover { color: #e5f0ef; text-decoration: underline; }
 .radar-download-unavailable { color: #6f858b; font-size: 9px; white-space: nowrap; }
-.radar-playback-note { margin: 9px 0 -2px; color: #d4aa79; font-size: 9px; text-align: center; }
+.radar-playback-note { min-height: 13px; margin: 9px 0 -2px; color: #d4aa79; font-size: 9px; line-height: 1.45; text-align: center; }
 
 @media (max-width: 900px) {
   .radar-header { padding: 0 12px; }

@@ -265,6 +265,12 @@ def _palette_for_reflectivity(values: np.ndarray) -> np.ndarray:
     return rgba
 
 
+def reflectivity_rgba(values: np.ndarray) -> np.ndarray:
+    """Return the shared Wall Cloud reflectivity palette for any gridded source."""
+
+    return _palette_for_reflectivity(values)
+
+
 def _palette_for_scalar(values: np.ndarray, stops: np.ndarray, colors: np.ndarray) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
     indices = np.searchsorted(stops, values, side="right") - 1
@@ -325,7 +331,7 @@ def _save_rgba(rgba: np.ndarray, output_path: Path) -> None:
 
 def render_reflectivity(input_path: Path, output_path: Path, region: RegionBounds) -> RenderedRaster:
     values, actual_bounds = _crop_dataset(input_path, region)
-    _save_rgba(_palette_for_reflectivity(values), output_path)
+    _save_rgba(reflectivity_rgba(values), output_path)
     return RenderedRaster(actual_bounds, values.shape[1], values.shape[0])
 
 

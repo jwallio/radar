@@ -29,7 +29,9 @@ jobs:
       - name: Restore generated historical packs
         uses: actions/cache/restore@v4
         with:
-          path: public/data/radar/history
+          path: |
+            public/data/radar/history
+            public/data/radar/krax/history
           key: radar-history-${{ runner.os }}-restore-${{ github.run_id }}
           restore-keys: |
             radar-history-${{ runner.os }}-

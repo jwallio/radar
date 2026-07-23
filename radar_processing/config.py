@@ -46,6 +46,27 @@ class ProcessingConfig:
     raw_dir: Path | None
 
 
+@dataclass(frozen=True)
+class NexradProcessingConfig:
+    """Settings for the single-site KRAX NEXRAD Level II processor."""
+
+    root: Path
+    output_dir: Path
+    history_dir: Path
+    temp_dir: Path
+    archive_base_url: str
+    realtime_chunks_base_url: str
+    site: str
+    region: RegionBounds
+    retention_minutes: int
+    max_frames: int
+    timeout_seconds: float
+    retries: int
+    image_width: int
+    keep_raw: bool
+    raw_dir: Path | None
+
+
 PRODUCTS: dict[str, ProductDefinition] = {
     "MergedReflectivityQCComposite": ProductDefinition(
         product_id="MergedReflectivityQCComposite",
@@ -139,6 +160,10 @@ DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
 BRANDED_GIF_REGION = RegionBounds(west=-83.3, east=-74.8, south=33.6, north=37.0)
 DEFAULT_MRMS_BASE_URL = "https://mrms.ncep.noaa.gov/2D"
 DEFAULT_MRMS_ARCHIVE_BASE_URL = "https://noaa-mrms-pds.s3.amazonaws.com"
+DEFAULT_NEXRAD_ARCHIVE_BASE_URL = "https://unidata-nexrad-level2.s3.amazonaws.com"
+DEFAULT_NEXRAD_REALTIME_CHUNKS_BASE_URL = "https://unidata-nexrad-level2-chunks.s3.amazonaws.com"
+KRAX_SITE = "KRAX"
+KRAX_REGION = RegionBounds(west=-84.5, east=-74.0, south=33.0, north=38.0)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -199,4 +224,42 @@ def load_config(root: Path, *, keep_raw: bool | None = None) -> ProcessingConfig
         include_precip_type=_env_bool("MRMS_INCLUDE_PRECIP_TYPE", True),
         keep_raw=bool(keep_raw) if keep_raw is not None else _env_bool("MRMS_KEEP_RAW", False),
         raw_dir=raw_dir,
+    )
+
+
+def load_nexrad_config(root: Path, *, keep_raw: bool | None = None) -> NexradProcessingConfig:
+    """Load KRAX Level II settings without coupling them to MRMS configuration."""
+
+    site = os.getenv("NEXRAD_SITE", KRAX_SITE).strip().upper()
+    if site != KRAX_SITE:
+        raise ValueError(f"This MVP supports KRAX only, received NEXRAD_SITE={site!r}")
+    output_dir = root / "public" / "data" / "radar" / "krax"
+    keep = bool(keep_raw) if keep_raw is not None else _env_bool("NEXRAD_KEEP_RAW", False)
+    region = RegionBounds(
+        west=_env_float("NEXRAD_REGION_WEST", KRAX_REGION.west),
+        east=_env_float("NEXRAD_REGION_EAST", KRAX_REGION.east),
+        south=_env_float("NEXRAD_REGION_SOUTH", KRAX_REGION.south),
+        north=_env_float("NEXRAD_REGION_NORTH", KRAX_REGION.north),
+    )
+    if region.west >= region.east or region.south >= region.north:
+        raise ValueError(f"Invalid NEXRAD region bounds: {region}")
+    return NexradProcessingConfig(
+        root=root,
+        output_dir=output_dir,
+        history_dir=output_dir / "history",
+        temp_dir=root / ".radar-tmp",
+        archive_base_url=os.getenv("NEXRAD_ARCHIVE_BASE_URL", DEFAULT_NEXRAD_ARCHIVE_BASE_URL).rstrip("/"),
+        realtime_chunks_base_url=os.getenv(
+            "NEXRAD_REALTIME_CHUNKS_BASE_URL",
+            DEFAULT_NEXRAD_REALTIME_CHUNKS_BASE_URL,
+        ).rstrip("/"),
+        site=site,
+        region=region,
+        retention_minutes=max(1, _env_int("NEXRAD_RETENTION_MINUTES", 90)),
+        max_frames=max(1, _env_int("NEXRAD_MAX_FRAMES", 18)),
+        timeout_seconds=max(5.0, _env_float("NEXRAD_TIMEOUT_SECONDS", 60.0)),
+        retries=max(1, _env_int("NEXRAD_RETRIES", 3)),
+        image_width=max(320, _env_int("NEXRAD_IMAGE_WIDTH", 1200)),
+        keep_raw=keep,
+        raw_dir=root / ".nexrad-raw" if keep else None,
     )

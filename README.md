@@ -5,6 +5,7 @@ Wall Cloud Radar is a static-build-compatible North Carolina radar viewer for `r
 The MVP provides:
 
 - NOAA/NCEP MRMS regional composite-reflectivity imagery processed to PNG.
+- A KRAX-only NOAA NEXRAD Level II source with recent completed-volume playback and selectable historical packs.
 - A generated manifest and recent-frame playback with previous, play/pause, next, scrubber, and 2/4/8/20/30 FPS choices using exact observed frames.
 - Downloadable, branded animated GIF loops generated with the same Wall Cloud palette at a concise five-to-six-frame-per-second presentation rate.
 - Client-side **Save GIF** export that follows the current map zoom/pan and selected viewer FPS, composes every frame from the radar raster plus local state/county/city vectors, and adds share-ready Wall Cloud framing with each frame's Eastern valid time and product legend. External basemap capture is only a last-resort fallback.
@@ -32,6 +33,20 @@ GitHub Pages or another static host
 
 The browser never downloads or decodes a full MRMS GRIB2 file. The frontend is independent of the ingestion runtime: the same generated `public/data/radar` artifact can later be copied to object storage or served by a small worker without changing the map client.
 
+KRAX Level II follows the same server-side contract:
+
+```text
+NOAA/Unidata public NEXRAD Level II archive (KRAX only)
+        ↓
+Python + Py-ART (discover → download → decode lowest sweep → project → PNG)
+        ↓
+public/data/radar/krax/frames + loops + history + manifests
+        ↓
+The existing MapLibre viewer, animation controls, and GIF exporter
+```
+
+The current live KRAX mode polls the newest completed volume files from the archive bucket, which is updated as data becomes available. The real-time chunk bucket is centralized in configuration for a future lower-latency worker, but the browser never assembles chunks or decodes Level II files.
+
 ## Official data sources
 
 Radar URLs are centralized in `radar_processing/config.py` and are based on the official MRMS directory listings:
@@ -47,6 +62,10 @@ Radar URLs are centralized in `radar_processing/config.py` and are based on the 
 - [POSH](https://mrms.ncep.noaa.gov/2D/POSH/)
 - [NLDN_CG_005min_AvgDensity](https://mrms.ncep.noaa.gov/2D/NLDN_CG_005min_AvgDensity/)
 - [NOAA MRMS archive on NODD/AWS](https://registry.opendata.aws/noaa-mrms-pds/)
+- [NOAA NEXRAD Level II on AWS](https://registry.opendata.aws/noaa-nexrad/) — current archive bucket `unidata-nexrad-level2` and real-time chunk bucket `unidata-nexrad-level2-chunks`.
+- [NOAA NCEI NEXRAD documentation](https://www.ncei.noaa.gov/products/radar/next-generation-weather-radar)
+- [NOAA NCEI decoding guidance](https://www.ncei.noaa.gov/products/radar/decoding-utilities-examples)
+- [ARM Py-ART](https://arm-doe.github.io/pyart/) for Archive II decoding.
 - [MRMS operational flag table](https://www.nssl.noaa.gov/projects/mrms/operational/tables.php)
 - [NWS API documentation](https://www.weather.gov/documentation/services-web-api)
 - [NWS active alerts endpoint](https://api.weather.gov/alerts/active)
@@ -71,6 +90,20 @@ The committed manifest intentionally starts in a data-unavailable state. Generat
 python -m pip install -r requirements-dev.txt
 python scripts/build_radar_frames.py
 npm run dev
+```
+
+Generate the KRAX Level II source as well:
+
+```powershell
+python -m pip install -r requirements-nexrad.txt
+python scripts/build_krax_radar.py
+npm run dev
+```
+
+For a faster live smoke test, render only the latest completed volume:
+
+```powershell
+python scripts/build_krax_radar.py --max-frames 1 --retention-minutes 30
 ```
 
 The dev server is available at `http://localhost:5173` by default. The processor uses a temporary directory for raw downloads and removes raw GRIB2 files after rendering. It writes only generated PNGs and the manifest to `public/data/radar`.
@@ -105,6 +138,11 @@ The processor is intentionally split into focused modules:
 - `radar_processing/manifest.py` — deterministic frame ordering, retention, missing-file filtering, stale detection, and atomic JSON replacement.
 - `scripts/build_radar_frames.py` — orchestration and CLI.
 - `scripts/build_buoy_observations.py` — standalone NDBC feed refresh CLI.
+- `radar_processing/nexrad.py` — KRAX archive discovery, timestamp parsing, retries, sampling, and atomic downloads.
+- `radar_processing/nexrad_rendering.py` — Py-ART Archive II decode and Web-Mercator-aligned lowest-sweep reflectivity rendering.
+- `radar_processing/nexrad_pipeline.py` — KRAX frame rotation, branded loop composition, and atomic manifest generation.
+- `scripts/build_krax_radar.py` — recent completed KRAX volume orchestration.
+- `scripts/build_historical_krax.py` — timezone-aware archived KRAX pack generation.
 
 Default region is `[-86.5, 32.5, -73.5, 39.5]` as west/south/east/north. Defaults retain 90 minutes of source history and render up to 30 frames, which is approximately 60 minutes at the current two-minute MRMS cadence. Set `MRMS_MAX_FRAMES=45` to target approximately 90 minutes.
 
@@ -121,9 +159,11 @@ python scripts/build_radar_frames.py
 
 Use `python scripts/build_radar_frames.py --no-precip-type` for a reflectivity-only run or `--keep-raw` only when troubleshooting decoder inputs. Raw files and local caches are ignored by Git.
 
-Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed Central North Carolina reference loops (`-83.3, 33.6, -74.8, 37.0`) with coastal North Carolina and nearby Atlantic waters included, sharp raster cropping from the regional source, a clean vector base map, collision-checked city labels, valid time, and product legends. Loop URLs receive a generated version key so a newly cropped loop is not hidden by a cached older regional GIF. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, in a 720-pixel-wide share frame with Wall Cloud header/footer, the frame's Eastern and UTC valid time, product-specific legend, observed-frame count, and the selected 2/4/8/20/30 FPS setting. It draws labels, borders, warnings, and optional highways from local vector data so exports remain complete even when external basemap tiles cannot be captured. The basemap is label-free, so priority city and optional highway labels are owned by the app and appear once. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
+Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed Central North Carolina reference loops (`-83.3, 33.6, -74.8, 37.0`) with coastal North Carolina and nearby Atlantic waters included, sharp raster cropping from the regional source, a clean vector base map, collision-checked city labels, valid time, and product legends. Loop URLs receive a generated version key so a newly cropped loop is not hidden by a cached older regional GIF. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, in a 720-pixel-wide share frame with the same branded header/footer, border, `wall.cloud` wordmark, frame's Eastern and UTC valid time, product-specific legend, observed-frame count, and selected 2/4/8/20/30 FPS setting. It draws labels, borders, warnings, and optional highways from local vector data so exports remain complete even when external basemap tiles cannot be captured. The basemap is label-free, so priority city and optional highway labels are owned by the app and appear once. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
 
 Browser playback defaults to 4 FPS and always swaps exact observed MRMS frames directly. The 20 and 30 FPS options preload the complete active sequence for testing, but display refresh and image decoding can still limit the effective rate. No crossfaded or interpolated radar field is shown, written to the manifest, or exported to GIF.
+
+KRAX playback uses the same exact-frame behavior. It defaults to 18 completed volumes or 90 minutes, whichever is smaller. Configure it with `NEXRAD_MAX_FRAMES`, `NEXRAD_RETENTION_MINUTES`, `NEXRAD_IMAGE_WIDTH`, and `NEXRAD_REGION_WEST/EAST/SOUTH/NORTH`.
 
 Viewport GIF export is client-side and does not send radar data to a server. The normal export path uses the zoom/pan-cropped local radar raster plus local state/county/city/warning/highway geography; a browser map-canvas capture is retained only as a last-resort recovery path for a transient local raster failure.
 
@@ -143,6 +183,21 @@ npm run dev
 ```
 
 The script downloads only the selected archive frames, crops the NC region, creates PNG and GIF loops, writes a dataset manifest under `public/data/radar/history/<dataset-id>/`, and atomically updates `history/catalog.json`. The viewer's **Loop source** selector discovers it automatically. Use `--no-precip-type` when only composite reflectivity is needed.
+
+## Historical KRAX Level II
+
+KRAX archive packs use the public `unidata-nexrad-level2` bucket and do not require AWS credentials. Times must include a timezone; the CLI converts the request to UTC and the viewer displays each valid time in Eastern Time.
+
+```powershell
+python scripts/build_historical_krax.py `
+  --start '2025-06-19T14:00:00-04:00' `
+  --end '2025-06-19T15:30:00-04:00' `
+  --label 'KRAX June 19, 2025' `
+  --max-frames 30
+npm run dev
+```
+
+Generated packs are written under `public/data/radar/krax/history/<dataset-id>/`, and the KRAX history catalog is updated atomically. In the viewer choose **KRAX Level II** under **Radar source**, then select the generated archive under **Loop source**. Ranges are limited to 24 hours per pack and 90 sampled frames to bound download, decode, and GIF costs.
 
 ## Manifest contract
 
@@ -165,6 +220,8 @@ The script downloads only the selected archive frames, crops the NC region, crea
 
 The frontend uses relative frame URLs, so the same artifact works at a custom-domain root or a GitHub Pages project path. The seven storm-analysis products are latest-only overlays in the live MVP; the primary reflectivity and PrecipFlag products retain the animated sequence. Missing manifests, missing frame files, stale timestamps, partial PrecipFlag output, and unavailable analysis layers are surfaced as meaningful UI states.
 
+KRAX uses the same schema at `public/data/radar/krax/manifest.json` with `source: "nexrad-level2"`, `site: "KRAX"`, and product `NEXRADLevel2BaseReflectivity`. Its independent history catalog lives at `public/data/radar/krax/history/catalog.json`.
+
 ## Testing
 
 Run the focused Python tests with:
@@ -174,6 +231,12 @@ python -m pytest -q tests/test_radar_processing.py
 ```
 
 The tests cover chronological ordering, retention, missing frame handling, stale timestamps, regional bounds, two-dBZ palette spacing, analysis-product configuration and palette mapping, NDBC parsing, archive-list parsing, historical catalog updates, GIF animation output, and NOAA PrecipFlag category mapping. Live processor smoke testing verified official directory listings and decoded one current raster for each new MRMS analysis layer.
+
+`tests/test_nexrad_processing.py` additionally covers KRAX filename/listing parsing, site enforcement, retention and sampling, geographic gate projection, manifest ordering, and the atomic KRAX output contract. A live smoke test requires network access:
+
+```powershell
+python scripts/build_krax_radar.py --max-frames 1 --retention-minutes 30
+```
 
 ## GitHub Actions and Pages
 
@@ -185,6 +248,8 @@ The tests cover chronological ordering, retention, missing frame handling, stale
 4. Uploads and deploys one Pages artifact.
 
 It never commits radar images to the repository. `.github/workflows/pages.yml` provides a normal source-code-to-GitHub-Pages deployment for pushes and manual runs; the scheduled workflow is the one that includes fresh generated radar data.
+
+The scheduled refresh also attempts the KRAX Level II build after MRMS; a KRAX upstream or decode failure does not discard the working MRMS deployment. `.github/workflows/historical-krax.yml` accepts a timezone-aware start/end range, generates a KRAX archive pack, preserves both MRMS and KRAX history caches, and deploys the combined site. Level II dependencies are isolated in `requirements-nexrad.txt`.
 
 The **Build and deploy a historical radar loop** workflow accepts timezone-aware start/end values, restores earlier generated packs from the GitHub Actions cache, adds the requested loop, refreshes live radar, and deploys the combined site. Scheduled live refreshes restore that latest historical bundle before deploying, so historical selections are not erased by the next live update. Actions cache retention is suitable for an MVP; durable object storage is still the recommended long-term archive.
 
@@ -211,6 +276,10 @@ Enable GitHub Pages with **GitHub Actions** as the build source. The scheduled w
 - Client-side share GIFs prioritize broad browser-decoder compatibility over maximum compression; their size grows with the selected frame count. The pre-rendered **Branded loop** remains the smaller fixed-Central-NC option.
 - GitHub Actions is not a real-time scheduler. A worker or persistent object-store pipeline is recommended for lower-latency updates.
 - Historical packs available in the static viewer are generated selections, not arbitrary browser-side GRIB decoding. GitHub Actions caches preserve them for the MVP, but cache eviction can remove old packs; use R2/S3 for permanent public history.
+- KRAX is a single radar rather than a quality-controlled mosaic. Beam height increases with range, terrain can block coverage, and biological propagation or ground clutter can appear in base reflectivity.
+- KRAX live mode currently uses the latest completed archive volumes. Direct chunk assembly from `unidata-nexrad-level2-chunks` remains a future latency improvement for a persistent worker.
+- Py-ART has a larger dependency footprint than the MRMS renderer. `requirements-nexrad.txt` keeps it isolated, and the Linux GitHub Actions runner is the reference deployment environment if a local Windows Python distribution lacks compatible wheels.
+- Static GitHub Pages cannot launch arbitrary Python archive jobs from an anonymous browser request. The MVP provides local CLI and manual GitHub Actions archive generation; a Cloud Run/VPS worker plus durable object storage is required for true on-demand public date selection.
 
 ## Future migration path
 

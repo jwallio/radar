@@ -27,7 +27,7 @@ def catalog_entry(manifest: dict[str, Any]) -> dict[str, Any]:
         for product_id, product in manifest.get("products", {}).items()
         if product.get("frames")
     ]
-    return {
+    entry = {
         "id": manifest["dataset_id"],
         "label": manifest["label"],
         "start_time": manifest.get("start_time"),
@@ -36,6 +36,11 @@ def catalog_entry(manifest: dict[str, Any]) -> dict[str, Any]:
         "products": products,
         "manifest_url": f"./{manifest['dataset_id']}/manifest.json",
     }
+    if manifest.get("source"):
+        entry["source"] = manifest["source"]
+    if manifest.get("site"):
+        entry["site"] = manifest["site"]
+    return entry
 
 
 def update_history_catalog(

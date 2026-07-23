@@ -34,6 +34,8 @@ LAND_COLOR = (247, 248, 247, 255)
 GRID_COLOR = (177, 188, 198, 150)
 COUNTY_COLOR = (143, 153, 162, 205)
 STATE_COLOR = (36, 44, 51, 255)
+BRAND_NAVY = (16, 42, 67, 255)
+FRAME_BORDER = (36, 55, 69, 255)
 
 CITIES = (
     ("Raleigh", -78.6382, 35.7796),
@@ -228,7 +230,7 @@ def _format_valid_time(value: str) -> str:
     return f"{clock} ET · {parsed:%a %b %d, %Y}"
 
 
-def _draw_reflectivity_legend(draw: ImageDraw.ImageDraw, width: int, y: int) -> None:
+def _draw_reflectivity_legend(draw: ImageDraw.ImageDraw, width: int, y: int, label: str = "Composite Reflectivity") -> None:
     values = np.array([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70], dtype=np.float32)
     indices = np.clip(np.searchsorted(REFLECTIVITY_STOPS, values, side="right") - 1, 0, len(REFLECTIVITY_COLORS) - 1)
     colors = REFLECTIVITY_COLORS[indices]
@@ -241,7 +243,7 @@ def _draw_reflectivity_legend(draw: ImageDraw.ImageDraw, width: int, y: int) -> 
         x2 = right if index == len(colors) - 1 else x1 + block_width
         draw.rectangle((x1, y, x2, y + 10), fill=tuple(int(channel) for channel in color[:3]) + (255,))
         draw.text((x1, y + 12), "70+" if index == len(colors) - 1 else str(int(values[index])), font=font, fill=(59, 66, 72, 255))
-    draw.text((left, y - 13), "Composite reflectivity · dBZ", font=_font(9, bold=True), fill=(47, 55, 62, 255))
+    draw.text((left, y - 13), f"{label} · dBZ", font=_font(9, bold=True), fill=(47, 55, 62, 255))
 
 
 def _draw_precip_legend(draw: ImageDraw.ImageDraw, width: int, y: int) -> None:
@@ -271,6 +273,9 @@ def _export_frame(
     states: dict[str, Any] | None,
     counties: dict[str, Any] | None,
     width: int,
+    source_label: str,
+    resolution_label: str,
+    unit_label: str,
 ) -> Image.Image:
     map_height = round(width * radar.height / radar.width)
     header_height = 40
@@ -288,11 +293,15 @@ def _export_frame(
     canvas = Image.new("RGBA", (width, header_height + map_height + footer_height), (255, 255, 255, 255))
     canvas.alpha_composite(map_image, (0, header_height))
     draw = ImageDraw.Draw(canvas, "RGBA")
-    draw.line((0, header_height - 1, width, header_height - 1), fill=(42, 50, 56, 255), width=1)
-    draw.text((14, 10), "WALL CLOUD RADAR", font=_font(13, bold=True), fill=(13, 67, 69, 255))
-    draw.line((176, 9, 176, 29), fill=(176, 185, 191, 255), width=1)
-    unit = "dBZ" if product_id == "MergedReflectivityQCComposite" else "TYPE"
-    draw.text((187, 11), f"North Carolina · MRMS 1 km · {product_label} ({unit})", font=_font(12), fill=(25, 31, 36, 255))
+    draw.line((0, header_height - 1, width, header_height - 1), fill=FRAME_BORDER, width=1)
+    draw.text((14, 10), "wall.cloud", font=_font(13, bold=True), fill=BRAND_NAVY)
+    draw.line((126, 9, 126, 29), fill=(176, 185, 191, 255), width=1)
+    draw.text(
+        (138, 11),
+        f"North Carolina · {source_label} · {resolution_label} · {product_label} ({unit_label})",
+        font=_font(12),
+        fill=(25, 31, 36, 255),
+    )
     valid_text = f"Valid: {_format_valid_time(valid_time)}"
     valid_box = draw.textbbox((0, 0), valid_text, font=_font(11, bold=True))
     draw.text((width - (valid_box[2] - valid_box[0]) - 14, 11), valid_text, font=_font(11, bold=True), fill=(25, 31, 36, 255))
@@ -300,7 +309,17 @@ def _export_frame(
     if product_id == "PrecipFlag":
         _draw_precip_legend(draw, width, legend_y)
     else:
-        _draw_reflectivity_legend(draw, width, legend_y)
+        _draw_reflectivity_legend(draw, width, legend_y, product_label)
+    draw.line((0, header_height + map_height, width, header_height + map_height), fill=FRAME_BORDER, width=1)
+    footer_brand = "wall.cloud · NC"
+    footer_box = draw.textbbox((0, 0), footer_brand, font=_font(9, bold=True))
+    draw.text(
+        (width - (footer_box[2] - footer_box[0]) - 14, legend_y + 25),
+        footer_brand,
+        font=_font(9, bold=True),
+        fill=BRAND_NAVY,
+    )
+    draw.rectangle((0, 0, width - 1, canvas.height - 1), outline=FRAME_BORDER, width=1)
     return canvas
 
 
@@ -317,6 +336,9 @@ def build_loop_gif(
     width: int = 960,
     frame_duration_ms: int = 180,
     latest_pause_ms: int = 1000,
+    source_label: str = "MRMS",
+    resolution_label: str = "1 km",
+    unit_label: str | None = None,
 ) -> int:
     """Create an atomic, branded GIF from an already-rendered radar sequence."""
 
@@ -349,6 +371,9 @@ def build_loop_gif(
                 states=states,
                 counties=counties,
                 width=width,
+                source_label=source_label,
+                resolution_label=resolution_label,
+                unit_label=unit_label or ("TYPE" if product_id == "PrecipFlag" else "dBZ"),
             )
             frames.append(rendered.convert("P", palette=Image.Palette.ADAPTIVE, colors=256))
     if not frames:

@@ -1,4 +1,4 @@
-name: Build and deploy a historical radar loop
+name: Build and deploy a historical KRAX Level II loop
 
 on:
   workflow_dispatch:
@@ -16,15 +16,10 @@ on:
         required: false
         type: string
       max_frames:
-        description: Maximum evenly sampled frames
+        description: Maximum evenly sampled KRAX volumes
         required: true
-        default: '45'
+        default: '30'
         type: string
-      precipitation_type:
-        description: Also build precipitation-type frames
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -39,7 +34,7 @@ concurrency:
 jobs:
   build-history-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -63,31 +58,36 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-nexrad.txt
 
       - name: Install radar processor dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-nexrad.txt
 
-      - name: Build current live radar
+      - name: Build current MRMS radar
         env:
           MRMS_MAX_FRAMES: '30'
           MRMS_RETENTION_MINUTES: '90'
           MRMS_INCLUDE_PRECIP_TYPE: 'true'
         run: python scripts/build_radar_frames.py
 
-      - name: Build requested historical loop
+      - name: Build current KRAX radar
+        continue-on-error: true
+        env:
+          NEXRAD_MAX_FRAMES: '18'
+          NEXRAD_RETENTION_MINUTES: '90'
+        run: python scripts/build_krax_radar.py
+
+      - name: Build requested historical KRAX loop
         shell: bash
         env:
           HISTORY_START: ${{ inputs.start }}
           HISTORY_END: ${{ inputs.end }}
           HISTORY_LABEL: ${{ inputs.label }}
           HISTORY_MAX_FRAMES: ${{ inputs.max_frames }}
-          HISTORY_PRECIPITATION_TYPE: ${{ inputs.precipitation_type }}
         run: |
           args=(--start "$HISTORY_START" --end "$HISTORY_END" --max-frames "$HISTORY_MAX_FRAMES")
           if [[ -n "$HISTORY_LABEL" ]]; then args+=(--label "$HISTORY_LABEL"); fi
-          if [[ "$HISTORY_PRECIPITATION_TYPE" != "true" ]]; then args+=(--no-precip-type); fi
-          python scripts/build_historical_radar.py "${args[@]}"
+          python scripts/build_historical_krax.py "${args[@]}"
 
       - name: Save historical packs for future live refreshes
         uses: actions/cache/save@v4

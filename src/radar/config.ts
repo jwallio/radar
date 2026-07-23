@@ -1,8 +1,11 @@
-import type { RadarAnalysisProductId, RadarProductId } from './types'
+import type { RadarAnalysisProductId, RadarProductId, RadarSourceId } from './types'
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
 export const MAP_CENTER: [number, number] = [-79.45, 35.45]
 export const INITIAL_VIEW_BOUNDS: [[number, number], [number, number]] = [[-84.7, 33.0], [-75.0, 37.8]]
+// Raise the default NC framing within the map viewport while keeping the full
+// coastal/state-border extent available behind the bottom timeline.
+export const INITIAL_VIEW_PAN: [number, number] = [0, -52]
 
 // Keep the raster base label-free so the app's priority city/highway layers
 // are the single source of truth for map text and cannot be duplicated.
@@ -21,10 +24,11 @@ export const WARNING_EVENTS = [
   'Special Marine Warning',
 ] as const
 
-export const PRODUCT_OPTIONS: Array<{ id: RadarProductId; label: string }> = [
-  { id: 'MergedReflectivityQCComposite', label: 'Composite Reflectivity' },
-  { id: 'PrecipFlag', label: 'Precipitation Type' },
-  { id: 'MultiSensor_QPE_01H_Pass1', label: '1-hour Rainfall' },
+export const PRODUCT_OPTIONS: Array<{ id: RadarProductId; label: string; source: RadarSourceId }> = [
+  { id: 'MergedReflectivityQCComposite', label: 'Composite Reflectivity', source: 'mrms' },
+  { id: 'PrecipFlag', label: 'Precipitation Type', source: 'mrms' },
+  { id: 'MultiSensor_QPE_01H_Pass1', label: '1-hour Rainfall', source: 'mrms' },
+  { id: 'NEXRADLevel2BaseReflectivity', label: 'KRAX Base Reflectivity', source: 'krax' },
 ]
 
 export const REFLECTIVITY_LEGEND = [

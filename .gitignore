@@ -30,6 +30,7 @@ dev.err.log
 # Generated radar deployment data and local raw-download scratch space
 .radar-tmp/
 .radar-raw/
+.nexrad-raw/
 __pycache__/
 *.py[cod]
 public/data/radar/frames/*
@@ -39,3 +40,10 @@ public/data/radar/loops/*
 public/data/radar/history/*
 !public/data/radar/history/.gitkeep
 !public/data/radar/history/catalog.json
+public/data/radar/krax/frames/*
+!public/data/radar/krax/frames/.gitkeep
+public/data/radar/krax/loops/*
+!public/data/radar/krax/loops/.gitkeep
+public/data/radar/krax/history/*
+!public/data/radar/krax/history/.gitkeep
+!public/data/radar/krax/history/catalog.json

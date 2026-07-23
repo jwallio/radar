@@ -117,4 +117,3 @@ export function encodeGif(frames: ImageData[], fps: number, latestHoldMs = LATES
 }
 
 export { GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT }
-

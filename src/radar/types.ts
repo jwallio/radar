@@ -128,4 +128,3 @@ export interface BuoyObservationsResult {
   stations: BuoyObservation[]
   notes?: string
 }
-

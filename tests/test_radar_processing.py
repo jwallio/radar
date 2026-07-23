@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from radar_processing.animation import build_loop_gif
+from radar_processing.animation import _crop_radar_to_bounds, build_loop_gif
 from radar_processing.config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, DEFAULT_REGION, PRODUCTS
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
@@ -67,6 +67,14 @@ def test_branded_gif_region_is_tighter_and_central_nc_focused() -> None:
     assert BRANDED_GIF_REGION.west < -82.5 < BRANDED_GIF_REGION.east
     assert BRANDED_GIF_REGION.east > -75.5
     assert BRANDED_GIF_REGION.south < 35.5 < BRANDED_GIF_REGION.north
+    assert BRANDED_GIF_REGION.north <= 37.0
+
+
+def test_branded_gif_crop_reduces_regional_source_to_target_bounds() -> None:
+    source = Image.new("RGBA", (1300, 700), (12, 34, 56, 255))
+    cropped = _crop_radar_to_bounds(source, DEFAULT_REGION, BRANDED_GIF_REGION)
+    assert cropped.width < source.width
+    assert cropped.height < source.height
 
 
 def test_analysis_products_are_configured_for_latest_only_rendering() -> None:
@@ -197,4 +205,3 @@ def test_gif_export_contains_all_frames(tmp_path: Path) -> None:
         assert gif.info["duration"] == 180
         gif.seek(1)
         assert gif.info["duration"] == 1000
-

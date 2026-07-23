@@ -50,9 +50,9 @@ function historicalManifestUrl(manifestUrl: string): string {
 }
 
 function formatEasternTime(value: string | null | undefined): string {
-  if (!value) return 'â€”'
+  if (!value) return '—'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'â€”'
+  if (Number.isNaN(date.getTime())) return '—'
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric',
@@ -371,6 +371,66 @@ function drawExportGeometry(
   context.restore()
 }
 
+function drawExportLineGeometry(
+  context: CanvasRenderingContext2D,
+  collection: GeoJSON.FeatureCollection,
+  bounds: ExportBounds,
+  width: number,
+  height: number,
+  lineColor: string,
+  lineWidth: number,
+): void {
+  context.save()
+  context.strokeStyle = lineColor
+  context.lineWidth = lineWidth
+  collection.features.forEach((feature) => {
+    const geometry = feature.geometry
+    if (!geometry || (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString')) return
+    const lines = geometry.type === 'LineString'
+      ? [geometry.coordinates as number[][]]
+      : geometry.coordinates as number[][][]
+    lines.forEach((line) => {
+      if (line.length < 2) return
+      context.beginPath()
+      line.forEach((position, index) => {
+        const [x, y] = exportProject(position[0], position[1], bounds, width, height)
+        if (index === 0) context.moveTo(x, y)
+        else context.lineTo(x, y)
+      })
+      context.stroke()
+    })
+  })
+  context.restore()
+}
+
+function drawExportWarnings(
+  context: CanvasRenderingContext2D,
+  collection: GeoJSON.FeatureCollection,
+  bounds: ExportBounds,
+  width: number,
+  height: number,
+): void {
+  const styles: Record<string, { line: string; fill: string }> = {
+    'Tornado Warning': { line: '#f1465d', fill: 'rgba(241,70,93,.18)' },
+    'Severe Thunderstorm Warning': { line: '#f4a340', fill: 'rgba(244,163,64,.18)' },
+    'Flash Flood Warning': { line: '#5cc47f', fill: 'rgba(92,196,127,.18)' },
+    'Special Marine Warning': { line: '#d5ae36', fill: 'rgba(213,174,54,.18)' },
+  }
+  collection.features.forEach((feature) => {
+    const style = styles[String(feature.properties?.event ?? '')] ?? { line: '#e8edf0', fill: 'rgba(232,237,240,.16)' }
+    drawExportGeometry(
+      context,
+      { type: 'FeatureCollection', features: [feature] },
+      bounds,
+      width,
+      height,
+      style.line,
+      2,
+      style.fill,
+    )
+  })
+}
+
 function drawExportCityLabels(context: CanvasRenderingContext2D, bounds: ExportBounds, width: number, height: number): void {
   const used: Array<{ left: number; top: number; right: number; bottom: number }> = []
   context.save()
@@ -421,7 +481,7 @@ function hasVisibleMapCapture(image: ImageData): boolean {
   return samples > 0 && visible / samples > 0.05 && brightness / samples > 24
 }
 
-async function captureRadarFallback(
+async function captureExportMap(
   map: maplibregl.Map,
   frame: RadarFrameManifest,
   manifestPath: string,
@@ -429,6 +489,10 @@ async function captureRadarFallback(
   counties: GeoJSON.FeatureCollection,
   includeCounties: boolean,
   includeCities: boolean,
+  highways: GeoJSON.FeatureCollection,
+  includeHighways: boolean,
+  warnings: GeoJSON.FeatureCollection,
+  includeWarnings: boolean,
 ): Promise<ImageData> {
   const image = await loadBrowserImage(frameUrl(frame, manifestPath))
   const sourceCanvas = map.getCanvas()
@@ -462,6 +526,8 @@ async function captureRadarFallback(
     context.drawImage(image, 0, 0, width, height)
   }
   if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
+  if (includeWarnings) drawExportWarnings(context, warnings, viewBounds, width, height)
+  if (includeHighways) drawExportLineGeometry(context, highways, viewBounds, width, height, 'rgba(132,83,36,.82)', 1.25)
   drawExportGeometry(context, states, viewBounds, width, height, 'rgba(32,42,49,.9)', 1.4)
   if (includeCities) drawExportCityLabels(context, viewBounds, width, height)
   return context.getImageData(0, 0, width, height)
@@ -495,7 +561,7 @@ function formatShareValidTime(value: string): string {
     minute: '2-digit',
     hour12: false,
   }).format(date).replace(':', '')
-  return `${eastern} ET Â· ${zulu}Z`
+  return `${eastern} ET · ${zulu}Z`
 }
 
 function composeShareFrame(
@@ -531,7 +597,7 @@ function composeShareFrame(
   context.font = '800 15px Arial, sans-serif'
   context.fillText('WALL CLOUD RADAR', 20, 20)
   context.font = '600 12px Arial, sans-serif'
-  context.fillText(`North Carolina Â· ${details.label} (${details.unit})`, 20, 38)
+  context.fillText(`North Carolina · ${details.label} (${details.unit})`, 20, 38)
   context.textAlign = 'right'
   context.font = '700 12px Arial, sans-serif'
   context.fillText(`VALID ${formatShareValidTime(frame.valid_time)}`, output.width - 20, 28)
@@ -554,7 +620,7 @@ function composeShareFrame(
   context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
   context.fillStyle = '#a7c2c5'
   context.font = '700 9px Arial, sans-serif'
-  context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} Â· OBSERVED FRAME ${frameNumber + 1}/${frameCount} Â· ${playbackFps} FPS`, 20, footerY + 16)
+  context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} · OBSERVED FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 16)
 
   const legendEntries = [...details.legend].reverse()
   const legendX = 20
@@ -576,7 +642,7 @@ function composeShareFrame(
   context.textAlign = 'right'
   context.fillStyle = '#8faeb2'
   context.font = '700 9px Arial, sans-serif'
-  context.fillText('WALL CLOUD Â· NC', output.width - 20, footerY + 66)
+  context.fillText('WALL CLOUD · NC', output.width - 20, footerY + 66)
   context.textAlign = 'left'
   return context.getImageData(0, 0, output.width, output.height)
 }
@@ -640,16 +706,16 @@ function buoyFeatureCollection(observations: BuoyObservation[]): GeoJSON.Feature
 }
 
 function formatNumber(value: number | null | undefined, suffix = ''): string {
-  return value === null || value === undefined || !Number.isFinite(value) ? 'â€”' : `${value.toFixed(1)}${suffix}`
+  return value === null || value === undefined || !Number.isFinite(value) ? '—' : `${value.toFixed(1)}${suffix}`
 }
 
 function formatTemperature(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'â€”'
-  return `${Math.round(value * 9 / 5 + 32)}Â°F`
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  return `${Math.round(value * 9 / 5 + 32)}°F`
 }
 
 function formatWind(value: number | null | undefined, unit: 'kmh' | 'mps'): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'â€”'
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
   const mph = unit === 'kmh' ? value * 0.621371 : value * 2.23694
   return `${Math.round(mph)} mph`
 }
@@ -700,12 +766,12 @@ function RadarObservationPanel({
       <section className="radar-observation-panel" aria-live="polite">
         <div className="radar-warning-panel-top">
           <div><span className="radar-panel-kicker">NWS surface observation</span><h2>{observation.name}</h2></div>
-          <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close observation details">Ã—</button>
+          <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close observation details">×</button>
         </div>
-        <p className="radar-warning-headline">{observation.textDescription} Â· {formatEasternDateTime(observation.observedAt)}</p>
+        <p className="radar-warning-headline">{observation.textDescription} · {formatEasternDateTime(observation.observedAt)}</p>
         <dl>
           <div><dt>Temp / dewpoint</dt><dd>{formatTemperature(observation.temperatureC)} / {formatTemperature(observation.dewpointC)}</dd></div>
-          <div><dt>Wind</dt><dd>{formatWind(observation.windSpeedKmh, 'kmh')}{observation.windDirectionDeg === null ? '' : ` from ${Math.round(observation.windDirectionDeg)}Â°`}</dd></div>
+          <div><dt>Wind</dt><dd>{formatWind(observation.windSpeedKmh, 'kmh')}{observation.windDirectionDeg === null ? '' : ` from ${Math.round(observation.windDirectionDeg)}°`}</dd></div>
           <div><dt>Gust</dt><dd>{formatWind(observation.windGustKmh, 'kmh')}</dd></div>
           <div><dt>Pressure / RH</dt><dd>{formatNumber(observation.pressureHpa, ' hPa')} / {formatNumber(observation.humidityPercent, '%')}</dd></div>
         </dl>
@@ -717,11 +783,11 @@ function RadarObservationPanel({
     <section className="radar-observation-panel" aria-live="polite">
       <div className="radar-warning-panel-top">
         <div><span className="radar-panel-kicker">NOAA buoy</span><h2>{buoy.name}</h2></div>
-        <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close buoy details">Ã—</button>
+        <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close buoy details">×</button>
       </div>
-      <p className="radar-warning-headline">Latest report Â· {formatEasternDateTime(buoy.observedAt)}</p>
+      <p className="radar-warning-headline">Latest report · {formatEasternDateTime(buoy.observedAt)}</p>
       <dl>
-        <div><dt>Wind</dt><dd>{formatWind(buoy.windSpeedMps, 'mps')}{buoy.windDirectionDeg === null ? '' : ` from ${Math.round(buoy.windDirectionDeg)}Â°`}</dd></div>
+        <div><dt>Wind</dt><dd>{formatWind(buoy.windSpeedMps, 'mps')}{buoy.windDirectionDeg === null ? '' : ` from ${Math.round(buoy.windDirectionDeg)}°`}</dd></div>
         <div><dt>Gust / waves</dt><dd>{formatWind(buoy.windGustMps, 'mps')} / {formatNumber(buoy.waveHeightM, ' m')}</dd></div>
         <div><dt>Period / pressure</dt><dd>{formatNumber(buoy.dominantPeriodS, ' s')} / {formatNumber(buoy.pressureHpa, ' hPa')}</dd></div>
         <div><dt>Air / water</dt><dd>{formatTemperature(buoy.airTemperatureC)} / {formatTemperature(buoy.waterTemperatureC)}</dd></div>
@@ -739,7 +805,7 @@ function freshWarningPanel(warning: RadarWarning | null, onClose: () => void): R
           <span className="radar-panel-kicker">Active NWS warning</span>
           <h2>{warning.event}</h2>
         </div>
-        <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close warning details">Ã—</button>
+        <button type="button" className="radar-icon-button" onClick={onClose} aria-label="Close warning details">×</button>
       </div>
       <p className="radar-warning-headline">{warning.headline}</p>
       <dl>
@@ -1031,7 +1097,7 @@ export function RadarApp() {
       style: {
         version: 8,
         sources: {
-          basemap: { type: 'raster', tiles: [CARTO_LIGHT_TILES], tileSize: 256, attribution: 'Â© OpenStreetMap contributors Â© CARTO' },
+          basemap: { type: 'raster', tiles: [CARTO_LIGHT_TILES], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' },
         },
         layers: [{ id: 'wallcloud-basemap', type: 'raster', source: 'basemap', paint: { 'raster-opacity': 1 } }],
       },
@@ -1044,7 +1110,7 @@ export function RadarApp() {
       attributionControl: false,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: 'Â© OpenStreetMap contributors Â© CARTO Â· NOAA MRMS Â· NWS' }), 'bottom-right')
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA MRMS · NWS' }), 'bottom-right')
     map.on('load', () => {
       createMapSources(map)
       map.fitBounds(INITIAL_VIEW_BOUNDS, { padding: { top: 24, right: 24, bottom: 170, left: 24 }, duration: 0 })
@@ -1208,7 +1274,7 @@ export function RadarApp() {
     const originalIndex = activeIndex
     const originalFrame = activeFrame
     const wasPlaying = playing
-    let usedLocalBaseFallback = false
+    let usedMapCanvasFallback = false
     setGifExporting(true)
     setGifExportProgress(0)
     setGifExportError(null)
@@ -1216,20 +1282,36 @@ export function RadarApp() {
     try {
       await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
+      const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
       for (let index = 0; index < frames.length; index += 1) {
         const frame = frames[index]
-        const radarSourceReady = Boolean(map.getSource(RADAR_SOURCE_ID))
         let mapImage: ImageData
         try {
-          if (!radarSourceReady) throw new Error('Radar image source is not ready')
+          // Build the export from the source raster and local vector layers. A
+          // WebGL canvas can omit label/boundary layers depending on tile and
+          // preserveDrawingBuffer timing, so it is not a reliable share image.
+          mapImage = await captureExportMap(
+            map,
+            frame,
+            manifestPath,
+            states,
+            counties,
+            layers.counties,
+            layers.cities,
+            highways,
+            layers.highways,
+            exportWarnings,
+            layers.warnings && !isHistorical,
+          )
+        } catch {
+          // Keep a last-resort browser capture for transient source failures;
+          // the normal path above is the deterministic labeled export path.
+          usedMapCanvasFallback = true
           updateRadarMapImage(map, frame, manifestPath)
           await waitForMapPaint(map)
           const mapCapture = captureMapCanvas(map)
-          if (!hasVisibleMapCapture(mapCapture)) throw new Error('Map canvas did not contain rendered pixels')
+          if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
           mapImage = mapCapture
-        } catch {
-          usedLocalBaseFallback = true
-          mapImage = await captureRadarFallback(map, frame, manifestPath, states, counties, layers.counties, layers.cities)
         }
         captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length))
         setGifExportProgress(Math.round((index + 1) / frames.length * 100))
@@ -1247,7 +1329,7 @@ export function RadarApp() {
       anchor.click()
       anchor.remove()
       window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2_000)
-      if (usedLocalBaseFallback) setGifExportError('GIF saved with the local radar and geography base; external map tiles could not be included.')
+      if (usedMapCanvasFallback) setGifExportError('GIF saved with the browser map base because the deterministic export base was temporarily unavailable.')
     } catch (error: unknown) {
       setGifExportError(error instanceof Error ? error.message : 'GIF export failed')
     } finally {
@@ -1286,7 +1368,7 @@ export function RadarApp() {
         <div className="radar-header-actions">
           <span className="radar-warning-count">{isHistorical ? manifest?.label ?? 'Historical loop' : `${warnings.length} active warning${warnings.length === 1 ? '' : 's'}`}</span>
           <button type="button" className="radar-settings-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>
-            <span className="radar-sliders-icon" aria-hidden="true">â˜·</span> Layers
+            <span className="radar-sliders-icon" aria-hidden="true">☷</span> Layers
           </button>
         </div>
       </header>
@@ -1316,14 +1398,14 @@ export function RadarApp() {
 
         {dataUnavailable && (
           <div className="radar-unavailable" role="status">
-            <div className="radar-unavailable-icon">â—Ž</div>
+            <div className="radar-unavailable-icon">◎</div>
             <strong>Radar imagery unavailable</strong>
             <span>{isHistorical ? 'That historical pack has no usable radar frames.' : 'The map is ready. Run the MRMS processor or wait for the next generated data artifact.'}</span>
             {manifest?.errors?.[0] && <small>{manifest.errors[0]}</small>}
           </div>
         )}
 
-        {geographyError && <div className="radar-data-strip geography-warning">Boundary data unavailable Â· radar remains available</div>}
+        {geographyError && <div className="radar-data-strip geography-warning">Boundary data unavailable · radar remains available</div>}
 
         {layers.radar && <RadarLegend productId={productId} />}
         <RadarAnalysisLegends
@@ -1338,7 +1420,7 @@ export function RadarApp() {
               <span className="radar-panel-kicker">Display</span>
               <h2>Layers & product</h2>
             </div>
-            <button type="button" className="radar-icon-button radar-mobile-close" onClick={() => setSettingsOpen(false)} aria-label="Close layers panel">Ã—</button>
+            <button type="button" className="radar-icon-button radar-mobile-close" onClick={() => setSettingsOpen(false)} aria-label="Close layers panel">×</button>
           </div>
 
           <label className="radar-field-label" htmlFor="radar-dataset">Loop source</label>
@@ -1382,7 +1464,7 @@ export function RadarApp() {
             {PRODUCT_OPTIONS.map((option) => {
               const status = manifest?.products[option.id]?.status
               const ready = option.id === 'MergedReflectivityQCComposite' || status === 'ready' || status === 'partial'
-              return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' Â· processor needed'}</option>
+              return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · processor needed'}</option>
             })}
           </select>
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
@@ -1411,7 +1493,7 @@ export function RadarApp() {
             <label className="radar-layer-row">
               <input type="checkbox" checked={layers.surface} onChange={() => toggleLayer('surface')} disabled={isHistorical} />
               <span className="radar-checkbox" aria-hidden="true" />
-              <span><strong>Surface observations</strong><small>{isHistorical ? 'Unavailable during historical playback' : surfaceLoading ? 'Loading NWS stationsâ€¦' : surfaceError ? 'NWS refresh degraded' : `${surfaceObservations.length || 'No'} stations Â· refreshes independently`}</small></span>
+              <span><strong>Surface observations</strong><small>{isHistorical ? 'Unavailable during historical playback' : surfaceLoading ? 'Loading NWS stations…' : surfaceError ? 'NWS refresh degraded' : `${surfaceObservations.length || 'No'} stations · refreshes independently`}</small></span>
             </label>
             <label className="radar-layer-row">
               <input type="checkbox" checked={layers.buoys} onChange={() => toggleLayer('buoys')} disabled={isHistorical} />
@@ -1425,7 +1507,7 @@ export function RadarApp() {
               ['warnings', 'Warnings', isHistorical ? 'Unavailable for historical playback' : warningStatus === 'degraded' ? 'NWS refresh degraded' : 'NWS active polygons'],
               ['counties', 'Counties', 'Census boundary overlay'],
               ['cities', 'Cities', 'Priority NC locations'],
-              ['highways', 'Highways', highwaysLoading ? 'Loading on demandâ€¦' : 'Census interstate overlay'],
+              ['highways', 'Highways', highwaysLoading ? 'Loading on demand…' : 'Census interstate overlay'],
             ] as Array<[keyof typeof layers, string, string]>).map(([key, label, note]) => (
               <label key={key} className="radar-layer-row">
                 <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} disabled={key === 'warnings' && isHistorical} />
@@ -1441,7 +1523,7 @@ export function RadarApp() {
           {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}
           {surfaceError && <p className="radar-field-note error">Surface observations: {surfaceError}</p>}
           {buoyError && <p className="radar-field-note error">Buoys: {buoyError}</p>}
-          <p className="radar-source-note">Radar: NOAA/NCEP MRMS Â· alerts: National Weather Service Â· boundaries: U.S. Census TIGERweb</p>
+          <p className="radar-source-note">Radar: NOAA/NCEP MRMS · alerts: National Weather Service · boundaries: U.S. Census TIGERweb</p>
         </aside>
 
         {freshWarningPanel(selectedWarning, () => setSelectedWarningId(null))}
@@ -1476,12 +1558,12 @@ export function RadarApp() {
             }}
             aria-label="Radar frame timeline"
           />
-          <div className="radar-timeline-endpoints"><span>{formatEasternTime(frames[0]?.valid_time)} ET</span><span>{latestFrame ? `${formatEasternTime(latestFrame.valid_time)} ET Â· ${isHistorical ? 'end' : 'latest'}` : 'Latest unavailable'}</span></div>
+          <div className="radar-timeline-endpoints"><span>{formatEasternTime(frames[0]?.valid_time)} ET</span><span>{latestFrame ? `${formatEasternTime(latestFrame.valid_time)} ET · ${isHistorical ? 'end' : 'latest'}` : 'Latest unavailable'}</span></div>
           <div className="radar-control-row" data-playback-mode="observed" data-playback-fps={playbackFps}>
             <div className="radar-transport-control">
-              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>â€¹ <span>Previous</span></button>
-              <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? 'âšâš Pause' : 'â–¶ Play'}</button>
-              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> â€º</button>
+              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>‹ <span>Previous</span></button>
+              <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
+              <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
             </div>
             <div className="radar-playback-options">
               <span className="radar-observed-badge" title="Playback displays exact observed MRMS frames">Observed</span>
@@ -1498,7 +1580,7 @@ export function RadarApp() {
             </div>
           </div>
           {gifExportError && <div className="radar-playback-note">{gifExportError}</div>}
-          {activeAge !== null && !isLatest && !isHistorical && <div className="radar-playback-note">Playback frame Â· latest observation is {Math.max(0, latestAge ?? 0)} min old</div>}
+          {activeAge !== null && !isLatest && !isHistorical && <div className="radar-playback-note">Playback frame · latest observation is {Math.max(0, latestAge ?? 0)} min old</div>}
         </section>
       </main>
     </div>

@@ -310,6 +310,7 @@ def build_loop_gif(
     output_path: Path,
     *,
     bounds: RegionBounds,
+    source_bounds: RegionBounds | None = None,
     product_id: str,
     product_label: str,
     geography: tuple[dict[str, Any], dict[str, Any]] | None = None,
@@ -326,19 +327,19 @@ def build_loop_gif(
         if not path.is_file():
             continue
         with Image.open(path) as radar:
-            source_bounds = bounds
+            frame_source_bounds = source_bounds or bounds
             record_bounds = record.get("bounds")
             if isinstance(record_bounds, (list, tuple)) and len(record_bounds) == 4:
                 try:
-                    source_bounds = RegionBounds(
+                    frame_source_bounds = RegionBounds(
                         west=float(record_bounds[0]),
                         south=float(record_bounds[1]),
                         east=float(record_bounds[2]),
                         north=float(record_bounds[3]),
                     )
                 except (TypeError, ValueError):
-                    source_bounds = bounds
-            cropped_radar = _crop_radar_to_bounds(radar, source_bounds, bounds)
+                    frame_source_bounds = source_bounds or bounds
+            cropped_radar = _crop_radar_to_bounds(radar, frame_source_bounds, bounds)
             rendered = _export_frame(
                 cropped_radar,
                 valid_time=str(record["valid_time"]),
@@ -376,4 +377,3 @@ def build_loop_gif(
             frame.close()
     LOGGER.info("Built GIF loop %s with %d frames", output_path, len(frames))
     return len(frames)
-

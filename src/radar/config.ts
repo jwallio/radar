@@ -232,4 +232,3 @@ export const GRID_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
   features: gridFeatures,
 }
-

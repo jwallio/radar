@@ -65,7 +65,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "MultiSensor_QPE_01H_Pass1": ProductDefinition(
         product_id="MultiSensor_QPE_01H_Pass1",
-        label="Rainfall · 1 hour",
+        label="Rainfall Â· 1 hour",
         directory="MultiSensor_QPE_01H_Pass1",
         filename_prefix="MRMS_MultiSensor_QPE_01H_Pass1",
         archive_prefix="CONUS/MultiSensor_QPE_01H_Pass1",
@@ -89,7 +89,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "RotationTrack30min": ProductDefinition(
         product_id="RotationTrack30min",
-        label="Rotation Track · 30 min",
+        label="Rotation Track Â· 30 min",
         directory="RotationTrack30min",
         filename_prefix="MRMS_RotationTrack30min",
         archive_prefix="CONUS/RotationTrack30min_00.50",
@@ -97,7 +97,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "MESH": ProductDefinition(
         product_id="MESH",
-        label="MESH · estimated hail size",
+        label="MESH Â· estimated hail size",
         directory="MESH",
         filename_prefix="MRMS_MESH",
         archive_prefix="CONUS/MESH_00.50",
@@ -105,7 +105,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "POSH": ProductDefinition(
         product_id="POSH",
-        label="POSH · severe hail probability",
+        label="POSH Â· severe hail probability",
         directory="POSH",
         filename_prefix="MRMS_POSH",
         archive_prefix="CONUS/POSH_00.50",
@@ -113,7 +113,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "NLDN_CG_005min_AvgDensity": ProductDefinition(
         product_id="NLDN_CG_005min_AvgDensity",
-        label="Lightning · 5 min density",
+        label="Lightning Â· 5 min density",
         directory="NLDN_CG_005min_AvgDensity",
         filename_prefix="MRMS_NLDN_CG_005min_AvgDensity",
         archive_prefix="CONUS/NLDN_CG_005min_AvgDensity_00.00",
@@ -134,9 +134,11 @@ ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
 
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
 # The live raster stays regional so upstream weather remains visible in the
-# viewer. Downloadable branded loops use a tighter Central NC framing instead
-# of forcing the share image to show the full processing domain.
-BRANDED_GIF_REGION = RegionBounds(west=-83.3, east=-74.8, south=33.6, north=37.0)
+# viewer. Downloadable loops use the reference-style NC framing: Asheville and
+# the southern Appalachians on the west, the full NC coast and Outer Banks on
+# the east, southern Virginia to the north, and northern South Carolina to the
+# south. The aspect also keeps the share image wide enough for social sharing.
+BRANDED_GIF_REGION = RegionBounds(west=-84.5, east=-74.0, south=33.0, north=38.0)
 DEFAULT_MRMS_BASE_URL = "https://mrms.ncep.noaa.gov/2D"
 DEFAULT_MRMS_ARCHIVE_BASE_URL = "https://noaa-mrms-pds.s3.amazonaws.com"
 

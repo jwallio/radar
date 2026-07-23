@@ -59,15 +59,15 @@ def test_regional_bounds_cover_the_requested_area() -> None:
     assert DEFAULT_REGION.north > 37.8
 
 
-def test_branded_gif_region_is_tighter_and_central_nc_focused() -> None:
+def test_branded_gif_region_matches_reference_nc_framing() -> None:
     assert DEFAULT_REGION.west < BRANDED_GIF_REGION.west
     assert DEFAULT_REGION.east > BRANDED_GIF_REGION.east
     assert DEFAULT_REGION.south < BRANDED_GIF_REGION.south
     assert DEFAULT_REGION.north > BRANDED_GIF_REGION.north
-    assert BRANDED_GIF_REGION.west < -82.5 < BRANDED_GIF_REGION.east
-    assert BRANDED_GIF_REGION.east > -75.5
-    assert BRANDED_GIF_REGION.south < 35.5 < BRANDED_GIF_REGION.north
-    assert BRANDED_GIF_REGION.north <= 37.0
+    assert BRANDED_GIF_REGION.west <= -84.5
+    assert BRANDED_GIF_REGION.east >= -74.0
+    assert BRANDED_GIF_REGION.south <= 33.0
+    assert BRANDED_GIF_REGION.north >= 38.0
 
 
 def test_branded_gif_crop_reduces_regional_source_to_target_bounds() -> None:

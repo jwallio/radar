@@ -10,7 +10,7 @@ The MVP provides:
 - Client-side **Save GIF** export that follows the current map zoom/pan and selected viewer FPS, composes every frame from the radar raster plus local state/county/city vectors, and adds share-ready Wall Cloud framing with each frame's Eastern valid time and product legend. External basemap capture is only a last-resort fallback.
 - Selectable historical loop packs sourced from NOAA's public MRMS archive.
 - A second precipitation-type mode backed by the official MRMS PrecipFlag product when it decodes successfully.
-- A product selector for composite reflectivity, PrecipFlag, and one-hour MRMS rainfall, plus latest-analysis overlays for 0–2 km and 3–6 km azimuthal shear, 30-minute rotation tracks, MESH, POSH, and five-minute NLDN cloud-to-ground lightning density.
+- A product selector for composite reflectivity, PrecipFlag, and one-hour MRMS rainfall, plus latest-analysis overlays for 0â€“2 km and 3â€“6 km azimuthal shear, 30-minute rotation tracks, MESH, POSH, and five-minute NLDN cloud-to-ground lightning density.
 - Clickable NWS surface observations and NOAA NDBC buoy observations, refreshed independently from radar playback.
 - Independent active NWS warning refreshes for tornado, severe thunderstorm, flash flood, and special marine warnings.
 - Census TIGERweb state/county overlays, priority city labels, and an on-demand highway overlay.
@@ -20,13 +20,13 @@ The MVP provides:
 
 ```text
 NOAA/NCEP MRMS GRIB2
-        ↓
-Python processor (download → cfgrib/eccodes decode → regional crop → PNG)
-        ↓
+        â†“
+Python processor (download â†’ cfgrib/eccodes decode â†’ regional crop â†’ PNG)
+        â†“
 public/data/radar/frames/*.png + loops/*.gif + history/* + manifests
-        ↓
+        â†“
 Vite/React/TypeScript + MapLibre image source
-        ↓
+        â†“
 GitHub Pages or another static host
 ```
 
@@ -56,7 +56,7 @@ Radar URLs are centralized in `radar_processing/config.py` and are based on the 
 
 The map uses light, label-free raster tiles from [CARTO](https://carto.com/basemaps/) with OpenStreetMap attribution. Wall Cloud owns the priority city/highway labels and overlays them once. NOAA/NWS and Census attribution is shown in the interface and documented here.
 
-## Local setup — Windows PowerShell
+## Local setup â€” Windows PowerShell
 
 Frontend dependencies:
 
@@ -95,16 +95,16 @@ npm run lint
 
 The processor is intentionally split into focused modules:
 
-- `radar_processing/config.py` — region, product, retention, and environment configuration.
-- `radar_processing/mrms.py` — official directory listing parsing, timestamp matching, retries, and atomic downloads.
-- `radar_processing/rendering.py` — cfgrib/eccodes crop, two-dBZ Wall Cloud palettes, PNG rendering, and PrecipFlag classification.
-- `radar_processing/observations.py` — NOAA NDBC active-station filtering and realtime text parsing for the coastal buoy feed.
-- `radar_processing/animation.py` — branded GIF composition with Census boundaries, city labels, valid times, and legends.
-- `radar_processing/pipeline.py` — shared live/historical rendering and output rotation.
-- `radar_processing/history.py` — historical dataset IDs and catalog maintenance.
-- `radar_processing/manifest.py` — deterministic frame ordering, retention, missing-file filtering, stale detection, and atomic JSON replacement.
-- `scripts/build_radar_frames.py` — orchestration and CLI.
-- `scripts/build_buoy_observations.py` — standalone NDBC feed refresh CLI.
+- `radar_processing/config.py` â€” region, product, retention, and environment configuration.
+- `radar_processing/mrms.py` â€” official directory listing parsing, timestamp matching, retries, and atomic downloads.
+- `radar_processing/rendering.py` â€” cfgrib/eccodes crop, two-dBZ Wall Cloud palettes, PNG rendering, and PrecipFlag classification.
+- `radar_processing/observations.py` â€” NOAA NDBC active-station filtering and realtime text parsing for the coastal buoy feed.
+- `radar_processing/animation.py` â€” branded GIF composition with Census boundaries, city labels, valid times, and legends.
+- `radar_processing/pipeline.py` â€” shared live/historical rendering and output rotation.
+- `radar_processing/history.py` â€” historical dataset IDs and catalog maintenance.
+- `radar_processing/manifest.py` â€” deterministic frame ordering, retention, missing-file filtering, stale detection, and atomic JSON replacement.
+- `scripts/build_radar_frames.py` â€” orchestration and CLI.
+- `scripts/build_buoy_observations.py` â€” standalone NDBC feed refresh CLI.
 
 Default region is `[-86.5, 32.5, -73.5, 39.5]` as west/south/east/north. Defaults retain 90 minutes of source history and render up to 30 frames, which is approximately 60 minutes at the current two-minute MRMS cadence. Set `MRMS_MAX_FRAMES=45` to target approximately 90 minutes.
 
@@ -121,7 +121,7 @@ python scripts/build_radar_frames.py
 
 Use `python scripts/build_radar_frames.py --no-precip-type` for a reflectivity-only run or `--keep-raw` only when troubleshooting decoder inputs. Raw files and local caches are ignored by Git.
 
-Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed Central North Carolina reference loops (`-83.3, 33.6, -74.8, 37.0`) with coastal North Carolina and nearby Atlantic waters included, sharp raster cropping from the regional source, a clean vector base map, collision-checked city labels, valid time, and product legends. Loop URLs receive a generated version key so a newly cropped loop is not hidden by a cached older regional GIF. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, in a 720-pixel-wide share frame with Wall Cloud header/footer, the frame's Eastern and UTC valid time, product-specific legend, observed-frame count, and the selected 2/4/8/20/30 FPS setting. It draws labels, borders, warnings, and optional highways from local vector data so exports remain complete even when external basemap tiles cannot be captured. The basemap is label-free, so priority city and optional highway labels are owned by the app and appear once. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
+Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, reference-style NC loops (`-84.5, 33.0, -74.0, 38.0`) with Asheville and the southern Appalachians, southern Virginia, northern South Carolina, coastal North Carolina, and nearby Atlantic waters included. Every generated GIF uses the same sharp raster crop, clean vector base map, collision-checked city labels, dark-navy `wall.cloud` wordmark, valid time, border treatment, and product legend. Loop URLs receive a generated version key so a newly cropped loop is not hidden by a cached older regional GIF. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, in a 720-pixel-wide share frame with the same branded header/footer, border, `wall.cloud` wordmark, frame's Eastern and UTC valid time, product-specific legend, observed-frame count, and selected 2/4/8/20/30 FPS setting. It draws labels, borders, warnings, and optional highways from local vector data so exports remain complete even when external basemap tiles cannot be captured. The basemap is label-free, so priority city and optional highway labels are owned by the app and appear once. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
 
 Browser playback defaults to 4 FPS and always swaps exact observed MRMS frames directly. The 20 and 30 FPS options preload the complete active sequence for testing, but display refresh and image decoding can still limit the effective rate. No crossfaded or interpolated radar field is shown, written to the manifest, or exported to GIF.
 
@@ -188,14 +188,14 @@ It never commits radar images to the repository. `.github/workflows/pages.yml` p
 
 The **Build and deploy a historical radar loop** workflow accepts timezone-aware start/end values, restores earlier generated packs from the GitHub Actions cache, adds the requested loop, refreshes live radar, and deploys the combined site. Scheduled live refreshes restore that latest historical bundle before deploying, so historical selections are not erased by the next live update. Actions cache retention is suitable for an MVP; durable object storage is still the recommended long-term archive.
 
-`public/CNAME` records the intended `radar.wall.cloud` hostname. Because this project deploys through a custom GitHub Actions workflow, also enter `radar.wall.cloud` under **Settings → Pages → Custom domain**; GitHub does not configure an Actions-based custom domain from the file alone. At the DNS provider, point the `radar` CNAME to `<owner>.github.io` (without the repository name). For `radar.wall.cloud`, use `VITE_BASE_PATH=/`. For a GitHub Pages project site, set `VITE_BASE_PATH` to the project path, for example:
+`public/CNAME` records the intended `radar.wall.cloud` hostname. Because this project deploys through a custom GitHub Actions workflow, also enter `radar.wall.cloud` under **Settings â†’ Pages â†’ Custom domain**; GitHub does not configure an Actions-based custom domain from the file alone. At the DNS provider, point the `radar` CNAME to `<owner>.github.io` (without the repository name). For `radar.wall.cloud`, use `VITE_BASE_PATH=/`. For a GitHub Pages project site, set `VITE_BASE_PATH` to the project path, for example:
 
 ```powershell
 $env:VITE_BASE_PATH = 'wallcloud-weather-dashboard'
 npm run build
 ```
 
-Enable GitHub Pages with **GitHub Actions** as the build source. The scheduled workflow requires the repository’s Pages environment and deployment permissions to be enabled.
+Enable GitHub Pages with **GitHub Actions** as the build source. The scheduled workflow requires the repositoryâ€™s Pages environment and deployment permissions to be enabled.
 
 ## Known limitations
 

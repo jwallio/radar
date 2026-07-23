@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES_GEOJSON, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, INITIAL_VIEW_BOUNDS, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarWarning, SurfaceObservation } from './types'
@@ -20,6 +20,7 @@ const STATE_SOURCE_ID = 'wallcloud-state-source'
 const COUNTY_SOURCE_ID = 'wallcloud-county-source'
 const HIGHWAY_SOURCE_ID = 'wallcloud-highway-source'
 const CITY_SOURCE_ID = 'wallcloud-city-source'
+const CITY_LABEL_EXCEPTION_ID = 'wallcloud-city-label-winston-salem'
 const GRID_SOURCE_ID = 'wallcloud-grid-source'
 const SURFACE_SOURCE_ID = 'wallcloud-surface-source'
 const SURFACE_DOT_ID = 'wallcloud-surface-dot'
@@ -29,7 +30,6 @@ const BUOY_DOT_ID = 'wallcloud-buoy-dot'
 const BUOY_LABEL_ID = 'wallcloud-buoy-label'
 
 const EMPTY_STATE = emptyFeatureCollection()
-const EMPTY_BOUNDS: [[number, number], [number, number]] = [[REGIONAL_BOUNDS[0], REGIONAL_BOUNDS[1]], [REGIONAL_BOUNDS[2], REGIONAL_BOUNDS[3]]]
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
@@ -158,6 +158,7 @@ function createMapSources(map: maplibregl.Map): void {
     id: 'wallcloud-city-label',
     type: 'symbol',
     source: CITY_SOURCE_ID,
+    filter: ['!=', ['get', 'id'], 'winston-salem'],
     layout: {
       'text-field': ['get', 'label'],
       'text-size': ['case', ['get', 'primary'], 11, 9],
@@ -167,6 +168,21 @@ function createMapSources(map: maplibregl.Map): void {
       'text-ignore-placement': false,
     },
     paint: { 'text-color': ['case', ['get', 'primary'], '#172129', '#53616a'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.55 },
+  })
+  map.addLayer({
+    id: CITY_LABEL_EXCEPTION_ID,
+    type: 'symbol',
+    source: CITY_SOURCE_ID,
+    filter: ['==', ['get', 'id'], 'winston-salem'],
+    layout: {
+      'text-field': ['get', 'label'],
+      'text-size': 11,
+      'text-offset': [0.7, 1.15],
+      'text-anchor': 'top-left',
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: { 'text-color': '#172129', 'text-halo-color': '#ffffff', 'text-halo-width': 1.55 },
   })
 
   map.addSource(SURFACE_SOURCE_ID, { type: 'geojson', data: EMPTY_STATE })
@@ -308,6 +324,147 @@ function captureMapCanvas(map: maplibregl.Map): ImageData {
   return context.getImageData(0, 0, width, height)
 }
 
+type ExportBounds = [number, number, number, number]
+
+function exportProject(longitude: number, latitude: number, bounds: ExportBounds, width: number, height: number): [number, number] {
+  return [
+    (longitude - bounds[0]) / (bounds[2] - bounds[0]) * width,
+    (bounds[3] - latitude) / (bounds[3] - bounds[1]) * height,
+  ]
+}
+
+function drawExportGeometry(
+  context: CanvasRenderingContext2D,
+  collection: GeoJSON.FeatureCollection,
+  bounds: ExportBounds,
+  width: number,
+  height: number,
+  lineColor: string,
+  lineWidth: number,
+  fillColor?: string,
+): void {
+  context.save()
+  context.strokeStyle = lineColor
+  context.lineWidth = lineWidth
+  collection.features.forEach((feature) => {
+    const geometry = feature.geometry
+    if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) return
+    const polygons = geometry.type === 'Polygon'
+      ? [geometry.coordinates as number[][][]]
+      : geometry.coordinates as number[][][][]
+    polygons.forEach((polygon) => polygon.forEach((ring, ringIndex) => {
+      if (ring.length < 2) return
+      context.beginPath()
+      ring.forEach((position, index) => {
+        const [x, y] = exportProject(position[0], position[1], bounds, width, height)
+        if (index === 0) context.moveTo(x, y)
+        else context.lineTo(x, y)
+      })
+      context.closePath()
+      if (fillColor && ringIndex === 0) {
+        context.fillStyle = fillColor
+        context.fill()
+      }
+      context.stroke()
+    }))
+  })
+  context.restore()
+}
+
+function drawExportLineGeometry(
+  context: CanvasRenderingContext2D,
+  collection: GeoJSON.FeatureCollection,
+  bounds: ExportBounds,
+  width: number,
+  height: number,
+  lineColor: string,
+  lineWidth: number,
+): void {
+  context.save()
+  context.strokeStyle = lineColor
+  context.lineWidth = lineWidth
+  collection.features.forEach((feature) => {
+    const geometry = feature.geometry
+    if (!geometry || (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString')) return
+    const lines = geometry.type === 'LineString'
+      ? [geometry.coordinates as number[][]]
+      : geometry.coordinates as number[][][]
+    lines.forEach((line) => {
+      if (line.length < 2) return
+      context.beginPath()
+      line.forEach((position, index) => {
+        const [x, y] = exportProject(position[0], position[1], bounds, width, height)
+        if (index === 0) context.moveTo(x, y)
+        else context.lineTo(x, y)
+      })
+      context.stroke()
+    })
+  })
+  context.restore()
+}
+
+function drawExportWarnings(
+  context: CanvasRenderingContext2D,
+  collection: GeoJSON.FeatureCollection,
+  bounds: ExportBounds,
+  width: number,
+  height: number,
+): void {
+  const styles: Record<string, { line: string; fill: string }> = {
+    'Tornado Warning': { line: '#f1465d', fill: 'rgba(241,70,93,.18)' },
+    'Severe Thunderstorm Warning': { line: '#f4a340', fill: 'rgba(244,163,64,.18)' },
+    'Flash Flood Warning': { line: '#5cc47f', fill: 'rgba(92,196,127,.18)' },
+    'Special Marine Warning': { line: '#d5ae36', fill: 'rgba(213,174,54,.18)' },
+  }
+  collection.features.forEach((feature) => {
+    const style = styles[String(feature.properties?.event ?? '')] ?? { line: '#e8edf0', fill: 'rgba(232,237,240,.16)' }
+    drawExportGeometry(
+      context,
+      { type: 'FeatureCollection', features: [feature] },
+      bounds,
+      width,
+      height,
+      style.line,
+      2,
+      style.fill,
+    )
+  })
+}
+
+function drawExportCityLabels(context: CanvasRenderingContext2D, bounds: ExportBounds, width: number, height: number): void {
+  const used: Array<{ left: number; top: number; right: number; bottom: number }> = []
+  context.save()
+  context.font = '700 11px Arial, sans-serif'
+  context.textBaseline = 'top'
+  CITIES.filter((city) => city.primary).forEach((city) => {
+    if (city.lon < bounds[0] || city.lon > bounds[2] || city.lat < bounds[1] || city.lat > bounds[3]) return
+    const [x, y] = exportProject(city.lon, city.lat, bounds, width, height)
+    const labelWidth = context.measureText(city.label).width
+    const labelHeight = 13
+    const candidates = [[5, -labelHeight - 3], [5, 5], [-labelWidth - 5, -labelHeight - 3], [-labelWidth - 5, 5]]
+    context.fillStyle = '#172129'
+    context.beginPath()
+    context.arc(x, y, 3, 0, Math.PI * 2)
+    context.fill()
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 1.2
+    context.stroke()
+    for (const [offsetX, offsetY] of candidates) {
+      const box = { left: x + offsetX, top: y + offsetY, right: x + offsetX + labelWidth, bottom: y + offsetY + labelHeight }
+      if (box.left < 2 || box.top < 2 || box.right >= width - 2 || box.bottom >= height - 2) continue
+      if (used.some((other) => box.left - 3 < other.right && box.right + 3 > other.left && box.top - 3 < other.bottom && box.bottom + 3 > other.top)) continue
+      context.lineWidth = 3
+      context.strokeStyle = '#ffffff'
+      context.strokeText(city.label, x + offsetX, y + offsetY)
+      context.fillStyle = '#172129'
+      context.fillText(city.label, x + offsetX, y + offsetY)
+      used.push(box)
+      break
+    }
+  })
+  context.restore()
+}
+
 function hasVisibleMapCapture(image: ImageData): boolean {
   const pixelCount = image.data.length / 4
   const sampleStep = Math.max(1, Math.floor(pixelCount / 10_000))
@@ -324,10 +481,18 @@ function hasVisibleMapCapture(image: ImageData): boolean {
   return samples > 0 && visible / samples > 0.05 && brightness / samples > 24
 }
 
-async function captureRadarFallback(
+async function captureExportMap(
   map: maplibregl.Map,
   frame: RadarFrameManifest,
   manifestPath: string,
+  states: GeoJSON.FeatureCollection,
+  counties: GeoJSON.FeatureCollection,
+  includeCounties: boolean,
+  includeCities: boolean,
+  highways: GeoJSON.FeatureCollection,
+  includeHighways: boolean,
+  warnings: GeoJSON.FeatureCollection,
+  includeWarnings: boolean,
 ): Promise<ImageData> {
   const image = await loadBrowserImage(frameUrl(frame, manifestPath))
   const sourceCanvas = map.getCanvas()
@@ -339,10 +504,13 @@ async function captureRadarFallback(
   canvas.height = height
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Browser canvas is unavailable')
-  context.fillStyle = '#e5edf4'
-  context.fillRect(0, 0, width, height)
 
   const view = map.getBounds()
+  const viewBounds: ExportBounds = [view.getWest(), view.getSouth(), view.getEast(), view.getNorth()]
+  context.fillStyle = '#e5edf4'
+  context.fillRect(0, 0, width, height)
+  drawExportGeometry(context, states, viewBounds, width, height, 'rgba(32,42,49,.9)', 1.4, '#f7f8f7')
+  if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
   const [west, south, east, north] = frame.bounds
   const viewWest = Math.max(west, view.getWest())
   const viewEast = Math.min(east, view.getEast())
@@ -357,7 +525,126 @@ async function captureRadarFallback(
   } else {
     context.drawImage(image, 0, 0, width, height)
   }
+  if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
+  if (includeWarnings) drawExportWarnings(context, warnings, viewBounds, width, height)
+  if (includeHighways) drawExportLineGeometry(context, highways, viewBounds, width, height, 'rgba(132,83,36,.82)', 1.25)
+  drawExportGeometry(context, states, viewBounds, width, height, 'rgba(32,42,49,.9)', 1.4)
+  if (includeCities) drawExportCityLabels(context, viewBounds, width, height)
   return context.getImageData(0, 0, width, height)
+}
+
+const SHARE_GIF_WIDTH = 720
+const SHARE_GIF_MAP_HEIGHT = 480
+const SHARE_GIF_HEADER_HEIGHT = 48
+const SHARE_GIF_FOOTER_HEIGHT = 78
+
+function shareProductDetails(productId: RadarProductId): { label: string; unit: string; legend: Array<{ label: string; color: string }> } {
+  if (productId === 'PrecipFlag') return { label: 'Precipitation Type', unit: 'TYPE', legend: PRECIP_LEGEND }
+  if (productId === 'MultiSensor_QPE_01H_Pass1') return { label: '1-hour Rainfall', unit: 'mm', legend: RAINFALL_LEGEND }
+  return { label: 'Composite Reflectivity', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
+}
+
+function formatShareValidTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'VALID TIME UNKNOWN'
+  const eastern = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date)
+  const zulu = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date).replace(':', '')
+  return `${eastern} ET · ${zulu}Z`
+}
+
+function composeShareFrame(
+  mapImage: ImageData,
+  frame: RadarFrameManifest,
+  productId: RadarProductId,
+  isHistorical: boolean,
+  playbackFps: number,
+  frameNumber: number,
+  frameCount: number,
+): ImageData {
+  const details = shareProductDetails(productId)
+  const output = document.createElement('canvas')
+  output.width = SHARE_GIF_WIDTH
+  output.height = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT + SHARE_GIF_FOOTER_HEIGHT
+  const context = output.getContext('2d')
+  if (!context) throw new Error('Browser canvas is unavailable')
+
+  const source = document.createElement('canvas')
+  source.width = mapImage.width
+  source.height = mapImage.height
+  const sourceContext = source.getContext('2d')
+  if (!sourceContext) throw new Error('Browser canvas is unavailable')
+  sourceContext.putImageData(mapImage, 0, 0)
+
+  context.fillStyle = '#e9eff2'
+  context.fillRect(0, 0, output.width, output.height)
+  context.fillStyle = '#f7fafb'
+  context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
+  context.fillStyle = '#0b6e72'
+  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 3, output.width, 3)
+  context.fillStyle = '#10252e'
+  context.font = '800 15px Arial, sans-serif'
+  context.fillText('WALL CLOUD RADAR', 20, 20)
+  context.font = '600 12px Arial, sans-serif'
+  context.fillText(`North Carolina · ${details.label} (${details.unit})`, 20, 38)
+  context.textAlign = 'right'
+  context.font = '700 12px Arial, sans-serif'
+  context.fillText(`VALID ${formatShareValidTime(frame.valid_time)}`, output.width - 20, 28)
+  context.textAlign = 'left'
+
+  const scale = Math.max(SHARE_GIF_WIDTH / source.width, SHARE_GIF_MAP_HEIGHT / source.height)
+  const imageWidth = Math.max(1, Math.round(source.width * scale))
+  const imageHeight = Math.max(1, Math.round(source.height * scale))
+  const imageX = Math.round((output.width - imageWidth) / 2)
+  const imageY = SHARE_GIF_HEADER_HEIGHT + Math.round((SHARE_GIF_MAP_HEIGHT - imageHeight) / 2)
+  context.fillStyle = '#dfe8ec'
+  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT, output.width, SHARE_GIF_MAP_HEIGHT)
+  context.imageSmoothingEnabled = scale < 1
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
+  context.imageSmoothingEnabled = true
+
+  const footerY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT
+  context.fillStyle = '#0d2029'
+  context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
+  context.fillStyle = '#a7c2c5'
+  context.font = '700 9px Arial, sans-serif'
+  context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} · OBSERVED FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 16)
+
+  const legendEntries = [...details.legend].reverse()
+  const legendX = 20
+  const legendY = footerY + 28
+  const legendWidth = output.width - 150
+  const swatchWidth = legendWidth / legendEntries.length
+  legendEntries.forEach((entry, index) => {
+    context.fillStyle = entry.color
+    context.fillRect(legendX + index * swatchWidth, legendY, swatchWidth + 1, 14)
+  })
+  context.strokeStyle = 'rgba(255,255,255,.35)'
+  context.strokeRect(legendX, legendY, legendWidth, 14)
+  context.fillStyle = '#e4eeee'
+  context.font = '8px Arial, sans-serif'
+  legendEntries.forEach((entry, index) => {
+    context.textAlign = index === 0 ? 'left' : index === legendEntries.length - 1 ? 'right' : 'center'
+    context.fillText(entry.label, legendX + (index + (index === 0 ? 0 : index === legendEntries.length - 1 ? 1 : 0.5)) * swatchWidth, legendY + 27)
+  })
+  context.textAlign = 'right'
+  context.fillStyle = '#8faeb2'
+  context.font = '700 9px Arial, sans-serif'
+  context.fillText('WALL CLOUD · NC', output.width - 20, footerY + 66)
+  context.textAlign = 'left'
+  return context.getImageData(0, 0, output.width, output.height)
 }
 
 function updateRadarMapImage(map: maplibregl.Map, frame: RadarFrameManifest, manifestPath: string): void {
@@ -442,7 +729,7 @@ function RadarAnalysisLegends({
   manifest: RadarManifest | null
   isHistorical: boolean
 }) {
-  const active = ANALYSIS_LAYER_DEFINITIONS.filter((definition) => {
+  const active = ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').filter((definition) => {
     const product = manifest?.products[definition.productId]
     return !isHistorical && layers[definition.key] && Boolean(product?.frames.length)
   })
@@ -532,10 +819,15 @@ function freshWarningPanel(warning: RadarWarning | null, onClose: () => void): R
 }
 
 function RadarLegend({ productId }: { productId: RadarProductId }) {
-  const entries = productId === 'PrecipFlag' ? PRECIP_LEGEND : REFLECTIVITY_LEGEND
+  const entries = productId === 'PrecipFlag'
+    ? PRECIP_LEGEND
+    : productId === 'MultiSensor_QPE_01H_Pass1'
+      ? RAINFALL_LEGEND
+      : REFLECTIVITY_LEGEND
+  const heading = productId === 'PrecipFlag' ? 'TYPE' : productId === 'MultiSensor_QPE_01H_Pass1' ? 'mm' : 'dBZ'
   return (
-    <aside className="radar-legend" aria-label={`${productId === 'PrecipFlag' ? 'Precipitation type' : 'Reflectivity'} legend`}>
-      <div className="radar-legend-heading">{productId === 'PrecipFlag' ? 'TYPE' : 'dBZ'}</div>
+    <aside className="radar-legend" aria-label={`${productId === 'PrecipFlag' ? 'Precipitation type' : productId === 'MultiSensor_QPE_01H_Pass1' ? 'Rainfall accumulation' : 'Reflectivity'} legend`}>
+      <div className="radar-legend-heading">{heading}</div>
       <div className="radar-legend-swatches">
         {entries.map((entry) => <span key={entry.label} style={{ backgroundColor: entry.color }} title={entry.label} />)}
       </div>
@@ -821,7 +1113,7 @@ export function RadarApp() {
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA MRMS · NWS' }), 'bottom-right')
     map.on('load', () => {
       createMapSources(map)
-      map.fitBounds(EMPTY_BOUNDS, { padding: { top: 24, right: 24, bottom: 210, left: 24 }, duration: 0 })
+      map.fitBounds(INITIAL_VIEW_BOUNDS, { padding: { top: 24, right: 24, bottom: 170, left: 24 }, duration: 0 })
       map.resize()
       setMapReady(true)
     })
@@ -935,7 +1227,7 @@ export function RadarApp() {
     if (map.getLayer(RADAR_LAYER_ID)) map.setPaintProperty(RADAR_LAYER_ID, 'raster-opacity', radarOpacity)
     setLayerVisibility(map, [RADAR_LAYER_ID], layers.radar && Boolean(activeFrame))
     setLayerVisibility(map, ['wallcloud-county-line'], layers.counties)
-    setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label'], layers.cities)
+    setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
     setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways)
     setLayerVisibility(map, [WARNING_FILL_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
     setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
@@ -982,7 +1274,7 @@ export function RadarApp() {
     const originalIndex = activeIndex
     const originalFrame = activeFrame
     const wasPlaying = playing
-    let usedRadarOnlyFallback = false
+    let usedMapCanvasFallback = false
     setGifExporting(true)
     setGifExportProgress(0)
     setGifExportError(null)
@@ -990,27 +1282,45 @@ export function RadarApp() {
     try {
       await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
+      const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
       for (let index = 0; index < frames.length; index += 1) {
         const frame = frames[index]
-        const radarSourceReady = Boolean(map.getSource(RADAR_SOURCE_ID))
+        let mapImage: ImageData
         try {
-          if (!radarSourceReady) throw new Error('Radar image source is not ready')
+          // Build the export from the source raster and local vector layers. A
+          // WebGL canvas can omit label/boundary layers depending on tile and
+          // preserveDrawingBuffer timing, so it is not a reliable share image.
+          mapImage = await captureExportMap(
+            map,
+            frame,
+            manifestPath,
+            states,
+            counties,
+            layers.counties,
+            layers.cities,
+            highways,
+            layers.highways,
+            exportWarnings,
+            layers.warnings && !isHistorical,
+          )
+        } catch {
+          // Keep a last-resort browser capture for transient source failures;
+          // the normal path above is the deterministic labeled export path.
+          usedMapCanvasFallback = true
           updateRadarMapImage(map, frame, manifestPath)
           await waitForMapPaint(map)
           const mapCapture = captureMapCanvas(map)
-          if (!hasVisibleMapCapture(mapCapture)) throw new Error('Map canvas did not contain rendered pixels')
-          captured.push(mapCapture)
-        } catch {
-          usedRadarOnlyFallback = true
-          captured.push(await captureRadarFallback(map, frame, manifestPath))
+          if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
+          mapImage = mapCapture
         }
+        captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length))
         setGifExportProgress(Math.round((index + 1) / frames.length * 100))
       }
       const blob = encodeGif(captured, playbackFps)
       const zoom = Math.round(map.getZoom() * 10) / 10
       const safeDataset = (manifest?.dataset_id ?? 'live').replace(/[^a-z0-9-]+/gi, '-')
       const safeProduct = productId.replace(/[^a-z0-9-]+/gi, '-')
-      const filename = `wall-cloud-${safeDataset}-${safeProduct}-z${zoom.toFixed(1).replace('.', 'p')}-${playbackFps}fps.gif`
+      const filename = `wall-cloud-${safeDataset}-${safeProduct}-share-z${zoom.toFixed(1).replace('.', 'p')}-${playbackFps}fps.gif`
       const downloadUrl = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = downloadUrl
@@ -1019,7 +1329,7 @@ export function RadarApp() {
       anchor.click()
       anchor.remove()
       window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2_000)
-      if (usedRadarOnlyFallback) setGifExportError('GIF saved from the radar viewport; external map tiles could not be included.')
+      if (usedMapCanvasFallback) setGifExportError('GIF saved with the browser map base because the deterministic export base was temporarily unavailable.')
     } catch (error: unknown) {
       setGifExportError(error instanceof Error ? error.message : 'GIF export failed')
     } finally {
@@ -1097,7 +1407,7 @@ export function RadarApp() {
 
         {geographyError && <div className="radar-data-strip geography-warning">Boundary data unavailable · radar remains available</div>}
 
-        <RadarLegend productId={productId} />
+        {layers.radar && <RadarLegend productId={productId} />}
         <RadarAnalysisLegends
           layers={layers}
           manifest={manifest}
@@ -1158,10 +1468,11 @@ export function RadarApp() {
             })}
           </select>
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
+          {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
 
           <div className="radar-layer-list">
             <div className="radar-layer-section-heading">Storm analysis <small>latest generated analysis</small></div>
-            {ANALYSIS_LAYER_DEFINITIONS.map((definition) => {
+            {ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
               const product = manifest?.products[definition.productId]
               const ready = product?.status === 'ready' || product?.status === 'partial'
               const note = isHistorical
@@ -1260,7 +1571,7 @@ export function RadarApp() {
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
                 {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
               </div>
-              <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length} title="Save the current map viewport at the selected playback FPS">
+              <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length} title="Save a share-ready GIF using the current map view and playback FPS">
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (

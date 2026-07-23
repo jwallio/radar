@@ -7,10 +7,10 @@ The MVP provides:
 - NOAA/NCEP MRMS regional composite-reflectivity imagery processed to PNG.
 - A generated manifest and recent-frame playback with previous, play/pause, next, scrubber, and 2/4/8/20/30 FPS choices using exact observed frames.
 - Downloadable, branded animated GIF loops generated with the same Wall Cloud palette at a concise five-to-six-frame-per-second presentation rate.
-- Client-side **Save GIF** export that follows the current map zoom/pan and selected viewer FPS, with a radar-only fallback when external tiles cannot be captured.
+- Client-side **Save GIF** export that follows the current map zoom/pan and selected viewer FPS, composes every frame from the radar raster plus local state/county/city vectors, and adds share-ready Wall Cloud framing with each frame's Eastern valid time and product legend. External basemap capture is only a last-resort fallback.
 - Selectable historical loop packs sourced from NOAA's public MRMS archive.
 - A second precipitation-type mode backed by the official MRMS PrecipFlag product when it decodes successfully.
-- Latest-analysis overlays for one-hour MRMS rainfall, 0–2 km and 3–6 km azimuthal shear, 30-minute rotation tracks, MESH, POSH, and five-minute NLDN cloud-to-ground lightning density.
+- A product selector for composite reflectivity, PrecipFlag, and one-hour MRMS rainfall, plus latest-analysis overlays for 0–2 km and 3–6 km azimuthal shear, 30-minute rotation tracks, MESH, POSH, and five-minute NLDN cloud-to-ground lightning density.
 - Clickable NWS surface observations and NOAA NDBC buoy observations, refreshed independently from radar playback.
 - Independent active NWS warning refreshes for tornado, severe thunderstorm, flash flood, and special marine warnings.
 - Census TIGERweb state/county overlays, priority city labels, and an on-demand highway overlay.
@@ -54,7 +54,7 @@ Radar URLs are centralized in `radar_processing/config.py` and are based on the 
 - [Census TIGERweb State/County service](https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer)
 - [Census TIGERweb Transportation service](https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer)
 
-The map uses light raster tiles from [CARTO](https://carto.com/basemaps/) with OpenStreetMap attribution. NOAA/NWS and Census attribution is shown in the interface and documented here.
+The map uses light, label-free raster tiles from [CARTO](https://carto.com/basemaps/) with OpenStreetMap attribution. Wall Cloud owns the priority city/highway labels and overlays them once. NOAA/NWS and Census attribution is shown in the interface and documented here.
 
 ## Local setup — Windows PowerShell
 
@@ -121,11 +121,11 @@ python scripts/build_radar_frames.py
 
 Use `python scripts/build_radar_frames.py --no-precip-type` for a reflectivity-only run or `--keep-raw` only when troubleshooting decoder inputs. Raw files and local caches are ignored by Git.
 
-Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed regional reference loops. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, using the selected 2/4/8/20/30 FPS setting and the same latest-frame hold as browser playback. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
+Each successful run also writes `public/data/radar/loops/composite-reflectivity.gif` and, when available, `precipitation-type.gif`. These are branded, fixed Central North Carolina reference loops (`-83.3, 33.6, -74.8, 37.0`) with coastal North Carolina and nearby Atlantic waters included, sharp raster cropping from the regional source, a clean vector base map, collision-checked city labels, valid time, and product legends. Loop URLs receive a generated version key so a newly cropped loop is not hidden by a cached older regional GIF. The viewer's **Save GIF** button exports the current MapLibre viewport, including its current zoom/pan, in a 720-pixel-wide share frame with Wall Cloud header/footer, the frame's Eastern and UTC valid time, product-specific legend, observed-frame count, and the selected 2/4/8/20/30 FPS setting. It draws labels, borders, warnings, and optional highways from local vector data so exports remain complete even when external basemap tiles cannot be captured. The basemap is label-free, so priority city and optional highway labels are owned by the app and appear once. GIF timing is quantized to centiseconds by the GIF format; the 20 and 30 FPS options use the nearest representable delay. The separate **Branded loop** link remains available when a generated static loop exists.
 
 Browser playback defaults to 4 FPS and always swaps exact observed MRMS frames directly. The 20 and 30 FPS options preload the complete active sequence for testing, but display refresh and image decoding can still limit the effective rate. No crossfaded or interpolated radar field is shown, written to the manifest, or exported to GIF.
 
-Viewport GIF export is client-side and does not send radar data to a server. If external basemap tiles prevent canvas capture because of browser security rules, the export falls back to the zoom/pan-cropped local radar raster and reports that in the control area.
+Viewport GIF export is client-side and does not send radar data to a server. The normal export path uses the zoom/pan-cropped local radar raster plus local state/county/city/warning/highway geography; a browser map-canvas capture is retained only as a last-resort recovery path for a transient local raster failure.
 
 ## Historical radar loops
 
@@ -208,6 +208,7 @@ Enable GitHub Pages with **GitHub Actions** as the build source. The scheduled w
 - NDBC buoy data is generated server-side into static JSON because the upstream station list/realtime text files are not a dependable browser-facing API. A failed buoy refresh leaves the layer unavailable without blocking radar deployment.
 - NWS alerts are fetched client-side, so an ad-blocker, CORS issue, rate limit, or upstream outage can degrade warning refresh while leaving the last successful result visible.
 - The static MVP uses CARTO raster basemap tiles and Census TIGERweb overlays at runtime. A future production deployment should proxy or cache these sources if traffic requires stronger availability guarantees.
+- Client-side share GIFs prioritize broad browser-decoder compatibility over maximum compression; their size grows with the selected frame count. The pre-rendered **Branded loop** remains the smaller fixed-Central-NC option.
 - GitHub Actions is not a real-time scheduler. A worker or persistent object-store pipeline is recommended for lower-latency updates.
 - Historical packs available in the static viewer are generated selections, not arbitrary browser-side GRIB decoding. GitHub Actions caches preserve them for the MVP, but cache eviction can remove old packs; use R2/S3 for permanent public history.
 

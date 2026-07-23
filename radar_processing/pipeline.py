@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .animation import build_loop_gif, fetch_export_geography
-from .config import ANALYSIS_PRODUCT_IDS, PRODUCTS, ProcessingConfig
+from .config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, PRODUCTS, ProcessingConfig
 from .manifest import build_manifest, filter_existing_frames, sort_frame_records, write_json_atomic
 from .mrms import RemoteFrame, download_file, match_closest_frame
 from .rendering import render_analysis, render_precip_type, render_reflectivity
@@ -87,8 +87,11 @@ def _safe_product_stem(product_id: str) -> str:
 
 
 def _rotate_outputs(frame_dir: Path, loop_dir: Path, products: dict[str, dict[str, Any]]) -> None:
+    def asset_name(value: object) -> str:
+        return Path(str(value).split("?", 1)[0].split("#", 1)[0]).name
+
     active_frames = {
-        Path(str(frame["url"])).name
+        asset_name(frame["url"])
         for product in products.values()
         for frame in product["frames"]
     }
@@ -97,7 +100,7 @@ def _rotate_outputs(frame_dir: Path, loop_dir: Path, products: dict[str, dict[st
             old_frame.unlink()
 
     active_loops = {
-        Path(str(product["loop_url"])).name
+        asset_name(product["loop_url"])
         for product in products.values()
         if product.get("loop_url")
     }
@@ -251,6 +254,8 @@ def build_radar_dataset(
             errors.append(f"GIF boundary overlay: {exc}")
             LOGGER.warning("Census boundary overlay unavailable for GIF export: %s", exc)
 
+        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        loop_cache_key = generated_at.replace("-", "").replace(":", "")
         loop_names = {
             REFLECTIVITY_ID: "composite-reflectivity.gif",
             PRECIP_ID: "precipitation-type.gif",
@@ -267,12 +272,13 @@ def build_radar_dataset(
                     product["frames"],
                     frame_dir,
                     loop_path,
-                    bounds=config.region,
+                    bounds=BRANDED_GIF_REGION,
+                    source_bounds=config.region,
                     product_id=product_id,
                     product_label=str(product["label"]),
                     geography=geography,
                 )
-                product["loop_url"] = f"./loops/{loop_path.name}"
+                product["loop_url"] = f"./loops/{loop_path.name}?v={loop_cache_key}"
                 product["loop_frame_count"] = frame_count
                 product["loop_size_bytes"] = loop_path.stat().st_size
             except Exception as exc:  # noqa: BLE001 - GIF failure must not discard browser animation
@@ -280,7 +286,6 @@ def build_radar_dataset(
                 LOGGER.warning("GIF export failed for %s: %s", product_id, exc)
 
         _rotate_outputs(frame_dir, loop_dir, products)
-        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         manifest = build_manifest(
             region=config.region.as_list(),
             products=products,

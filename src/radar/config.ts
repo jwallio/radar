@@ -1,9 +1,12 @@
 import type { RadarAnalysisProductId, RadarProductId } from './types'
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
-export const MAP_CENTER: [number, number] = [-79.45, 35.65]
+export const MAP_CENTER: [number, number] = [-79.45, 35.45]
+export const INITIAL_VIEW_BOUNDS: [[number, number], [number, number]] = [[-84.7, 33.0], [-75.0, 37.8]]
 
-export const CARTO_LIGHT_TILES = 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+// Keep the raster base label-free so the app's priority city/highway layers
+// are the single source of truth for map text and cannot be duplicated.
+export const CARTO_LIGHT_TILES = 'https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
 
 export const CENSUS_GEOGRAPHY_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer'
 export const CENSUS_TRANSPORTATION_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer'
@@ -21,6 +24,7 @@ export const WARNING_EVENTS = [
 export const PRODUCT_OPTIONS: Array<{ id: RadarProductId; label: string }> = [
   { id: 'MergedReflectivityQCComposite', label: 'Composite Reflectivity' },
   { id: 'PrecipFlag', label: 'Precipitation Type' },
+  { id: 'MultiSensor_QPE_01H_Pass1', label: '1-hour Rainfall' },
 ]
 
 export const REFLECTIVITY_LEGEND = [
@@ -44,6 +48,14 @@ export const PRECIP_LEGEND = [
   { label: 'Rain', color: '#2dbb60' },
   { label: 'Snow', color: '#45aef0' },
   { label: 'Cool / hail', color: '#e852b1' },
+]
+
+export const RAINFALL_LEGEND = [
+  { label: '50+', color: '#ab37c2' },
+  { label: '25', color: '#eb3634' },
+  { label: '10', color: '#ff971f' },
+  { label: '5', color: '#ffdd31' },
+  { label: '1', color: '#16b1e7' },
 ]
 
 export type AnalysisLayerKey =
@@ -196,7 +208,7 @@ export const CITIES_GEOJSON: GeoJSON.FeatureCollection = {
     type: 'Feature',
     id: city.id,
     geometry: { type: 'Point', coordinates: [city.lon, city.lat] },
-    properties: { label: city.label, primary: Boolean(city.primary) },
+    properties: { id: city.id, label: city.label, primary: Boolean(city.primary) },
   })),
 }
 

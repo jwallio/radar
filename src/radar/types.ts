@@ -1,4 +1,4 @@
-export type RadarProductId = 'MergedReflectivityQCComposite' | 'PrecipFlag'
+export type RadarProductId = 'MergedReflectivityQCComposite' | 'PrecipFlag' | 'MultiSensor_QPE_01H_Pass1'
 
 export type RadarAnalysisProductId =
   | 'MultiSensor_QPE_01H_Pass1'

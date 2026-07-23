@@ -134,9 +134,11 @@ ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
 
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
 # The live raster stays regional so upstream weather remains visible in the
-# viewer. Downloadable branded loops use a tighter Central NC framing instead
-# of forcing the share image to show the full processing domain.
-BRANDED_GIF_REGION = RegionBounds(west=-83.3, east=-74.8, south=33.6, north=37.0)
+# viewer. Downloadable loops use the reference-style NC framing: Asheville and
+# the southern Appalachians on the west, the full NC coast and Outer Banks on
+# the east, southern Virginia to the north, and northern South Carolina to the
+# south. The aspect also keeps the share image wide enough for social sharing.
+BRANDED_GIF_REGION = RegionBounds(west=-84.5, east=-74.0, south=33.0, north=38.0)
 DEFAULT_MRMS_BASE_URL = "https://mrms.ncep.noaa.gov/2D"
 DEFAULT_MRMS_ARCHIVE_BASE_URL = "https://noaa-mrms-pds.s3.amazonaws.com"
 

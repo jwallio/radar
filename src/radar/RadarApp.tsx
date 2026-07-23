@@ -537,6 +537,8 @@ const SHARE_GIF_WIDTH = 720
 const SHARE_GIF_MAP_HEIGHT = 480
 const SHARE_GIF_HEADER_HEIGHT = 48
 const SHARE_GIF_FOOTER_HEIGHT = 78
+const SHARE_BRAND_NAVY = '#102a43'
+const SHARE_FRAME_BORDER = '#243746'
 
 function shareProductDetails(productId: RadarProductId): { label: string; unit: string; legend: Array<{ label: string; color: string }> } {
   if (productId === 'PrecipFlag') return { label: 'Precipitation Type', unit: 'TYPE', legend: PRECIP_LEGEND }
@@ -589,17 +591,21 @@ function composeShareFrame(
 
   context.fillStyle = '#e9eff2'
   context.fillRect(0, 0, output.width, output.height)
-  context.fillStyle = '#f7fafb'
+  context.fillStyle = '#ffffff'
   context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
-  context.fillStyle = '#0b6e72'
-  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 3, output.width, 3)
-  context.fillStyle = '#10252e'
+  context.fillStyle = SHARE_FRAME_BORDER
+  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 1, output.width, 1)
+  context.fillStyle = SHARE_BRAND_NAVY
   context.font = '800 15px Arial, sans-serif'
-  context.fillText('WALL CLOUD RADAR', 20, 20)
+  context.fillText('wall.cloud', 20, 20)
+  context.fillStyle = '#b0bcc4'
+  context.fillRect(105, 9, 1, 30)
+  context.fillStyle = '#1c2730'
   context.font = '600 12px Arial, sans-serif'
-  context.fillText(`North Carolina · ${details.label} (${details.unit})`, 20, 38)
+  context.fillText(`North Carolina · ${details.label} (${details.unit})`, 118, 38)
   context.textAlign = 'right'
   context.font = '700 12px Arial, sans-serif'
+  context.fillStyle = '#1c2730'
   context.fillText(`VALID ${formatShareValidTime(frame.valid_time)}`, output.width - 20, 28)
   context.textAlign = 'left'
 
@@ -614,11 +620,16 @@ function composeShareFrame(
   context.imageSmoothingQuality = 'high'
   context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
   context.imageSmoothingEnabled = true
+  context.strokeStyle = SHARE_FRAME_BORDER
+  context.lineWidth = 1
+  context.strokeRect(0.5, SHARE_GIF_HEADER_HEIGHT + 0.5, output.width - 1, SHARE_GIF_MAP_HEIGHT - 1)
 
   const footerY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT
-  context.fillStyle = '#0d2029'
+  context.fillStyle = '#ffffff'
   context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
-  context.fillStyle = '#a7c2c5'
+  context.fillStyle = SHARE_FRAME_BORDER
+  context.fillRect(0, footerY, output.width, 1)
+  context.fillStyle = '#51616e'
   context.font = '700 9px Arial, sans-serif'
   context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} · OBSERVED FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 16)
 
@@ -633,17 +644,20 @@ function composeShareFrame(
   })
   context.strokeStyle = 'rgba(255,255,255,.35)'
   context.strokeRect(legendX, legendY, legendWidth, 14)
-  context.fillStyle = '#e4eeee'
+  context.fillStyle = '#2d3b45'
   context.font = '8px Arial, sans-serif'
   legendEntries.forEach((entry, index) => {
     context.textAlign = index === 0 ? 'left' : index === legendEntries.length - 1 ? 'right' : 'center'
     context.fillText(entry.label, legendX + (index + (index === 0 ? 0 : index === legendEntries.length - 1 ? 1 : 0.5)) * swatchWidth, legendY + 27)
   })
   context.textAlign = 'right'
-  context.fillStyle = '#8faeb2'
+  context.fillStyle = SHARE_BRAND_NAVY
   context.font = '700 9px Arial, sans-serif'
-  context.fillText('WALL CLOUD · NC', output.width - 20, footerY + 66)
+  context.fillText('wall.cloud · NC', output.width - 20, footerY + 66)
   context.textAlign = 'left'
+  context.strokeStyle = SHARE_FRAME_BORDER
+  context.lineWidth = 1
+  context.strokeRect(0.5, 0.5, output.width - 1, output.height - 1)
   return context.getImageData(0, 0, output.width, output.height)
 }
 
@@ -1575,7 +1589,7 @@ export function RadarApp() {
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (
-                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered branded regional loop">Branded loop</a>
+                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered reference-style NC loop">Branded loop</a>
               ) : null}
             </div>
           </div>

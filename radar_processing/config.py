@@ -65,7 +65,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "MultiSensor_QPE_01H_Pass1": ProductDefinition(
         product_id="MultiSensor_QPE_01H_Pass1",
-        label="Rainfall Â· 1 hour",
+        label="Rainfall · 1 hour",
         directory="MultiSensor_QPE_01H_Pass1",
         filename_prefix="MRMS_MultiSensor_QPE_01H_Pass1",
         archive_prefix="CONUS/MultiSensor_QPE_01H_Pass1",
@@ -89,7 +89,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "RotationTrack30min": ProductDefinition(
         product_id="RotationTrack30min",
-        label="Rotation Track Â· 30 min",
+        label="Rotation Track · 30 min",
         directory="RotationTrack30min",
         filename_prefix="MRMS_RotationTrack30min",
         archive_prefix="CONUS/RotationTrack30min_00.50",
@@ -97,7 +97,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "MESH": ProductDefinition(
         product_id="MESH",
-        label="MESH Â· estimated hail size",
+        label="MESH · estimated hail size",
         directory="MESH",
         filename_prefix="MRMS_MESH",
         archive_prefix="CONUS/MESH_00.50",
@@ -105,7 +105,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "POSH": ProductDefinition(
         product_id="POSH",
-        label="POSH Â· severe hail probability",
+        label="POSH · severe hail probability",
         directory="POSH",
         filename_prefix="MRMS_POSH",
         archive_prefix="CONUS/POSH_00.50",
@@ -113,7 +113,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
     ),
     "NLDN_CG_005min_AvgDensity": ProductDefinition(
         product_id="NLDN_CG_005min_AvgDensity",
-        label="Lightning Â· 5 min density",
+        label="Lightning · 5 min density",
         directory="NLDN_CG_005min_AvgDensity",
         filename_prefix="MRMS_NLDN_CG_005min_AvgDensity",
         archive_prefix="CONUS/NLDN_CG_005min_AvgDensity_00.00",

@@ -225,7 +225,7 @@ Manifests include product status, valid times, relative frame URLs, bounds, sour
 Run the focused checks:
 
 ```powershell
-python -m pytest -q tests/test_radar_processing.py tests/test_nexrad_processing.py
+python -m pytest -q
 npm run typecheck
 npm run build
 ```
@@ -238,7 +238,7 @@ The focused radar frontend files are lint-clean. The repository-wide `npm run li
 
 ### Normal Pages deployment
 
-`.github/workflows/pages.yml` builds and deploys the static application from `main` using GitHub Pages. A push to `main` is the normal source-code deployment path.
+`.github/workflows/pages.yml` runs the shared radar refresh/deployment workflow from `main`. This prevents a source-only deployment from replacing generated live radar with the unavailable seed manifests. A push to `main` is the normal source-code deployment path.
 
 Enable Pages in the repository settings with **GitHub Actions** as the build source. The workflow requires Pages write and deployment permissions.
 
@@ -256,6 +256,11 @@ Each refresh:
 6. Deploys a Pages artifact.
 
 The workflow does not commit generated radar output to Git.
+
+Radar manifests and history catalogs are requested with a cache-busting query so
+five-minute browser polling cannot be held behind the GitHub Pages CDN cache.
+Every production build also exposes its commit through the root
+`data-build-sha` attribute for deployment verification.
 
 ### Historical workflows
 

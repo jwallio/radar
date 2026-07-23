@@ -1,6 +1,7 @@
 name: Refresh and deploy MRMS and KRAX radar
 
 on:
+  workflow_call:
   workflow_dispatch:
   schedule:
     # GitHub Actions schedules are best-effort; this targets roughly five minutes.
@@ -77,6 +78,7 @@ jobs:
       - name: Build static site
         env:
           VITE_BASE_PATH: /
+          VITE_BUILD_SHA: ${{ github.sha }}
         run: npm run build
 
       - name: Upload GitHub Pages artifact

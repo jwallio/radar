@@ -35,6 +35,7 @@ const SURFACE_LABEL_ID = 'wallcloud-surface-label'
 const BUOY_SOURCE_ID = 'wallcloud-buoy-source'
 const BUOY_DOT_ID = 'wallcloud-buoy-dot'
 const BUOY_LABEL_ID = 'wallcloud-buoy-label'
+const BUILD_SHA = import.meta.env.VITE_BUILD_SHA || 'local'
 const RADAR_POLL_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_RADAR_SOURCE: RadarSourceId = 'krax'
 const DEFAULT_RADAR_PRODUCT: RadarProductId = 'NEXRADLevel2BaseReflectivity'
@@ -1442,7 +1443,7 @@ export function RadarApp() {
   }
 
   return (
-    <div className="radar-app">
+    <div className="radar-app" data-build-sha={BUILD_SHA}>
       <header className="radar-header">
         <div className="radar-brand-lockup">
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>

@@ -17,36 +17,5 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-      - name: Restore generated historical packs
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            public/data/radar/history
-            public/data/radar/krax/history
-          key: radar-history-${{ runner.os }}-restore-${{ github.run_id }}
-          restore-keys: |
-            radar-history-${{ runner.os }}-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Build application
-        env:
-          VITE_BASE_PATH: /
-        run: npm run build
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+  deploy:
+    uses: ./.github/workflows/radar-refresh.yml

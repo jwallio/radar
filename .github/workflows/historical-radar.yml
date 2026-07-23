@@ -166,6 +166,7 @@ jobs:
       - name: Build static site
         env:
           VITE_BASE_PATH: /
+          VITE_BUILD_SHA: ${{ github.sha }}
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v4

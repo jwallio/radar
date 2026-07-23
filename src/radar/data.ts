@@ -83,6 +83,12 @@ function emptyFeatureCollection(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
 }
 
+function freshStaticJsonUrl(path: string): string {
+  const url = new URL(path, window.location.href)
+  url.searchParams.set('_wallcloud_refresh', Date.now().toString())
+  return url.toString()
+}
+
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -103,7 +109,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 export async function fetchRadarManifest(path: string, signal?: AbortSignal): Promise<RadarManifest> {
-  const payload = await fetchJson<RadarManifest>(path, signal)
+  const payload = await fetchJson<RadarManifest>(freshStaticJsonUrl(path), signal)
   if (!payload || typeof payload !== 'object' || !payload.products) {
     throw new Error('Radar manifest has an unsupported shape')
   }
@@ -111,7 +117,7 @@ export async function fetchRadarManifest(path: string, signal?: AbortSignal): Pr
 }
 
 export async function fetchHistoryCatalog(path: string, signal?: AbortSignal): Promise<RadarHistoryCatalog> {
-  const payload = await fetchJson<RadarHistoryCatalog>(path, signal)
+  const payload = await fetchJson<RadarHistoryCatalog>(freshStaticJsonUrl(path), signal)
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.datasets)) {
     throw new Error('Historical radar catalog has an unsupported shape')
   }

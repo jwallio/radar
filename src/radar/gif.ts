@@ -38,6 +38,7 @@ function lzwEncode(indices: Uint8Array): Uint8Array {
   const minimumCodeSize = 8
   const clearCode = 1 << minimumCodeSize
   const endCode = clearCode + 1
+  const chunkSize = 128
   const output: number[] = []
   let bitBuffer = 0
   let bitCount = 0
@@ -51,14 +52,15 @@ function lzwEncode(indices: Uint8Array): Uint8Array {
     }
   }
 
-  // Emit one literal pixel between clear codes. This is intentionally
-  // conservative: it avoids decoder-specific dictionary/code-size edge cases
-  // while keeping the browser-side export dependency-free and deterministic.
-  writeCode(clearCode)
-  indices.forEach((index) => {
-    writeCode(index)
+  // Emit literal pixels in short, independently cleared chunks. The decoder
+  // can build a small dictionary, but the stream never crosses a code-size
+  // boundary, which keeps browser decoders consistent and the file smaller
+  // than clearing after every single pixel.
+  for (let offset = 0; offset < indices.length; offset += chunkSize) {
     writeCode(clearCode)
-  })
+    const end = Math.min(indices.length, offset + chunkSize)
+    for (let index = offset; index < end; index += 1) writeCode(indices[index])
+  }
   writeCode(endCode)
   if (bitCount > 0) output.push(bitBuffer & 0xff)
   return Uint8Array.from(output)
@@ -115,3 +117,4 @@ export function encodeGif(frames: ImageData[], fps: number, latestHoldMs = LATES
 }
 
 export { GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT }
+

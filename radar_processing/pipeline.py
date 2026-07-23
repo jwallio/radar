@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .animation import build_loop_gif, fetch_export_geography
-from .config import ANALYSIS_PRODUCT_IDS, PRODUCTS, ProcessingConfig
+from .config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, PRODUCTS, ProcessingConfig
 from .manifest import build_manifest, filter_existing_frames, sort_frame_records, write_json_atomic
 from .mrms import RemoteFrame, download_file, match_closest_frame
 from .rendering import render_analysis, render_precip_type, render_reflectivity
@@ -267,7 +267,7 @@ def build_radar_dataset(
                     product["frames"],
                     frame_dir,
                     loop_path,
-                    bounds=config.region,
+                    bounds=BRANDED_GIF_REGION,
                     product_id=product_id,
                     product_label=str(product["label"]),
                     geography=geography,
@@ -303,3 +303,4 @@ def build_radar_dataset(
     finally:
         if raw_context:
             raw_context.cleanup()
+

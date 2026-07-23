@@ -133,6 +133,10 @@ ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
 )
 
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
+# The live raster stays regional so upstream weather remains visible in the
+# viewer. Downloadable branded loops use a tighter Central NC framing instead
+# of forcing the share image to show the full processing domain.
+BRANDED_GIF_REGION = RegionBounds(west=-83.5, east=-75.0, south=33.5, north=37.5)
 DEFAULT_MRMS_BASE_URL = "https://mrms.ncep.noaa.gov/2D"
 DEFAULT_MRMS_ARCHIVE_BASE_URL = "https://noaa-mrms-pds.s3.amazonaws.com"
 
@@ -196,3 +200,4 @@ def load_config(root: Path, *, keep_raw: bool | None = None) -> ProcessingConfig
         keep_raw=bool(keep_raw) if keep_raw is not None else _env_bool("MRMS_KEEP_RAW", False),
         raw_dir=raw_dir,
     )
+

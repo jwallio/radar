@@ -50,6 +50,30 @@ CITIES = (
 )
 
 
+def _crop_radar_to_bounds(radar: Image.Image, source_bounds: RegionBounds, target_bounds: RegionBounds) -> Image.Image:
+    """Crop a rendered regional raster to the branded-loop view."""
+
+    if (
+        source_bounds.east <= source_bounds.west
+        or source_bounds.north <= source_bounds.south
+        or target_bounds.east <= source_bounds.west
+        or target_bounds.west >= source_bounds.east
+        or target_bounds.north <= source_bounds.south
+        or target_bounds.south >= source_bounds.north
+    ):
+        return radar.copy()
+
+    west = max(source_bounds.west, target_bounds.west)
+    east = min(source_bounds.east, target_bounds.east)
+    south = max(source_bounds.south, target_bounds.south)
+    north = min(source_bounds.north, target_bounds.north)
+    left = max(0, min(radar.width - 1, round((west - source_bounds.west) / (source_bounds.east - source_bounds.west) * radar.width)))
+    right = max(left + 1, min(radar.width, round((east - source_bounds.west) / (source_bounds.east - source_bounds.west) * radar.width)))
+    top = max(0, min(radar.height - 1, round((source_bounds.north - north) / (source_bounds.north - source_bounds.south) * radar.height)))
+    bottom = max(top + 1, min(radar.height, round((source_bounds.north - south) / (source_bounds.north - source_bounds.south) * radar.height)))
+    return radar.crop((left, top, right, bottom))
+
+
 def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     names = ("DejaVuSans-Bold.ttf", "Arial Bold.ttf") if bold else ("DejaVuSans.ttf", "Arial.ttf")
     for name in names:
@@ -177,10 +201,25 @@ def _map_base(
 
 def _draw_city_labels(draw: ImageDraw.ImageDraw, bounds: RegionBounds, width: int, height: int) -> None:
     font = _font(11, bold=True)
+    occupied: list[tuple[int, int, int, int]] = []
     for label, longitude, latitude in CITIES:
+        if not (bounds.west <= longitude <= bounds.east and bounds.south <= latitude <= bounds.north):
+            continue
         x, y = _project((longitude, latitude), bounds, width, height)
         draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(26, 34, 39, 255))
-        draw.text((x + 5, y - 8), label, font=font, fill=(20, 27, 32, 255), stroke_width=2, stroke_fill=(255, 255, 255, 225))
+        text_box = draw.textbbox((0, 0), label, font=font, stroke_width=2)
+        label_width = text_box[2] - text_box[0]
+        label_height = text_box[3] - text_box[1]
+        candidates = ((5, -label_height - 3), (5, 5), (-label_width - 5, -label_height - 3), (-label_width - 5, 5))
+        for offset_x, offset_y in candidates:
+            box = (x + offset_x, y + offset_y, x + offset_x + label_width, y + offset_y + label_height)
+            if box[0] < 2 or box[1] < 2 or box[2] >= width - 2 or box[3] >= height - 2:
+                continue
+            if any(box[0] - 3 < other[2] and box[2] + 3 > other[0] and box[1] - 3 < other[3] and box[3] + 3 > other[1] for other in occupied):
+                continue
+            draw.text((x + offset_x, y + offset_y), label, font=font, fill=(20, 27, 32, 255), stroke_width=2, stroke_fill=(255, 255, 255, 225))
+            occupied.append(box)
+            break
 
 
 def _format_valid_time(value: str) -> str:
@@ -201,8 +240,7 @@ def _draw_reflectivity_legend(draw: ImageDraw.ImageDraw, width: int, y: int) -> 
         x1 = left + index * block_width
         x2 = right if index == len(colors) - 1 else x1 + block_width
         draw.rectangle((x1, y, x2, y + 10), fill=tuple(int(channel) for channel in color[:3]) + (255,))
-        if index % 2 == 0 or index == len(colors) - 1:
-            draw.text((x1, y + 12), "70+" if index == len(colors) - 1 else str(int(values[index])), font=font, fill=(59, 66, 72, 255))
+        draw.text((x1, y + 12), "70+" if index == len(colors) - 1 else str(int(values[index])), font=font, fill=(59, 66, 72, 255))
     draw.text((left, y - 13), "Composite reflectivity · dBZ", font=_font(9, bold=True), fill=(47, 55, 62, 255))
 
 
@@ -251,9 +289,10 @@ def _export_frame(
     canvas.alpha_composite(map_image, (0, header_height))
     draw = ImageDraw.Draw(canvas, "RGBA")
     draw.line((0, header_height - 1, width, header_height - 1), fill=(42, 50, 56, 255), width=1)
-    draw.text((14, 10), "WALL CLOUD", font=_font(13, bold=True), fill=(13, 67, 69, 255))
-    draw.line((114, 9, 114, 29), fill=(176, 185, 191, 255), width=1)
-    draw.text((124, 11), f"MRMS 1 km · {product_label}", font=_font(12), fill=(25, 31, 36, 255))
+    draw.text((14, 10), "WALL CLOUD RADAR", font=_font(13, bold=True), fill=(13, 67, 69, 255))
+    draw.line((176, 9, 176, 29), fill=(176, 185, 191, 255), width=1)
+    unit = "dBZ" if product_id == "MergedReflectivityQCComposite" else "TYPE"
+    draw.text((187, 11), f"North Carolina · MRMS 1 km · {product_label} ({unit})", font=_font(12), fill=(25, 31, 36, 255))
     valid_text = f"Valid: {_format_valid_time(valid_time)}"
     valid_box = draw.textbbox((0, 0), valid_text, font=_font(11, bold=True))
     draw.text((width - (valid_box[2] - valid_box[0]) - 14, 11), valid_text, font=_font(11, bold=True), fill=(25, 31, 36, 255))
@@ -287,8 +326,21 @@ def build_loop_gif(
         if not path.is_file():
             continue
         with Image.open(path) as radar:
+            source_bounds = bounds
+            record_bounds = record.get("bounds")
+            if isinstance(record_bounds, (list, tuple)) and len(record_bounds) == 4:
+                try:
+                    source_bounds = RegionBounds(
+                        west=float(record_bounds[0]),
+                        south=float(record_bounds[1]),
+                        east=float(record_bounds[2]),
+                        north=float(record_bounds[3]),
+                    )
+                except (TypeError, ValueError):
+                    source_bounds = bounds
+            cropped_radar = _crop_radar_to_bounds(radar, source_bounds, bounds)
             rendered = _export_frame(
-                radar,
+                cropped_radar,
                 valid_time=str(record["valid_time"]),
                 bounds=bounds,
                 product_id=product_id,
@@ -324,3 +376,4 @@ def build_loop_gif(
             frame.close()
     LOGGER.info("Built GIF loop %s with %d frames", output_path, len(frames))
     return len(frames)
+

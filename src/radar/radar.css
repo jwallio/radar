@@ -86,7 +86,7 @@
 .radar-legend-swatches span { flex: 1; min-height: 1px; }
 .radar-legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #b9ced0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; line-height: 1; }
 
-.radar-settings { position: absolute; top: 16px; right: 17px; z-index: 10; display: flex; flex-direction: column; width: 268px; max-height: calc(100% - 190px); overflow: auto; padding: 14px; border: 1px solid rgba(147, 182, 190, .26); border-radius: 9px; background: var(--radar-surface); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.radar-settings { position: absolute; top: 16px; right: 17px; z-index: 10; display: flex; flex-direction: column; width: 268px; min-width: 0; max-height: calc(100% - 190px); overflow: auto; padding: 14px; border: 1px solid rgba(147, 182, 190, .26); border-radius: 9px; background: var(--radar-surface); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); box-sizing: border-box; }
 .radar-settings-head, .radar-timeline-top, .radar-warning-panel-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .radar-panel-kicker { display: block; margin-bottom: 4px; color: var(--radar-accent); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .radar-settings h2, .radar-warning-panel h2 { margin: 0; font-size: 14px; font-weight: 680; }
@@ -95,7 +95,7 @@
 .radar-mobile-close { display: none; }
 .radar-field-label { display: flex; align-items: center; justify-content: space-between; margin: 17px 0 6px; color: #c9d9d9; font-size: 10px; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; }
 .radar-field-label output { color: var(--radar-accent); font-family: ui-monospace, monospace; font-size: 10px; }
-.radar-select { width: 100%; padding: 9px 10px; border: 1px solid rgba(147, 182, 190, .3); border-radius: 6px; background: #101f27; color: var(--radar-text); font-size: 12px; }
+.radar-select { width: 100%; min-width: 0; min-height: 38px; padding: 9px 10px; border: 1px solid rgba(147, 182, 190, .3); border-radius: 6px; background: #101f27; color: var(--radar-text); font-size: 12px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
 .radar-select option { background: #101f27; }
 .radar-field-note { margin: 7px 0 0; color: var(--radar-muted); font-size: 10px; line-height: 1.4; }
 .radar-field-note.error { color: #e1ab91; }
@@ -185,9 +185,13 @@
   .radar-legend { top: auto; right: 10px; bottom: 216px; left: auto; transform: none; grid-template-columns: 23px 22px; padding: 8px 7px; }
   .radar-legend-swatches { height: 168px; width: 11px; }
   .radar-legend-labels { font-size: 8px; }
-  .radar-settings { top: 10px; right: 10px; bottom: auto; width: min(310px, calc(100% - 20px)); max-height: calc(100% - 20px); transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
+  .radar-settings { top: 8px; right: 8px; bottom: auto; width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px); padding: 16px; transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
   .radar-settings.open { z-index: 30; transform: translateX(0); }
   .radar-mobile-close { display: block; }
+  .radar-settings h2 { font-size: 16px; }
+  .radar-field-label { margin-top: 15px; font-size: 11px; }
+  .radar-select { min-height: 42px; padding: 10px 12px; font-size: 13px; }
+  .radar-field-note { font-size: 11px; }
   .radar-warning-panel { top: 10px; right: 10px; width: min(310px, calc(100% - 20px)); }
   .radar-observation-panel { top: 52px; right: 10px; bottom: auto; width: min(310px, calc(100% - 20px)); }
   .radar-analysis-legends { right: 10px; bottom: 216px; left: 10px; max-width: calc(100% - 20px); max-height: 92px; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
@@ -216,3 +220,4 @@
   .radar-transport-control > button { padding-inline: 4px; }
   .radar-speed-control button { min-width: 25px; }
 }
+

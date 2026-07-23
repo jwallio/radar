@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 from radar_processing.animation import build_loop_gif
-from radar_processing.config import ANALYSIS_PRODUCT_IDS, DEFAULT_REGION, PRODUCTS
+from radar_processing.config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, DEFAULT_REGION, PRODUCTS
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
 from radar_processing.mrms import _archive_listing, sample_frames
@@ -57,6 +57,16 @@ def test_regional_bounds_cover_the_requested_area() -> None:
     assert DEFAULT_REGION.east > -75.4
     assert DEFAULT_REGION.south < 34.0
     assert DEFAULT_REGION.north > 37.8
+
+
+def test_branded_gif_region_is_tighter_and_central_nc_focused() -> None:
+    assert DEFAULT_REGION.west < BRANDED_GIF_REGION.west
+    assert DEFAULT_REGION.east > BRANDED_GIF_REGION.east
+    assert DEFAULT_REGION.south < BRANDED_GIF_REGION.south
+    assert DEFAULT_REGION.north > BRANDED_GIF_REGION.north
+    assert BRANDED_GIF_REGION.west < -82.5 < BRANDED_GIF_REGION.east
+    assert BRANDED_GIF_REGION.east > -75.5
+    assert BRANDED_GIF_REGION.south < 35.5 < BRANDED_GIF_REGION.north
 
 
 def test_analysis_products_are_configured_for_latest_only_rendering() -> None:
@@ -187,3 +197,4 @@ def test_gif_export_contains_all_frames(tmp_path: Path) -> None:
         assert gif.info["duration"] == 180
         gif.seek(1)
         assert gif.info["duration"] == 1000
+

@@ -3,13 +3,52 @@ name: Build and deploy a historical KRAX Level II loop
 on:
   workflow_dispatch:
     inputs:
-      start:
-        description: ISO-8601 start with timezone (example 2025-06-19T14:00:00-04:00)
+      date_mode:
+        description: Eastern Time archive date
         required: true
+        default: today
+        type: choice
+        options:
+          - today
+          - yesterday
+          - 2-days-ago
+          - 3-days-ago
+          - 7-days-ago
+          - custom
+      end_mode:
+        description: Eastern Time end of the loop
+        required: true
+        default: now
+        type: choice
+        options:
+          - now
+          - 30-minutes-ago
+          - 1-hour-ago
+          - 2-hours-ago
+          - 3-hours-ago
+          - 6-hours-ago
+          - custom
+      duration_minutes:
+        description: Loop duration in minutes
+        required: true
+        default: '90'
+        type: choice
+        options:
+          - '30'
+          - '60'
+          - '90'
+          - '120'
+          - '180'
+          - '360'
+          - '720'
+          - '1440'
+      custom_date:
+        description: Only used when date is custom (YYYY-MM-DD)
+        required: false
         type: string
-      end:
-        description: ISO-8601 end with timezone
-        required: true
+      custom_end_time:
+        description: Only used when end is custom (HH:MM ET or H:MM AM/PM)
+        required: false
         type: string
       label:
         description: Optional viewer label
@@ -80,8 +119,29 @@ jobs:
       - name: Build requested historical KRAX loop
         shell: bash
         env:
-          HISTORY_START: ${{ inputs.start }}
-          HISTORY_END: ${{ inputs.end }}
+          HISTORY_DATE_MODE: ${{ inputs.date_mode }}
+          HISTORY_END_MODE: ${{ inputs.end_mode }}
+          HISTORY_DURATION_MINUTES: ${{ inputs.duration_minutes }}
+          HISTORY_CUSTOM_DATE: ${{ inputs.custom_date }}
+          HISTORY_CUSTOM_END_TIME: ${{ inputs.custom_end_time }}
+        run: |
+          resolve_args=(--date-mode "$HISTORY_DATE_MODE" --end-mode "$HISTORY_END_MODE" --duration-minutes "$HISTORY_DURATION_MINUTES")
+          if [[ -n "$HISTORY_CUSTOM_DATE" ]]; then resolve_args+=(--custom-date "$HISTORY_CUSTOM_DATE"); fi
+          if [[ -n "$HISTORY_CUSTOM_END_TIME" ]]; then resolve_args+=(--custom-end-time "$HISTORY_CUSTOM_END_TIME"); fi
+          python scripts/resolve_history_window.py "${resolve_args[@]}" > window.env
+          cat window.env
+          start_et="$(sed -n 's/^start_et=//p' window.env)"
+          end_et="$(sed -n 's/^end_et=//p' window.env)"
+          test -n "$start_et" && test -n "$end_et"
+          echo "start=$start_et" >> "$GITHUB_OUTPUT"
+          echo "end=$end_et" >> "$GITHUB_OUTPUT"
+        id: resolve_window
+
+      - name: Build requested historical KRAX loop
+        shell: bash
+        env:
+          HISTORY_START: ${{ steps.resolve_window.outputs.start }}
+          HISTORY_END: ${{ steps.resolve_window.outputs.end }}
           HISTORY_LABEL: ${{ inputs.label }}
           HISTORY_MAX_FRAMES: ${{ inputs.max_frames }}
         run: |

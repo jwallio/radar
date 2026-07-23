@@ -3,9 +3,10 @@ import type { RadarAnalysisProductId, RadarProductId, RadarSourceId } from './ty
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
 export const MAP_CENTER: [number, number] = [-79.45, 35.45]
 export const INITIAL_VIEW_BOUNDS: [[number, number], [number, number]] = [[-84.7, 33.0], [-75.0, 37.8]]
-// Raise the default NC framing within the map viewport while keeping the full
-// coastal/state-border extent available behind the bottom timeline.
-export const INITIAL_VIEW_PAN: [number, number] = [0, -52]
+// Keep Richmond near the upper edge while retaining central and coastal NC in
+// the mobile map viewport. The small upward pan also leaves room for the
+// timeline without pushing the Virginia context out of frame.
+export const INITIAL_VIEW_PAN: [number, number] = [0, -18]
 
 // Keep the raster base label-free so the app's priority city/highway layers
 // are the single source of truth for map text and cannot be duplicated.

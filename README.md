@@ -157,6 +157,13 @@ python scripts/build_historical_krax.py `
 
 Historical times must include a timezone. The scripts convert the range to UTC while the viewer displays valid times in Eastern Time.
 
+The GitHub Actions historical workflows provide dropdowns for common Eastern
+Time ranges: today, yesterday, recent days, the current time, recent offsets,
+and loop duration. Choose `custom` only for an older date or a specific ET
+clock time. The workflow runs `scripts/resolve_history_window.py`, which turns
+those selections into timezone-aware ISO timestamps before invoking the MRMS
+or KRAX builder. No manual ISO timestamp entry is needed for routine builds.
+
 Generated MRMS packs are written under `public/data/radar/history/<dataset-id>/`. KRAX packs are written under `public/data/radar/krax/history/<dataset-id>/`. Each source has an independent atomic catalog, and the viewer discovers generated packs through the **Loop source** selector.
 
 Historical packs are limited to 24 hours and 90 sampled frames per request to keep download, decode, GIF, and static-hosting costs bounded.

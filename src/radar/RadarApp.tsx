@@ -522,6 +522,20 @@ function hasVisibleMapCapture(image: ImageData): boolean {
   return samples > 0 && visible / samples > 0.05 && brightness / samples > 24
 }
 
+function cropExportBoundsToAspect(bounds: ExportBounds, targetAspect: number): ExportBounds {
+  const [west, south, east, north] = bounds
+  const width = east - west
+  const height = north - south
+  const centerLon = (west + east) / 2
+  const centerLat = (south + north) / 2
+  if (width / height < targetAspect) {
+    const croppedHeight = width / targetAspect
+    return [west, centerLat - croppedHeight / 2, east, centerLat + croppedHeight / 2]
+  }
+  const croppedWidth = height * targetAspect
+  return [centerLon - croppedWidth / 2, south, centerLon + croppedWidth / 2, north]
+}
+
 async function captureExportMap(
   map: maplibregl.Map,
   frame: RadarFrameManifest,
@@ -536,10 +550,8 @@ async function captureExportMap(
   includeWarnings: boolean,
 ): Promise<ImageData> {
   const image = await loadBrowserImage(frameUrl(frame, manifestPath))
-  const sourceCanvas = map.getCanvas()
-  const scale = Math.min(1, GIF_WIDTH_LIMIT / sourceCanvas.width, GIF_HEIGHT_LIMIT / sourceCanvas.height)
-  const width = Math.max(1, Math.round(sourceCanvas.width * scale))
-  const height = Math.max(1, Math.round(sourceCanvas.height * scale))
+  const width = SHARE_GIF_MAP_WIDTH
+  const height = SHARE_GIF_MAP_HEIGHT
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -547,16 +559,19 @@ async function captureExportMap(
   if (!context) throw new Error('Browser canvas is unavailable')
 
   const view = map.getBounds()
-  const viewBounds: ExportBounds = [view.getWest(), view.getSouth(), view.getEast(), view.getNorth()]
+  const viewBounds = cropExportBoundsToAspect(
+    [view.getWest(), view.getSouth(), view.getEast(), view.getNorth()],
+    width / height,
+  )
   context.fillStyle = '#e5edf4'
   context.fillRect(0, 0, width, height)
   drawExportGeometry(context, states, viewBounds, width, height, 'rgba(32,42,49,.9)', 1.4, '#f7f8f7')
   if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
   const [west, south, east, north] = frame.bounds
-  const viewWest = Math.max(west, view.getWest())
-  const viewEast = Math.min(east, view.getEast())
-  const viewSouth = Math.max(south, view.getSouth())
-  const viewNorth = Math.min(north, view.getNorth())
+  const viewWest = Math.max(west, viewBounds[0])
+  const viewEast = Math.min(east, viewBounds[2])
+  const viewSouth = Math.max(south, viewBounds[1])
+  const viewNorth = Math.min(north, viewBounds[3])
   if (viewWest < viewEast && viewSouth < viewNorth) {
     const sourceX = (viewWest - west) / (east - west) * image.naturalWidth
     const sourceY = (north - viewNorth) / (north - south) * image.naturalHeight
@@ -574,11 +589,11 @@ async function captureExportMap(
   return context.getImageData(0, 0, width, height)
 }
 
-const SHARE_GIF_MAP_WIDTH = 720
+const SHARE_GIF_MAP_WIDTH = 1200
 const SHARE_GIF_WIDTH = SHARE_GIF_MAP_WIDTH
-const SHARE_GIF_MAP_HEIGHT = 480
-const SHARE_GIF_HEADER_HEIGHT = 58
-const SHARE_GIF_FOOTER_HEIGHT = 34
+const SHARE_GIF_MAP_HEIGHT = 750
+const SHARE_GIF_HEADER_HEIGHT = 82
+const SHARE_GIF_FOOTER_HEIGHT = 48
 const SHARE_BRAND_NAVY = '#102a43'
 const SHARE_BRAND_TEAL = '#81ded0'
 const SHARE_BRAND_LIGHT = '#edf5f3'
@@ -634,32 +649,32 @@ function drawShareVerticalLegend(
   details: ReturnType<typeof shareProductDetails>,
 ): void {
   const compact = details.legend.length > 8
-  const panelWidth = compact ? 52 : 94
-  const rowHeight = compact ? 13 : 34
-  const panelHeight = 26 + details.legend.length * rowHeight + 6
-  const panelX = SHARE_GIF_MAP_WIDTH - panelWidth - 10
-  const panelY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT - panelHeight - 10
+  const panelWidth = compact ? 68 : 124
+  const rowHeight = compact ? 18 : 46
+  const panelHeight = 36 + details.legend.length * rowHeight + 8
+  const panelX = SHARE_GIF_MAP_WIDTH - panelWidth - 15
+  const panelY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT - panelHeight - 15
 
   context.save()
   context.fillStyle = 'rgba(255, 255, 255, .5)'
   context.fillRect(panelX, panelY, panelWidth, panelHeight)
-  context.strokeStyle = 'rgba(16, 42, 67, .72)'
-  context.lineWidth = 1
-  context.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1)
+  context.strokeStyle = SHARE_BRAND_NAVY
+  context.lineWidth = 2
+  context.strokeRect(panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2)
   context.fillStyle = SHARE_BRAND_NAVY
-  context.font = '800 8px Arial, sans-serif'
+  context.font = '800 11px Arial, sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.fillText(details.unit.toUpperCase(), panelX + panelWidth / 2, panelY + 13)
+  context.fillText(details.unit.toUpperCase(), panelX + panelWidth / 2, panelY + 18)
 
   details.legend.forEach((entry, index) => {
-    const rowY = panelY + 26 + index * rowHeight
+    const rowY = panelY + 36 + index * rowHeight
     context.fillStyle = entry.color
-    context.fillRect(panelX + 7, rowY, compact ? 11 : 15, rowHeight)
+    context.fillRect(panelX + 9, rowY, compact ? 14 : 20, rowHeight)
     context.fillStyle = SHARE_FRAME_BORDER
-    context.font = `${compact ? '700 8px' : '700 9px'} Arial, sans-serif`
+    context.font = `${compact ? '700 11px' : '700 12px'} Arial, sans-serif`
     context.textAlign = 'left'
-    context.fillText(entry.label, panelX + (compact ? 23 : 29), rowY + rowHeight / 2)
+    context.fillText(entry.label, panelX + (compact ? 30 : 38), rowY + rowHeight / 2)
   })
   context.restore()
 }
@@ -694,19 +709,19 @@ function composeShareFrame(
   context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
   context.fillStyle = SHARE_BRAND_TEAL
   context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 2, output.width, 2)
-  context.font = '800 18px Arial, sans-serif'
+  context.font = '800 25px Arial, sans-serif'
   context.fillStyle = SHARE_BRAND_TEAL
-  context.fillText('wall.cloud Radar', 14, 22)
+  context.fillText('wall.cloud Radar', 20, 31)
   context.fillStyle = SHARE_BRAND_LIGHT
-  context.font = '700 12px Arial, sans-serif'
+  context.font = '700 15px Arial, sans-serif'
   const subtitleParts = ['North Carolina', details.source]
   if (details.resolution !== 'native') subtitleParts.push(details.resolution)
   subtitleParts.push(details.label)
-  context.fillText(subtitleParts.join(' · '), 14, 45)
+  context.fillText(subtitleParts.join(' · '), 20, 63)
   context.textAlign = 'right'
-  context.font = '800 13px Arial, sans-serif'
+  context.font = '800 17px Arial, sans-serif'
   context.fillStyle = '#ffffff'
-  context.fillText(`Valid: ${formatShareValidTime(frame.valid_time)}`, output.width - 14, 22)
+  context.fillText(`Valid: ${formatShareValidTime(frame.valid_time)}`, output.width - 20, 30)
   context.textAlign = 'left'
 
   const scale = Math.max(SHARE_GIF_MAP_WIDTH / source.width, SHARE_GIF_MAP_HEIGHT / source.height)
@@ -716,9 +731,14 @@ function composeShareFrame(
   const imageY = SHARE_GIF_HEADER_HEIGHT + Math.round((SHARE_GIF_MAP_HEIGHT - imageHeight) / 2)
   context.fillStyle = '#dfe8ec'
   context.fillRect(0, SHARE_GIF_HEADER_HEIGHT, output.width, SHARE_GIF_MAP_HEIGHT)
+  context.save()
+  context.beginPath()
+  context.rect(0, SHARE_GIF_HEADER_HEIGHT, SHARE_GIF_MAP_WIDTH, SHARE_GIF_MAP_HEIGHT)
+  context.clip()
   context.imageSmoothingEnabled = scale < 1
   context.imageSmoothingQuality = 'high'
   context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
+  context.restore()
   context.imageSmoothingEnabled = true
   drawShareVerticalLegend(context, details)
   context.strokeStyle = SHARE_FRAME_BORDER
@@ -728,16 +748,14 @@ function composeShareFrame(
   const footerY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT
   context.fillStyle = SHARE_BRAND_NAVY
   context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
-  context.fillStyle = SHARE_BRAND_TEAL
-  context.fillRect(0, footerY, output.width, 2)
   context.fillStyle = SHARE_BRAND_LIGHT
-  context.font = '800 11px Arial, sans-serif'
+  context.font = '800 14px Arial, sans-serif'
   const archivePrefix = isHistorical ? 'ARCHIVE · ' : ''
-  context.fillText(`${archivePrefix}OBSERVED LOOP · ${loopPeriod} · FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 14, footerY + 22)
+  context.fillText(`${archivePrefix}OBSERVED LOOP · ${loopPeriod} · FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 31)
   context.textAlign = 'right'
   context.fillStyle = SHARE_BRAND_TEAL
-  context.font = '800 10px Arial, sans-serif'
-  context.fillText('wall.cloud', output.width - 14, footerY + 22)
+  context.font = '800 13px Arial, sans-serif'
+  context.fillText('wall.cloud', output.width - 20, footerY + 31)
   context.textAlign = 'left'
   context.strokeStyle = SHARE_FRAME_BORDER
   context.lineWidth = 1

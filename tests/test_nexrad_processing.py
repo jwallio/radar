@@ -79,6 +79,7 @@ def test_recent_volume_retention_and_sampling_are_chronological() -> None:
 def test_krax_config_has_nc_coast_and_rejects_other_sites(tmp_path: Path, monkeypatch) -> None:
     config = load_nexrad_config(tmp_path)
     assert config.site == "KRAX"
+    assert config.image_width == 2400
     assert config.region.as_list() == [-84.5, 33.0, -74.0, 38.0]
     assert config.region.east >= -74.0
     monkeypatch.setenv("NEXRAD_SITE", "KMHX")

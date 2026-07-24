@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.10",
+    "gifenc": "^1.0.3",
     "maplibre-gl": "^5.13.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -32,4 +33,3 @@
     "vite": "^8.0.12"
   }
 }
-

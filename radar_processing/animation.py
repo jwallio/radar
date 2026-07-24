@@ -208,21 +208,29 @@ def _map_base(
 
 
 def _draw_city_labels(draw: ImageDraw.ImageDraw, bounds: RegionBounds, width: int, height: int) -> None:
+    layout_scale = max(1.0, width / 960)
     occupied: list[tuple[int, int, int, int]] = []
     for label, longitude, latitude, primary in CITIES:
         if not (bounds.west <= longitude <= bounds.east and bounds.south <= latitude <= bounds.north):
             continue
-        font = _font(12 if primary else 9, bold=primary)
+        font = _font(round((12 if primary else 9) * layout_scale), bold=primary)
         x, y = _project((longitude, latitude), bounds, width, height)
-        dot_radius = 3 if primary else 2
+        dot_radius = round((3 if primary else 2) * layout_scale)
         dot_color = (26, 34, 39, 255) if primary else (83, 97, 106, 255)
         text_color = (20, 27, 32, 255) if primary else (83, 97, 106, 255)
-        stroke_width = 2 if primary else 1
+        stroke_width = max(1, round((2 if primary else 1) * layout_scale))
         draw.ellipse((x - dot_radius, y - dot_radius, x + dot_radius, y + dot_radius), fill=dot_color)
         text_box = draw.textbbox((0, 0), label, font=font, stroke_width=stroke_width)
         label_width = text_box[2] - text_box[0]
         label_height = text_box[3] - text_box[1]
-        candidates = ((5, -label_height - 3), (5, 5), (-label_width - 5, -label_height - 3), (-label_width - 5, 5))
+        offset = round(5 * layout_scale)
+        vertical_gap = round(3 * layout_scale)
+        candidates = (
+            (offset, -label_height - vertical_gap),
+            (offset, offset),
+            (-label_width - offset, -label_height - vertical_gap),
+            (-label_width - offset, offset),
+        )
         for offset_x, offset_y in candidates:
             box = (x + offset_x, y + offset_y, x + offset_x + label_width, y + offset_y + label_height)
             if box[0] < 2 or box[1] < 2 or box[2] >= width - 2 or box[3] >= height - 2:
@@ -311,43 +319,49 @@ def _draw_vertical_legend(
     product_id: str,
     unit_label: str,
 ) -> None:
+    layout_scale = max(1.0, map_width / 960)
     _default_heading, entries, categorical = _vertical_legend_entries(product_id)
     heading = unit_label
     compact = len(entries) > 8
-    panel_width = 58 if compact else 104
-    row_height = 14 if compact else 36
-    panel_height = 28 + len(entries) * row_height + 6
-    panel_x = map_x + map_width - panel_width - 10
-    panel_y = map_y + map_height - panel_height - 10
+    panel_width = round((58 if compact else 104) * layout_scale)
+    row_height = round((14 if compact else 36) * layout_scale)
+    heading_height = round(28 * layout_scale)
+    panel_height = heading_height + len(entries) * row_height + round(6 * layout_scale)
+    margin = round(10 * layout_scale)
+    panel_x = map_x + map_width - panel_width - margin
+    panel_y = map_y + map_height - panel_height - margin
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay, "RGBA")
     overlay_draw.rectangle(
         (panel_x, panel_y, panel_x + panel_width, panel_y + panel_height),
         fill=(255, 255, 255, 128),
-        outline=(16, 42, 67, 190),
-        width=1,
+        outline=BRAND_NAVY,
+        width=max(1, round(2 * layout_scale)),
     )
     image.alpha_composite(overlay)
     draw = ImageDraw.Draw(image, "RGBA")
-    heading_font = _font(8, bold=True)
+    heading_font = _font(round(8 * layout_scale), bold=True)
     heading_box = draw.textbbox((0, 0), heading, font=heading_font)
     heading_width = heading_box[2] - heading_box[0]
     draw.text(
-        (panel_x + (panel_width - heading_width) // 2, panel_y + 8),
+        (panel_x + (panel_width - heading_width) // 2, panel_y + round(8 * layout_scale)),
         heading,
         font=heading_font,
         fill=BRAND_NAVY,
     )
-    label_font = _font(9 if categorical else 8, bold=True)
+    label_font = _font(round((9 if categorical else 8) * layout_scale), bold=True)
     for index, (label, color) in enumerate(entries):
-        row_y = panel_y + 26 + index * row_height
-        swatch_left = panel_x + 7
-        swatch_width = 11 if compact else 16
+        row_y = panel_y + round(26 * layout_scale) + index * row_height
+        swatch_left = panel_x + round(7 * layout_scale)
+        swatch_width = round((11 if compact else 16) * layout_scale)
         draw.rectangle((swatch_left, row_y, swatch_left + swatch_width, row_y + row_height), fill=color)
         label_box = draw.textbbox((0, 0), label, font=label_font)
         label_height = label_box[3] - label_box[1]
         draw.text(
-            (swatch_left + swatch_width + 6, row_y + max(0, (row_height - label_height) // 2 - 1)),
+            (
+                swatch_left + swatch_width + round(6 * layout_scale),
+                row_y + max(0, (row_height - label_height) // 2 - round(layout_scale)),
+            ),
             label,
             font=label_font,
             fill=FRAME_BORDER,
@@ -381,18 +395,37 @@ def _export_frame(
     mode_label: str,
     loop_period: str,
 ) -> Image.Image:
+    layout_scale = max(1.0, width / 960)
     map_width = width
     map_height = round(map_width * radar.height / radar.width)
-    header_height = 58
-    footer_height = 34
+    header_height = max(58, round(width * 82 / 1200))
+    footer_height = max(34, round(width * 48 / 1200))
     map_image = _map_base(bounds, map_width, map_height, states)
     radar_layer = radar.convert("RGBA").resize((map_width, map_height), Image.Resampling.NEAREST)
     map_image.alpha_composite(radar_layer)
     map_draw = ImageDraw.Draw(map_image, "RGBA")
     if counties:
-        _draw_geography(map_draw, counties, bounds, map_width, map_height, fill=None, line=COUNTY_COLOR, line_width=1)
+        _draw_geography(
+            map_draw,
+            counties,
+            bounds,
+            map_width,
+            map_height,
+            fill=None,
+            line=COUNTY_COLOR,
+            line_width=max(1, round(layout_scale)),
+        )
     if states:
-        _draw_geography(map_draw, states, bounds, map_width, map_height, fill=None, line=STATE_COLOR, line_width=2)
+        _draw_geography(
+            map_draw,
+            states,
+            bounds,
+            map_width,
+            map_height,
+            fill=None,
+            line=STATE_COLOR,
+            line_width=max(2, round(2 * layout_scale)),
+        )
     _draw_city_labels(map_draw, bounds, map_width, map_height)
 
     canvas = Image.new("RGBA", (width, header_height + map_height + footer_height), (255, 255, 255, 255))
@@ -400,38 +433,59 @@ def _export_frame(
     _draw_vertical_legend(canvas, 0, header_height, map_width, map_height, product_id, unit_label)
     draw = ImageDraw.Draw(canvas, "RGBA")
     draw.rectangle((0, 0, width, header_height - 1), fill=BRAND_NAVY)
-    draw.line((0, header_height - 2, width, header_height - 2), fill=BRAND_TEAL, width=2)
-    draw.text((14, 7), "wall.cloud Radar", font=_font(18, bold=True), fill=BRAND_TEAL)
+    draw.line(
+        (0, header_height - round(2 * layout_scale), width, header_height - round(2 * layout_scale)),
+        fill=BRAND_TEAL,
+        width=max(2, round(2 * layout_scale)),
+    )
+    horizontal_padding = round(14 * layout_scale)
     draw.text(
-        (14, 35),
+        (horizontal_padding, round(7 * layout_scale)),
+        "wall.cloud Radar",
+        font=_font(round(18 * layout_scale), bold=True),
+        fill=BRAND_TEAL,
+    )
+    draw.text(
+        (horizontal_padding, round(35 * layout_scale)),
         _product_subtitle(source_label, resolution_label, product_label),
-        font=_font(12, bold=True),
+        font=_font(round(12 * layout_scale), bold=True),
         fill=BRAND_LIGHT,
     )
     valid_text = f"Valid: {_format_valid_time(valid_time)}"
-    valid_font = _font(13, bold=True)
+    valid_font = _font(round(13 * layout_scale), bold=True)
     valid_box = draw.textbbox((0, 0), valid_text, font=valid_font)
-    draw.text((width - (valid_box[2] - valid_box[0]) - 14, 9), valid_text, font=valid_font, fill=(255, 255, 255, 255))
+    draw.text(
+        (width - (valid_box[2] - valid_box[0]) - horizontal_padding, round(9 * layout_scale)),
+        valid_text,
+        font=valid_font,
+        fill=(255, 255, 255, 255),
+    )
     footer_y = header_height + map_height
     draw.rectangle((0, footer_y, width, footer_y + footer_height), fill=BRAND_NAVY)
-    draw.line((0, footer_y, width, footer_y), fill=BRAND_TEAL, width=2)
     archive_prefix = "ARCHIVE · " if mode_label.upper() == "ARCHIVE" else ""
     draw.text(
-        (14, footer_y + 10),
+        (horizontal_padding, footer_y + round(10 * layout_scale)),
         f"{archive_prefix}OBSERVED LOOP · {loop_period} · FRAME {frame_number}/{frame_count} · {playback_fps} FPS",
-        font=_font(11, bold=True),
+        font=_font(round(11 * layout_scale), bold=True),
         fill=BRAND_LIGHT,
     )
     footer_brand = "wall.cloud"
-    footer_font = _font(10, bold=True)
+    footer_font = _font(round(10 * layout_scale), bold=True)
     footer_box = draw.textbbox((0, 0), footer_brand, font=footer_font)
     draw.text(
-        (width - (footer_box[2] - footer_box[0]) - 14, footer_y + 11),
+        (
+            width - (footer_box[2] - footer_box[0]) - horizontal_padding,
+            footer_y + round(11 * layout_scale),
+        ),
         footer_brand,
         font=footer_font,
         fill=BRAND_TEAL,
     )
-    draw.rectangle((0, 0, width - 1, canvas.height - 1), outline=FRAME_BORDER, width=1)
+    draw.rectangle(
+        (0, 0, width - 1, canvas.height - 1),
+        outline=FRAME_BORDER,
+        width=max(1, round(layout_scale)),
+    )
     return canvas
 
 
@@ -445,7 +499,7 @@ def build_loop_gif(
     product_id: str,
     product_label: str,
     geography: tuple[dict[str, Any], dict[str, Any]] | None = None,
-    width: int = 960,
+    width: int = 1200,
     frame_duration_ms: int = 180,
     latest_pause_ms: int = 1000,
     source_label: str = "MRMS",

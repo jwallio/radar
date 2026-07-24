@@ -127,7 +127,7 @@ Useful KRAX environment settings:
 ```powershell
 $env:NEXRAD_MAX_FRAMES = '18'
 $env:NEXRAD_RETENTION_MINUTES = '90'
-$env:NEXRAD_IMAGE_WIDTH = '1200'
+$env:NEXRAD_IMAGE_WIDTH = '2400'
 python scripts/build_krax_radar.py
 ```
 
@@ -170,9 +170,9 @@ Historical packs are limited to 24 hours and 90 sampled frames per request to ke
 
 ## GIF exports
 
-The **Branded loop** is a server-generated reference-style loop with:
+The **Branded loop** is a server-generated 1,200-pixel-wide reference-style loop with:
 
-- `wall.cloud` header and dark-navy `wall.cloud` branding.
+- `wall.cloud Radar` header and dark-navy/teal `wall.cloud` branding.
 - Large, bold Eastern valid time and product/source metadata.
 - State/county/city geography and clean borders.
 - A compact, semi-transparent lower-right reflectivity, precipitation, or rainfall legend that preserves map width and minimizes obscured data.
@@ -180,7 +180,7 @@ The **Branded loop** is a server-generated reference-style loop with:
 - Footer branding, observed-loop period, frame count, and playback FPS.
 - Central NC framing with coastal North Carolina and nearby Atlantic waters.
 
-The **Save GIF** button is client-side. It uses the current map zoom/pan, selected playback FPS, local radar raster, geography overlays, warnings, optional highways, city labels, valid times, and the same branded header, compact legend overlay, and footer treatment as the pre-rendered loop. Recent exports use the neutral **Observed loop** label; historical exports add **Archive**. GIF timing is quantized to centiseconds by the GIF format, so 20 and 30 FPS use the nearest representable delay.
+The **Save GIF** button is client-side. It uses the current map zoom/pan, selected playback FPS, local radar raster, geography overlays, warnings, optional highways, city labels, valid times, and the same branded header, compact legend overlay, and footer treatment as the pre-rendered loop. Custom exports use a 1,200 × 750 map canvas and `gifenc` adaptive RGB565 palette quantization with one stable loop palette to preserve radar colors without frame-to-frame flashing. KRAX source rasters are generated at 2,400 pixels wide so zoomed GIF crops retain substantially more Level II detail. Recent exports use the neutral **Observed loop** label; historical exports add **Archive**. GIF timing is quantized to centiseconds by the GIF format, so 20 and 30 FPS use the nearest representable delay.
 
 ## Generated artifact contract
 

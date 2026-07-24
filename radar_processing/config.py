@@ -259,7 +259,7 @@ def load_nexrad_config(root: Path, *, keep_raw: bool | None = None) -> NexradPro
         max_frames=max(1, _env_int("NEXRAD_MAX_FRAMES", 18)),
         timeout_seconds=max(5.0, _env_float("NEXRAD_TIMEOUT_SECONDS", 60.0)),
         retries=max(1, _env_int("NEXRAD_RETRIES", 3)),
-        image_width=max(320, _env_int("NEXRAD_IMAGE_WIDTH", 1200)),
+        image_width=max(320, _env_int("NEXRAD_IMAGE_WIDTH", 2400)),
         keep_raw=keep,
         raw_dir=root / ".nexrad-raw" if keep else None,
     )

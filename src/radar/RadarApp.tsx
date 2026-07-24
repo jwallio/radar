@@ -1448,7 +1448,7 @@ export function RadarApp() {
         <div className="radar-brand-lockup">
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>
           <div>
-            <div className="radar-product-name">Wall Cloud Radar</div>
+            <div className="radar-product-name">wall.cloud Radar</div>
             <div className="radar-region-name">North Carolina <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'KRAX single-site' : 'regional view'}</span></div>
           </div>
         </div>
@@ -1517,81 +1517,87 @@ export function RadarApp() {
           </div>
 
           <label className="radar-field-label" htmlFor="radar-source">Radar source</label>
-          <select
-            id="radar-source"
-            className="radar-select"
-            value={sourceId}
-            onChange={(event) => {
-              const nextSource = event.target.value as RadarSourceId
-              setSourceId(nextSource)
-              setSourceFallbackNotice(null)
-              setDatasetId('live')
-              setProductId(nextSource === 'krax' ? DEFAULT_RADAR_PRODUCT : 'MergedReflectivityQCComposite')
-              setFrameIndex(0)
-              setPlaying(false)
-              setSelectedWarningId(null)
-              setLayers((current) => ({
-                ...current,
-                warnings: true,
-                rainfall: false,
-                shearLow: false,
-                shearMid: false,
-                rotation: false,
-                hailMesh: false,
-                hailPosh: false,
-                lightning: false,
-              }))
-            }}
-          >
-            <option value="mrms">MRMS regional mosaic</option>
-            <option value="krax">KRAX Level II</option>
-          </select>
+          <div className="radar-select-wrap">
+            <select
+              id="radar-source"
+              className="radar-select"
+              value={sourceId}
+              onChange={(event) => {
+                const nextSource = event.target.value as RadarSourceId
+                setSourceId(nextSource)
+                setSourceFallbackNotice(null)
+                setDatasetId('live')
+                setProductId(nextSource === 'krax' ? DEFAULT_RADAR_PRODUCT : 'MergedReflectivityQCComposite')
+                setFrameIndex(0)
+                setPlaying(false)
+                setSelectedWarningId(null)
+                setLayers((current) => ({
+                  ...current,
+                  warnings: true,
+                  rainfall: false,
+                  shearLow: false,
+                  shearMid: false,
+                  rotation: false,
+                  hailMesh: false,
+                  hailPosh: false,
+                  lightning: false,
+                }))
+              }}
+            >
+              <option value="mrms">MRMS regional mosaic</option>
+              <option value="krax">KRAX Level II</option>
+            </select>
+          </div>
 
           <label className="radar-field-label" htmlFor="radar-dataset">Loop source</label>
-          <select
-            id="radar-dataset"
-            className="radar-select"
-            value={datasetId}
-            onChange={(event) => {
-              const nextDatasetId = event.target.value
-              setDatasetId(nextDatasetId)
-              setSourceFallbackNotice(null)
-              setLayers((current) => ({ ...current, warnings: nextDatasetId === 'live' }))
-              setSelectedWarningId(null)
-              setProductId(isKrax ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
-              setPlaying(false)
-            }}
-          >
-            <option value="live">Live / recent {sourceLabel}</option>
-            {(historyCatalog?.datasets.length ?? 0) > 0 && (
-              <optgroup label="Historical loops">
-                {historyCatalog?.datasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>{dataset.label}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+          <div className="radar-select-wrap">
+            <select
+              id="radar-dataset"
+              className="radar-select"
+              value={datasetId}
+              onChange={(event) => {
+                const nextDatasetId = event.target.value
+                setDatasetId(nextDatasetId)
+                setSourceFallbackNotice(null)
+                setLayers((current) => ({ ...current, warnings: nextDatasetId === 'live' }))
+                setSelectedWarningId(null)
+                setProductId(isKrax ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
+                setPlaying(false)
+              }}
+            >
+              <option value="live">Live / recent {sourceLabel}</option>
+              {(historyCatalog?.datasets.length ?? 0) > 0 && (
+                <optgroup label="Historical loops">
+                  {historyCatalog?.datasets.map((dataset) => (
+                    <option key={dataset.id} value={dataset.id}>{dataset.label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
           {!historyCatalog?.datasets.length && <p className="radar-field-note">No {sourceLabel} historical packs are generated yet. Use the historical Python command or GitHub workflow documented in the README.</p>}
           {historyError && <p className="radar-field-note error">Historical catalog unavailable: {historyError}</p>}
 
           <label className="radar-field-label" htmlFor="radar-product">Product</label>
-          <select
-            id="radar-product"
-            className="radar-select"
-            value={productId}
-            onChange={(event) => {
-              const nextProduct = event.target.value as RadarProductId
-              setProductId(nextProduct)
-              setFrameIndex(Math.max(productFrames(manifest, nextProduct).length - 1, 0))
-              setPlaying(false)
-            }}
-          >
-            {PRODUCT_OPTIONS.filter((option) => option.source === sourceId).map((option) => {
-              const status = manifest?.products[option.id]?.status
-              const ready = option.id === 'MergedReflectivityQCComposite' || status === 'ready' || status === 'partial'
-              return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · processor needed'}</option>
-            })}
-          </select>
+          <div className="radar-select-wrap">
+            <select
+              id="radar-product"
+              className="radar-select"
+              value={productId}
+              onChange={(event) => {
+                const nextProduct = event.target.value as RadarProductId
+                setProductId(nextProduct)
+                setFrameIndex(Math.max(productFrames(manifest, nextProduct).length - 1, 0))
+                setPlaying(false)
+              }}
+            >
+              {PRODUCT_OPTIONS.filter((option) => option.source === sourceId).map((option) => {
+                const status = manifest?.products[option.id]?.status
+                const ready = option.id === 'MergedReflectivityQCComposite' || status === 'ready' || status === 'partial'
+                return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · processor needed'}</option>
+              })}
+            </select>
+          </div>
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
           {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
           {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Native KRAX Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}

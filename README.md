@@ -1,6 +1,6 @@
-# Wall Cloud Radar
+# wall.cloud Radar
 
-Wall Cloud Radar is a static-build-compatible North Carolina radar viewer for [radar.wall.cloud](https://radar.wall.cloud). It is designed as an operational meteorology tool: the radar remains dominant, controls stay compact, and the browser consumes prepared raster frames instead of decoding raw weather files.
+wall.cloud Radar is a static-build-compatible North Carolina radar viewer for [radar.wall.cloud](https://radar.wall.cloud). It is designed as an operational meteorology tool: the radar remains dominant, controls stay compact, and the browser consumes prepared raster frames instead of decoding raw weather files.
 
 The default map covers North Carolina, southern Virginia, eastern Tennessee, northern South Carolina, and nearby Atlantic waters.
 
@@ -61,7 +61,7 @@ Radar data comes from official public NOAA/NCEP/Unidata sources:
 - [NOAA NDBC station data](https://www.ndbc.noaa.gov/)
 - [U.S. Census TIGERweb](https://tigerweb.geo.census.gov/)
 
-The map uses label-free CARTO raster tiles with OpenStreetMap attribution. City and highway labels are supplied by Wall Cloud/Census overlays so important labels appear once and remain readable above radar.
+The map uses label-free CARTO raster tiles with OpenStreetMap attribution. City and highway labels are supplied by wall.cloud/Census overlays so important labels appear once and remain readable above radar.
 
 ## Local development — Windows PowerShell
 
@@ -172,7 +172,7 @@ Historical packs are limited to 24 hours and 90 sampled frames per request to ke
 
 The **Branded loop** is a server-generated reference-style loop with:
 
-- Wall Cloud header and dark-navy `wall.cloud` branding.
+- `wall.cloud` header and dark-navy `wall.cloud` branding.
 - Eastern valid time and product/source metadata.
 - State/county/city geography and clean borders.
 - Product-specific reflectivity, precipitation, or rainfall legend.

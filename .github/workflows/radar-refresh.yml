@@ -63,7 +63,7 @@ jobs:
         env:
           NEXRAD_MAX_FRAMES: '18'
           NEXRAD_RETENTION_MINUTES: '90'
-          NEXRAD_IMAGE_WIDTH: '1200'
+          NEXRAD_IMAGE_WIDTH: '2400'
         run: python scripts/build_krax_radar.py
 
       - name: Set up Node.js
@@ -104,3 +104,4 @@ jobs:
         if: steps.freshness.outputs.skip_deploy != 'true'
         id: deployment
         uses: actions/deploy-pages@v4
+

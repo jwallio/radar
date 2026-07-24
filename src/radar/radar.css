@@ -56,7 +56,7 @@
 .radar-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
 .radar-valid-time { color: #dbe8e7; font-size: 12px; font-variant-numeric: tabular-nums; }
 .radar-header-actions { gap: 12px; min-width: 230px; justify-content: flex-end; }
-.radar-dedication { display: grid; justify-items: end; color: #9cb0b4; font-size: 9px; line-height: 1.25; letter-spacing: .035em; white-space: nowrap; }
+.radar-dedication { display: grid; justify-items: center; color: #9cb0b4; font-size: 9px; line-height: 1.25; letter-spacing: .035em; text-align: center; white-space: nowrap; }
 .radar-dedication strong { color: #dbe8e7; font-weight: 680; }
 .radar-dedication span { color: var(--radar-accent); font-variant-numeric: tabular-nums; }
 .radar-warning-count { color: var(--radar-muted); font-size: 11px; white-space: nowrap; }

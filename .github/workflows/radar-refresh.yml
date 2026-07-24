@@ -81,11 +81,26 @@ jobs:
           VITE_BUILD_SHA: ${{ github.sha }}
         run: npm run build
 
+      - name: Verify this run is still current main
+        id: freshness
+        shell: bash
+        run: |
+          latest_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ "$latest_sha" != "$GITHUB_SHA" ]]; then
+            echo "This refresh started from $GITHUB_SHA, but main is now $latest_sha. Skipping stale Pages deployment."
+            echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Refresh commit $GITHUB_SHA is still current on main."
+            echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload GitHub Pages artifact
+        if: steps.freshness.outputs.skip_deploy != 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
       - name: Deploy to GitHub Pages
+        if: steps.freshness.outputs.skip_deploy != 'true'
         id: deployment
         uses: actions/deploy-pages@v4

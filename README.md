@@ -264,8 +264,18 @@ Every production build also exposes its commit through the root
 
 ### Historical workflows
 
-- `historical-radar.yml` builds and deploys a requested MRMS archive loop.
-- `historical-krax.yml` builds and deploys a requested KRAX Level II archive loop.
+- `historical-radar.yml` builds a requested MRMS archive loop and saves it to the
+  Actions cache.
+- `historical-krax.yml` builds a requested KRAX Level II archive loop and saves it
+  to the Actions cache.
+
+Historical workflows do not deploy GitHub Pages directly. A historical run may
+start from an older commit and finish after newer frontend code has been
+published; deploying from that old checkout could roll the site backward. After
+saving the archive, the workflow dispatches `radar-refresh.yml` on the current
+`main` branch. The refresh workflow restores the archive and deploys the latest
+frontend source. The regular refresh also verifies that its commit is still the
+current `main` commit immediately before deploying.
 
 Both workflows accept timezone-aware start/end values and preserve prior history through GitHub Actions caches. Caches are suitable for the MVP but are not permanent archival storage.
 

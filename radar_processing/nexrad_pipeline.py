@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .animation import build_loop_gif, fetch_export_geography
-from .config import NexradProcessingConfig
+from .config import BRANDED_GIF_REGION, NexradProcessingConfig
 from .manifest import filter_existing_frames, sort_frame_records, write_json_atomic
 from .nexrad import NexradVolume, download_volume
 from .nexrad_rendering import render_level2_reflectivity
@@ -112,7 +112,7 @@ def build_krax_dataset(
                 frames,
                 frame_dir,
                 loop_dir / loop_name,
-                bounds=config.region,
+                bounds=BRANDED_GIF_REGION,
                 source_bounds=config.region,
                 product_id=NEXRAD_REFLECTIVITY_ID,
                 product_label="Base Reflectivity",
@@ -120,6 +120,7 @@ def build_krax_dataset(
                 source_label="KRAX Level II",
                 resolution_label="native",
                 unit_label="dBZ",
+                mode_label="ARCHIVE" if mode == "historical" else "OBSERVED",
             )
             cache_key = generated_at.replace("-", "").replace(":", "")
             loop_url = f"./loops/{loop_name}?v={cache_key}"

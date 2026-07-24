@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 from .config import ProcessingConfig, RegionBounds
 from .mrms import request_bytes
 from .rendering import (
+    ANALYSIS_PALETTES,
     MIXED_COLORS,
     RAIN_COLORS,
     REFLECTIVITY_COLORS,
@@ -35,20 +36,25 @@ GRID_COLOR = (177, 188, 198, 150)
 COUNTY_COLOR = (143, 153, 162, 205)
 STATE_COLOR = (36, 44, 51, 255)
 BRAND_NAVY = (16, 42, 67, 255)
+BRAND_TEAL = (129, 222, 208, 255)
+BRAND_LIGHT = (237, 245, 243, 255)
 FRAME_BORDER = (36, 55, 69, 255)
 
 CITIES = (
-    ("Raleigh", -78.6382, 35.7796),
-    ("Durham", -78.8986, 36.0001),
-    ("Charlotte", -80.8431, 35.2271),
-    ("Greensboro", -79.7910, 36.0726),
-    ("Winston-Salem", -80.2442, 36.0999),
-    ("Fayetteville", -78.8784, 35.0527),
-    ("Wilmington", -77.9447, 34.2257),
-    ("Asheville", -82.5515, 35.5951),
-    ("Greenville", -77.3664, 35.6127),
-    ("Rocky Mount", -77.7905, 35.9382),
-    ("New Bern", -77.0447, 35.1085),
+    ("Raleigh", -78.6382, 35.7796, True),
+    ("Durham", -78.8986, 36.0001, True),
+    ("Charlotte", -80.8431, 35.2271, True),
+    ("Greensboro", -79.7910, 36.0726, True),
+    ("Winston-Salem", -80.2442, 36.0999, True),
+    ("Fayetteville", -78.8784, 35.0527, True),
+    ("Wilmington", -77.9447, 34.2257, True),
+    ("Asheville", -82.5515, 35.5951, True),
+    ("Greenville", -77.3664, 35.6127, False),
+    ("Rocky Mount", -77.7905, 35.9382, False),
+    ("New Bern", -77.0447, 35.1085, False),
+    ("Richmond", -77.4360, 37.5407, False),
+    ("Knoxville", -83.9207, 35.9606, False),
+    ("Columbia", -81.0348, 34.0007, False),
 )
 
 
@@ -202,14 +208,18 @@ def _map_base(
 
 
 def _draw_city_labels(draw: ImageDraw.ImageDraw, bounds: RegionBounds, width: int, height: int) -> None:
-    font = _font(11, bold=True)
     occupied: list[tuple[int, int, int, int]] = []
-    for label, longitude, latitude in CITIES:
+    for label, longitude, latitude, primary in CITIES:
         if not (bounds.west <= longitude <= bounds.east and bounds.south <= latitude <= bounds.north):
             continue
+        font = _font(12 if primary else 9, bold=primary)
         x, y = _project((longitude, latitude), bounds, width, height)
-        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(26, 34, 39, 255))
-        text_box = draw.textbbox((0, 0), label, font=font, stroke_width=2)
+        dot_radius = 3 if primary else 2
+        dot_color = (26, 34, 39, 255) if primary else (83, 97, 106, 255)
+        text_color = (20, 27, 32, 255) if primary else (83, 97, 106, 255)
+        stroke_width = 2 if primary else 1
+        draw.ellipse((x - dot_radius, y - dot_radius, x + dot_radius, y + dot_radius), fill=dot_color)
+        text_box = draw.textbbox((0, 0), label, font=font, stroke_width=stroke_width)
         label_width = text_box[2] - text_box[0]
         label_height = text_box[3] - text_box[1]
         candidates = ((5, -label_height - 3), (5, 5), (-label_width - 5, -label_height - 3), (-label_width - 5, 5))
@@ -219,7 +229,14 @@ def _draw_city_labels(draw: ImageDraw.ImageDraw, bounds: RegionBounds, width: in
                 continue
             if any(box[0] - 3 < other[2] and box[2] + 3 > other[0] and box[1] - 3 < other[3] and box[3] + 3 > other[1] for other in occupied):
                 continue
-            draw.text((x + offset_x, y + offset_y), label, font=font, fill=(20, 27, 32, 255), stroke_width=2, stroke_fill=(255, 255, 255, 225))
+            draw.text(
+                (x + offset_x, y + offset_y),
+                label,
+                font=font,
+                fill=text_color,
+                stroke_width=stroke_width,
+                stroke_fill=(255, 255, 255, 235),
+            )
             occupied.append(box)
             break
 
@@ -230,37 +247,119 @@ def _format_valid_time(value: str) -> str:
     return f"{clock} ET · {parsed:%a %b %d, %Y}"
 
 
-def _draw_reflectivity_legend(draw: ImageDraw.ImageDraw, width: int, y: int, label: str = "Composite Reflectivity") -> None:
+def _format_loop_period(first_value: str, last_value: str) -> str:
+    first = datetime.fromisoformat(first_value.replace("Z", "+00:00")).astimezone(EASTERN)
+    last = datetime.fromisoformat(last_value.replace("Z", "+00:00")).astimezone(EASTERN)
+
+    def clock(value: datetime, *, include_period: bool = True) -> str:
+        rendered = value.strftime("%I:%M %p").lstrip("0")
+        return rendered if include_period else rendered.rsplit(" ", 1)[0]
+
+    if first == last:
+        return f"{clock(last)} ET"
+    if first.date() == last.date():
+        same_period = first.strftime("%p") == last.strftime("%p")
+        return f"{clock(first, include_period=not same_period)}–{clock(last)} ET"
+    return f"{first:%b %d} {clock(first)}–{last:%b %d} {clock(last)} ET"
+
+
+def _reflectivity_legend_entries() -> list[tuple[str, tuple[int, int, int, int]]]:
     values = np.array([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70], dtype=np.float32)
     indices = np.clip(np.searchsorted(REFLECTIVITY_STOPS, values, side="right") - 1, 0, len(REFLECTIVITY_COLORS) - 1)
     colors = REFLECTIVITY_COLORS[indices]
-    left = 18
-    right = width - 18
-    block_width = max(1, (right - left) // len(colors))
-    font = _font(9)
-    for index, color in enumerate(colors):
-        x1 = left + index * block_width
-        x2 = right if index == len(colors) - 1 else x1 + block_width
-        draw.rectangle((x1, y, x2, y + 10), fill=tuple(int(channel) for channel in color[:3]) + (255,))
-        draw.text((x1, y + 12), "70+" if index == len(colors) - 1 else str(int(values[index])), font=font, fill=(59, 66, 72, 255))
-    draw.text((left, y - 13), f"{label} · dBZ", font=_font(9, bold=True), fill=(47, 55, 62, 255))
+    return [
+        (
+            "70+" if index == len(values) - 1 else str(int(value)),
+            tuple(int(channel) for channel in colors[index][:3]) + (255,),
+        )
+        for index, value in reversed(list(enumerate(values)))
+    ]
 
 
-def _draw_precip_legend(draw: ImageDraw.ImageDraw, width: int, y: int) -> None:
-    groups = (
-        ("Rain", RAIN_COLORS),
-        ("Snow", SNOW_COLORS),
-        ("Mixed / hail", MIXED_COLORS),
+def _vertical_legend_entries(
+    product_id: str,
+) -> tuple[str, list[tuple[str, tuple[int, int, int, int]]], bool]:
+    if product_id == "PrecipFlag":
+        return (
+            "TYPE",
+            [
+                ("Rain", tuple(int(channel) for channel in RAIN_COLORS[2][:3]) + (255,)),
+                ("Snow", tuple(int(channel) for channel in SNOW_COLORS[2][:3]) + (255,)),
+                ("Mixed / hail", tuple(int(channel) for channel in MIXED_COLORS[2][:3]) + (255,)),
+            ],
+            True,
+        )
+    if product_id == "MultiSensor_QPE_01H_Pass1":
+        stops, colors = ANALYSIS_PALETTES[product_id]
+        entries = [
+            (
+                "50+" if index == len(stops) - 1 else f"{float(value):g}",
+                tuple(int(channel) for channel in colors[index][:3]) + (255,),
+            )
+            for index, value in reversed(list(enumerate(stops)))
+        ]
+        return "mm", entries, False
+    return "dBZ", _reflectivity_legend_entries(), False
+
+
+def _draw_vertical_legend(
+    image: Image.Image,
+    map_x: int,
+    map_y: int,
+    map_width: int,
+    map_height: int,
+    product_id: str,
+    unit_label: str,
+) -> None:
+    _default_heading, entries, categorical = _vertical_legend_entries(product_id)
+    heading = unit_label
+    compact = len(entries) > 8
+    panel_width = 58 if compact else 104
+    row_height = 14 if compact else 36
+    panel_height = 28 + len(entries) * row_height + 6
+    panel_x = map_x + map_width - panel_width - 10
+    panel_y = map_y + map_height - panel_height - 10
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay, "RGBA")
+    overlay_draw.rectangle(
+        (panel_x, panel_y, panel_x + panel_width, panel_y + panel_height),
+        fill=(255, 255, 255, 128),
+        outline=(16, 42, 67, 190),
+        width=1,
     )
-    font = _font(9, bold=True)
-    x = 18
-    for label, colors in groups:
-        draw.text((x, y - 13), label, font=font, fill=(47, 55, 62, 255))
-        for color in colors:
-            draw.rectangle((x, y, x + 19, y + 10), fill=tuple(int(channel) for channel in color[:3]) + (255,))
-            x += 19
-        x += 22
-    draw.text((width - 160, y - 13), "Increasing intensity →", font=_font(9), fill=(85, 93, 100, 255))
+    image.alpha_composite(overlay)
+    draw = ImageDraw.Draw(image, "RGBA")
+    heading_font = _font(8, bold=True)
+    heading_box = draw.textbbox((0, 0), heading, font=heading_font)
+    heading_width = heading_box[2] - heading_box[0]
+    draw.text(
+        (panel_x + (panel_width - heading_width) // 2, panel_y + 8),
+        heading,
+        font=heading_font,
+        fill=BRAND_NAVY,
+    )
+    label_font = _font(9 if categorical else 8, bold=True)
+    for index, (label, color) in enumerate(entries):
+        row_y = panel_y + 26 + index * row_height
+        swatch_left = panel_x + 7
+        swatch_width = 11 if compact else 16
+        draw.rectangle((swatch_left, row_y, swatch_left + swatch_width, row_y + row_height), fill=color)
+        label_box = draw.textbbox((0, 0), label, font=label_font)
+        label_height = label_box[3] - label_box[1]
+        draw.text(
+            (swatch_left + swatch_width + 6, row_y + max(0, (row_height - label_height) // 2 - 1)),
+            label,
+            font=label_font,
+            fill=FRAME_BORDER,
+        )
+
+
+def _product_subtitle(source_label: str, resolution_label: str, product_label: str) -> str:
+    parts = ["North Carolina", source_label]
+    if resolution_label and resolution_label.strip().lower() != "native":
+        parts.append(resolution_label)
+    parts.append(product_label)
+    return " · ".join(parts)
 
 
 def _export_frame(
@@ -276,48 +375,61 @@ def _export_frame(
     source_label: str,
     resolution_label: str,
     unit_label: str,
+    frame_number: int,
+    frame_count: int,
+    playback_fps: int,
+    mode_label: str,
+    loop_period: str,
 ) -> Image.Image:
-    map_height = round(width * radar.height / radar.width)
-    header_height = 40
-    footer_height = 42
-    map_image = _map_base(bounds, width, map_height, states)
-    radar_layer = radar.convert("RGBA").resize((width, map_height), Image.Resampling.NEAREST)
+    map_width = width
+    map_height = round(map_width * radar.height / radar.width)
+    header_height = 58
+    footer_height = 34
+    map_image = _map_base(bounds, map_width, map_height, states)
+    radar_layer = radar.convert("RGBA").resize((map_width, map_height), Image.Resampling.NEAREST)
     map_image.alpha_composite(radar_layer)
     map_draw = ImageDraw.Draw(map_image, "RGBA")
     if counties:
-        _draw_geography(map_draw, counties, bounds, width, map_height, fill=None, line=COUNTY_COLOR, line_width=1)
+        _draw_geography(map_draw, counties, bounds, map_width, map_height, fill=None, line=COUNTY_COLOR, line_width=1)
     if states:
-        _draw_geography(map_draw, states, bounds, width, map_height, fill=None, line=STATE_COLOR, line_width=2)
-    _draw_city_labels(map_draw, bounds, width, map_height)
+        _draw_geography(map_draw, states, bounds, map_width, map_height, fill=None, line=STATE_COLOR, line_width=2)
+    _draw_city_labels(map_draw, bounds, map_width, map_height)
 
     canvas = Image.new("RGBA", (width, header_height + map_height + footer_height), (255, 255, 255, 255))
     canvas.alpha_composite(map_image, (0, header_height))
+    _draw_vertical_legend(canvas, 0, header_height, map_width, map_height, product_id, unit_label)
     draw = ImageDraw.Draw(canvas, "RGBA")
-    draw.line((0, header_height - 1, width, header_height - 1), fill=FRAME_BORDER, width=1)
-    draw.text((14, 10), "wall.cloud", font=_font(13, bold=True), fill=BRAND_NAVY)
-    draw.line((126, 9, 126, 29), fill=(176, 185, 191, 255), width=1)
+    draw.rectangle((0, 0, width, header_height - 1), fill=BRAND_NAVY)
+    draw.line((0, header_height - 2, width, header_height - 2), fill=BRAND_TEAL, width=2)
+    draw.text((14, 7), "wall.cloud Radar", font=_font(18, bold=True), fill=BRAND_TEAL)
     draw.text(
-        (138, 11),
-        f"North Carolina · {source_label} · {resolution_label} · {product_label} ({unit_label})",
-        font=_font(12),
-        fill=(25, 31, 36, 255),
+        (14, 35),
+        _product_subtitle(source_label, resolution_label, product_label),
+        font=_font(12, bold=True),
+        fill=BRAND_LIGHT,
     )
     valid_text = f"Valid: {_format_valid_time(valid_time)}"
-    valid_box = draw.textbbox((0, 0), valid_text, font=_font(11, bold=True))
-    draw.text((width - (valid_box[2] - valid_box[0]) - 14, 11), valid_text, font=_font(11, bold=True), fill=(25, 31, 36, 255))
-    legend_y = header_height + map_height + 18
-    if product_id == "PrecipFlag":
-        _draw_precip_legend(draw, width, legend_y)
-    else:
-        _draw_reflectivity_legend(draw, width, legend_y, product_label)
-    draw.line((0, header_height + map_height, width, header_height + map_height), fill=FRAME_BORDER, width=1)
-    footer_brand = "wall.cloud · NC"
-    footer_box = draw.textbbox((0, 0), footer_brand, font=_font(9, bold=True))
+    valid_font = _font(13, bold=True)
+    valid_box = draw.textbbox((0, 0), valid_text, font=valid_font)
+    draw.text((width - (valid_box[2] - valid_box[0]) - 14, 9), valid_text, font=valid_font, fill=(255, 255, 255, 255))
+    footer_y = header_height + map_height
+    draw.rectangle((0, footer_y, width, footer_y + footer_height), fill=BRAND_NAVY)
+    draw.line((0, footer_y, width, footer_y), fill=BRAND_TEAL, width=2)
+    archive_prefix = "ARCHIVE · " if mode_label.upper() == "ARCHIVE" else ""
     draw.text(
-        (width - (footer_box[2] - footer_box[0]) - 14, legend_y + 25),
+        (14, footer_y + 10),
+        f"{archive_prefix}OBSERVED LOOP · {loop_period} · FRAME {frame_number}/{frame_count} · {playback_fps} FPS",
+        font=_font(11, bold=True),
+        fill=BRAND_LIGHT,
+    )
+    footer_brand = "wall.cloud"
+    footer_font = _font(10, bold=True)
+    footer_box = draw.textbbox((0, 0), footer_brand, font=footer_font)
+    draw.text(
+        (width - (footer_box[2] - footer_box[0]) - 14, footer_y + 11),
         footer_brand,
-        font=_font(9, bold=True),
-        fill=BRAND_NAVY,
+        font=footer_font,
+        fill=BRAND_TEAL,
     )
     draw.rectangle((0, 0, width - 1, canvas.height - 1), outline=FRAME_BORDER, width=1)
     return canvas
@@ -339,15 +451,24 @@ def build_loop_gif(
     source_label: str = "MRMS",
     resolution_label: str = "1 km",
     unit_label: str | None = None,
+    mode_label: str = "OBSERVED",
 ) -> int:
     """Create an atomic, branded GIF from an already-rendered radar sequence."""
 
     states, counties = geography or (None, None)
     frames: list[Image.Image] = []
-    for record in records:
+    playback_fps = max(1, round(1000 / max(1, frame_duration_ms)))
+    existing_records = [
+        record
+        for record in records
+        if (frame_dir / Path(str(record.get("url", ""))).name).is_file()
+    ]
+    loop_period = _format_loop_period(
+        str(existing_records[0]["valid_time"]),
+        str(existing_records[-1]["valid_time"]),
+    ) if existing_records else "PERIOD UNKNOWN"
+    for frame_index, record in enumerate(existing_records):
         path = frame_dir / Path(str(record.get("url", ""))).name
-        if not path.is_file():
-            continue
         with Image.open(path) as radar:
             frame_source_bounds = source_bounds or bounds
             record_bounds = record.get("bounds")
@@ -373,7 +494,18 @@ def build_loop_gif(
                 width=width,
                 source_label=source_label,
                 resolution_label=resolution_label,
-                unit_label=unit_label or ("TYPE" if product_id == "PrecipFlag" else "dBZ"),
+                unit_label=unit_label or (
+                    "TYPE"
+                    if product_id == "PrecipFlag"
+                    else "mm"
+                    if product_id == "MultiSensor_QPE_01H_Pass1"
+                    else "dBZ"
+                ),
+                frame_number=frame_index + 1,
+                frame_count=len(existing_records),
+                playback_fps=playback_fps,
+                mode_label=mode_label,
+                loop_period=loop_period,
             )
             frames.append(rendered.convert("P", palette=Image.Palette.ADAPTIVE, colors=256))
     if not frames:

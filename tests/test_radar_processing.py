@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from radar_processing.animation import _crop_radar_to_bounds, build_loop_gif
+from radar_processing.animation import _crop_radar_to_bounds, _draw_vertical_legend, _format_loop_period, _product_subtitle, _vertical_legend_entries, build_loop_gif
 from radar_processing.config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, DEFAULT_REGION, PRODUCTS
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
@@ -202,6 +202,36 @@ def test_gif_export_contains_all_frames(tmp_path: Path) -> None:
     with Image.open(output) as gif:
         assert gif.format == "GIF"
         assert gif.n_frames == 2
+        assert gif.size == (180, 182)
         assert gif.info["duration"] == 180
         gif.seek(1)
         assert gif.info["duration"] == 1000
+
+
+def test_gif_reflectivity_legend_is_vertical_high_to_low() -> None:
+    heading, entries, categorical = _vertical_legend_entries("MergedReflectivityQCComposite")
+    assert heading == "dBZ"
+    assert categorical is False
+    assert entries[0][0] == "70+"
+    assert entries[-1][0] == "5"
+
+
+def test_gif_legend_background_is_blended_before_palette_conversion() -> None:
+    image = Image.new("RGBA", (300, 300), (0, 0, 0, 255))
+    _draw_vertical_legend(image, 0, 0, 300, 300, "MergedReflectivityQCComposite", "dBZ")
+    assert image.getpixel((235, 63)) == (128, 128, 128, 255)
+
+
+def test_gif_loop_period_compacts_matching_eastern_periods() -> None:
+    assert _format_loop_period(
+        "2026-07-24T12:28:00Z",
+        "2026-07-24T13:10:00Z",
+    ) == "8:28–9:10 AM ET"
+
+
+def test_krax_gif_subtitle_omits_native_resolution_label() -> None:
+    assert _product_subtitle(
+        "KRAX Level II",
+        "native",
+        "Base Reflectivity",
+    ) == "North Carolina · KRAX Level II · Base Reflectivity"

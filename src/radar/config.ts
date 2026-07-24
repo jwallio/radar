@@ -1,12 +1,7 @@
 import type { RadarAnalysisProductId, RadarProductId, RadarSourceId } from './types'
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
-export const MAP_CENTER: [number, number] = [-79.45, 35.45]
-export const INITIAL_VIEW_BOUNDS: [[number, number], [number, number]] = [[-84.7, 33.0], [-75.0, 37.8]]
-// Keep Richmond near the upper edge while retaining central and coastal NC in
-// the mobile map viewport. The small upward pan also leaves room for the
-// timeline without pushing the Virginia context out of frame.
-export const INITIAL_VIEW_PAN: [number, number] = [0, -18]
+export const MAP_CENTER: [number, number] = [-78.6382, 35.7796]
 
 // Keep the raster base label-free so the app's priority city/highway layers
 // are the single source of truth for map text and cannot be duplicated.
@@ -199,9 +194,9 @@ export const CITIES: CityDefinition[] = [
   { id: 'fayetteville', label: 'Fayetteville', lon: -78.8784, lat: 35.0527, primary: true },
   { id: 'wilmington', label: 'Wilmington', lon: -77.9447, lat: 34.2257, primary: true },
   { id: 'asheville', label: 'Asheville', lon: -82.5515, lat: 35.5951, primary: true },
-  { id: 'greenville', label: 'Greenville', lon: -77.3664, lat: 35.6127, primary: true },
-  { id: 'rocky-mount', label: 'Rocky Mount', lon: -77.7905, lat: 35.9382, primary: true },
-  { id: 'new-bern', label: 'New Bern', lon: -77.0447, lat: 35.1085, primary: true },
+  { id: 'greenville', label: 'Greenville', lon: -77.3664, lat: 35.6127 },
+  { id: 'rocky-mount', label: 'Rocky Mount', lon: -77.7905, lat: 35.9382 },
+  { id: 'new-bern', label: 'New Bern', lon: -77.0447, lat: 35.1085 },
   { id: 'richmond', label: 'Richmond', lon: -77.4360, lat: 37.5407 },
   { id: 'knoxville', label: 'Knoxville', lon: -83.9207, lat: 35.9606 },
   { id: 'columbia', label: 'Columbia', lon: -81.0348, lat: 34.0007 },

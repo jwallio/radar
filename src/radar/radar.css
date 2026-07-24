@@ -56,6 +56,9 @@
 .radar-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
 .radar-valid-time { color: #dbe8e7; font-size: 12px; font-variant-numeric: tabular-nums; }
 .radar-header-actions { gap: 12px; min-width: 230px; justify-content: flex-end; }
+.radar-dedication { display: grid; justify-items: end; color: #9cb0b4; font-size: 9px; line-height: 1.25; letter-spacing: .035em; white-space: nowrap; }
+.radar-dedication strong { color: #dbe8e7; font-weight: 680; }
+.radar-dedication span { color: var(--radar-accent); font-variant-numeric: tabular-nums; }
 .radar-warning-count { color: var(--radar-muted); font-size: 11px; white-space: nowrap; }
 .radar-settings-button { padding: 7px 10px; border: 1px solid var(--radar-border); background: rgba(21, 39, 47, .72) !important; color: #d8ebea !important; font-size: 11px !important; }
 .radar-settings-button:hover { border-color: var(--radar-border-strong); }
@@ -86,7 +89,7 @@
 .radar-legend-swatches span { flex: 1; min-height: 1px; }
 .radar-legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #b9ced0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; line-height: 1; }
 
-.radar-settings { position: absolute; top: 16px; right: 17px; z-index: 10; display: flex; flex-direction: column; width: 268px; min-width: 0; max-height: calc(100% - 190px); overflow: auto; padding: 14px; border: 1px solid rgba(147, 182, 190, .26); border-radius: 9px; background: var(--radar-surface); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); box-sizing: border-box; }
+.radar-settings { position: absolute; top: 16px; right: 17px; z-index: 10; display: flex; flex-direction: column; width: 268px; min-width: 0; max-height: calc(100% - 190px); overflow-x: hidden; overflow-y: auto; padding: 14px; border: 1px solid rgba(147, 182, 190, .26); border-radius: 9px; background: var(--radar-surface); box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); box-sizing: border-box; }
 .radar-settings-head, .radar-timeline-top, .radar-warning-panel-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .radar-panel-kicker { display: block; margin-bottom: 4px; color: var(--radar-accent); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .radar-settings h2, .radar-warning-panel h2 { margin: 0; font-size: 14px; font-weight: 680; }
@@ -179,6 +182,7 @@
   .radar-region-name span { display: none; }
   .radar-mark { width: 26px; height: 26px; }
   .radar-header-status { display: grid; justify-items: end; gap: 1px; margin-left: auto; padding-left: 0; border-left: 0; }
+  .radar-dedication { font-size: 8px; letter-spacing: .01em; }
   .radar-freshness { font-size: 9px; letter-spacing: .08em; }
   .radar-valid-time { font-size: 10px; }
   .radar-settings-button { padding: 7px 8px; font-size: 10px !important; }
@@ -187,7 +191,7 @@
   .radar-legend { top: auto; right: 10px; bottom: 216px; left: auto; transform: none; grid-template-columns: 23px 22px; padding: 8px 7px; }
   .radar-legend-swatches { height: 168px; width: 11px; }
   .radar-legend-labels { font-size: 8px; }
-  .radar-settings { top: 8px; right: 8px; bottom: auto; width: min(400px, calc(100% - 16px)); max-height: calc(100% - 16px); padding: 16px; overflow-x: visible; transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
+  .radar-settings { top: 8px; right: 8px; bottom: auto; width: min(400px, calc(100% - 16px)); max-height: calc(100% - 16px); padding: 16px; overflow-x: hidden; transform: translateX(calc(100% + 18px)); transition: transform .18s ease; }
   .radar-settings.open { z-index: 30; transform: translateX(0); }
   .radar-mobile-close { display: block; }
   .radar-settings h2 { font-size: 16px; }

@@ -173,13 +173,14 @@ Historical packs are limited to 24 hours and 90 sampled frames per request to ke
 The **Branded loop** is a server-generated reference-style loop with:
 
 - `wall.cloud` header and dark-navy `wall.cloud` branding.
-- Eastern valid time and product/source metadata.
+- Large, bold Eastern valid time and product/source metadata.
 - State/county/city geography and clean borders.
-- Product-specific reflectivity, precipitation, or rainfall legend.
-- Footer branding and frame metadata.
+- A compact, semi-transparent lower-right reflectivity, precipitation, or rainfall legend that preserves map width and minimizes obscured data.
+- Primary and secondary city-label tiers for a cleaner geographic hierarchy.
+- Footer branding, observed-loop period, frame count, and playback FPS.
 - Central NC framing with coastal North Carolina and nearby Atlantic waters.
 
-The **Save GIF** button is client-side. It uses the current map zoom/pan, selected playback FPS, local radar raster, geography overlays, warnings, optional highways, city labels, valid times, and the same branded header/footer treatment. GIF timing is quantized to centiseconds by the GIF format, so 20 and 30 FPS use the nearest representable delay.
+The **Save GIF** button is client-side. It uses the current map zoom/pan, selected playback FPS, local radar raster, geography overlays, warnings, optional highways, city labels, valid times, and the same branded header, compact legend overlay, and footer treatment as the pre-rendered loop. Recent exports use the neutral **Observed loop** label; historical exports add **Archive**. GIF timing is quantized to centiseconds by the GIF format, so 20 and 30 FPS use the nearest representable delay.
 
 ## Generated artifact contract
 

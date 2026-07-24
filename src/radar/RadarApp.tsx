@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, INITIAL_VIEW_BOUNDS, INITIAL_VIEW_PAN, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
@@ -44,6 +44,12 @@ const EMPTY_STATE = emptyFeatureCollection()
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
+
+function initialMapZoom(): number {
+  if (window.innerWidth <= 680) return 7.15
+  if (window.innerWidth <= 1024) return 7.65
+  return 8.15
+}
 
 function assetUrl(path: string, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
@@ -468,29 +474,30 @@ function drawExportWarnings(
 function drawExportCityLabels(context: CanvasRenderingContext2D, bounds: ExportBounds, width: number, height: number): void {
   const used: Array<{ left: number; top: number; right: number; bottom: number }> = []
   context.save()
-  context.font = '700 11px Arial, sans-serif'
   context.textBaseline = 'top'
-  CITIES.filter((city) => city.primary).forEach((city) => {
+  CITIES.forEach((city) => {
     if (city.lon < bounds[0] || city.lon > bounds[2] || city.lat < bounds[1] || city.lat > bounds[3]) return
+    const primary = Boolean(city.primary)
+    context.font = `${primary ? '800 12px' : '600 9px'} Arial, sans-serif`
     const [x, y] = exportProject(city.lon, city.lat, bounds, width, height)
     const labelWidth = context.measureText(city.label).width
-    const labelHeight = 13
+    const labelHeight = primary ? 14 : 11
     const candidates = [[5, -labelHeight - 3], [5, 5], [-labelWidth - 5, -labelHeight - 3], [-labelWidth - 5, 5]]
-    context.fillStyle = '#172129'
+    context.fillStyle = primary ? '#172129' : '#53616a'
     context.beginPath()
-    context.arc(x, y, 3, 0, Math.PI * 2)
+    context.arc(x, y, primary ? 3.2 : 2.1, 0, Math.PI * 2)
     context.fill()
     context.strokeStyle = '#ffffff'
-    context.lineWidth = 1.2
+    context.lineWidth = primary ? 1.2 : 1
     context.stroke()
     for (const [offsetX, offsetY] of candidates) {
       const box = { left: x + offsetX, top: y + offsetY, right: x + offsetX + labelWidth, bottom: y + offsetY + labelHeight }
       if (box.left < 2 || box.top < 2 || box.right >= width - 2 || box.bottom >= height - 2) continue
       if (used.some((other) => box.left - 3 < other.right && box.right + 3 > other.left && box.top - 3 < other.bottom && box.bottom + 3 > other.top)) continue
-      context.lineWidth = 3
+      context.lineWidth = primary ? 3.2 : 2.5
       context.strokeStyle = '#ffffff'
       context.strokeText(city.label, x + offsetX, y + offsetY)
-      context.fillStyle = '#172129'
+      context.fillStyle = primary ? '#172129' : '#53616a'
       context.fillText(city.label, x + offsetX, y + offsetY)
       used.push(box)
       break
@@ -567,11 +574,14 @@ async function captureExportMap(
   return context.getImageData(0, 0, width, height)
 }
 
-const SHARE_GIF_WIDTH = 720
+const SHARE_GIF_MAP_WIDTH = 720
+const SHARE_GIF_WIDTH = SHARE_GIF_MAP_WIDTH
 const SHARE_GIF_MAP_HEIGHT = 480
-const SHARE_GIF_HEADER_HEIGHT = 40
-const SHARE_GIF_FOOTER_HEIGHT = 78
+const SHARE_GIF_HEADER_HEIGHT = 58
+const SHARE_GIF_FOOTER_HEIGHT = 34
 const SHARE_BRAND_NAVY = '#102a43'
+const SHARE_BRAND_TEAL = '#81ded0'
+const SHARE_BRAND_LIGHT = '#edf5f3'
 const SHARE_FRAME_BORDER = '#243746'
 
 function shareProductDetails(productId: RadarProductId): { label: string; source: string; resolution: string; unit: string; legend: Array<{ label: string; color: string }> } {
@@ -598,6 +608,62 @@ function formatShareValidTime(value: string): string {
   return `${part('hour')}:${part('minute')} ${part('dayPeriod')} ET · ${part('weekday')} ${part('day')} ${part('month')} ${part('year')}`
 }
 
+function formatShareLoopPeriod(firstValue: string | undefined, lastValue: string | undefined): string {
+  const first = firstValue ? new Date(firstValue) : null
+  const last = lastValue ? new Date(lastValue) : null
+  if (!first || !last || Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return 'PERIOD UNKNOWN'
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  const firstParts = formatter.formatToParts(first)
+  const lastParts = formatter.formatToParts(last)
+  const firstPeriod = firstParts.find((part) => part.type === 'dayPeriod')?.value ?? ''
+  const lastPeriod = lastParts.find((part) => part.type === 'dayPeriod')?.value ?? ''
+  const firstClock = formatter.format(first)
+  const compactFirstClock = firstPeriod === lastPeriod
+    ? firstClock.replace(` ${firstPeriod}`, '')
+    : firstClock
+  return `${compactFirstClock}–${formatter.format(last)} ET`
+}
+
+function drawShareVerticalLegend(
+  context: CanvasRenderingContext2D,
+  details: ReturnType<typeof shareProductDetails>,
+): void {
+  const compact = details.legend.length > 8
+  const panelWidth = compact ? 52 : 94
+  const rowHeight = compact ? 13 : 34
+  const panelHeight = 26 + details.legend.length * rowHeight + 6
+  const panelX = SHARE_GIF_MAP_WIDTH - panelWidth - 10
+  const panelY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT - panelHeight - 10
+
+  context.save()
+  context.fillStyle = 'rgba(255, 255, 255, .5)'
+  context.fillRect(panelX, panelY, panelWidth, panelHeight)
+  context.strokeStyle = 'rgba(16, 42, 67, .72)'
+  context.lineWidth = 1
+  context.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1)
+  context.fillStyle = SHARE_BRAND_NAVY
+  context.font = '800 8px Arial, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(details.unit.toUpperCase(), panelX + panelWidth / 2, panelY + 13)
+
+  details.legend.forEach((entry, index) => {
+    const rowY = panelY + 26 + index * rowHeight
+    context.fillStyle = entry.color
+    context.fillRect(panelX + 7, rowY, compact ? 11 : 15, rowHeight)
+    context.fillStyle = SHARE_FRAME_BORDER
+    context.font = `${compact ? '700 8px' : '700 9px'} Arial, sans-serif`
+    context.textAlign = 'left'
+    context.fillText(entry.label, panelX + (compact ? 23 : 29), rowY + rowHeight / 2)
+  })
+  context.restore()
+}
+
 function composeShareFrame(
   mapImage: ImageData,
   frame: RadarFrameManifest,
@@ -606,6 +672,7 @@ function composeShareFrame(
   playbackFps: number,
   frameNumber: number,
   frameCount: number,
+  loopPeriod: string,
 ): ImageData {
   const details = shareProductDetails(productId)
   const output = document.createElement('canvas')
@@ -623,28 +690,29 @@ function composeShareFrame(
 
   context.fillStyle = '#e9eff2'
   context.fillRect(0, 0, output.width, output.height)
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
-  context.fillStyle = SHARE_FRAME_BORDER
-  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 1, output.width, 1)
   context.fillStyle = SHARE_BRAND_NAVY
-  context.font = '800 15px Arial, sans-serif'
-  context.fillText('wall.cloud', 14, 24)
-  context.fillStyle = '#b0bcc4'
-  context.fillRect(126, 9, 1, 22)
-  context.fillStyle = '#1c2730'
-  context.font = '600 11px Arial, sans-serif'
-  context.fillText(`North Carolina · ${details.source} · ${details.resolution} · ${details.label} (${details.unit})`, 138, 24)
+  context.fillRect(0, 0, output.width, SHARE_GIF_HEADER_HEIGHT)
+  context.fillStyle = SHARE_BRAND_TEAL
+  context.fillRect(0, SHARE_GIF_HEADER_HEIGHT - 2, output.width, 2)
+  context.font = '800 18px Arial, sans-serif'
+  context.fillStyle = SHARE_BRAND_TEAL
+  context.fillText('wall.cloud Radar', 14, 22)
+  context.fillStyle = SHARE_BRAND_LIGHT
+  context.font = '700 12px Arial, sans-serif'
+  const subtitleParts = ['North Carolina', details.source]
+  if (details.resolution !== 'native') subtitleParts.push(details.resolution)
+  subtitleParts.push(details.label)
+  context.fillText(subtitleParts.join(' · '), 14, 45)
   context.textAlign = 'right'
-  context.font = '700 11px Arial, sans-serif'
-  context.fillStyle = '#1c2730'
-  context.fillText(`Valid: ${formatShareValidTime(frame.valid_time)}`, output.width - 14, 24)
+  context.font = '800 13px Arial, sans-serif'
+  context.fillStyle = '#ffffff'
+  context.fillText(`Valid: ${formatShareValidTime(frame.valid_time)}`, output.width - 14, 22)
   context.textAlign = 'left'
 
-  const scale = Math.max(SHARE_GIF_WIDTH / source.width, SHARE_GIF_MAP_HEIGHT / source.height)
+  const scale = Math.max(SHARE_GIF_MAP_WIDTH / source.width, SHARE_GIF_MAP_HEIGHT / source.height)
   const imageWidth = Math.max(1, Math.round(source.width * scale))
   const imageHeight = Math.max(1, Math.round(source.height * scale))
-  const imageX = Math.round((output.width - imageWidth) / 2)
+  const imageX = Math.round((SHARE_GIF_MAP_WIDTH - imageWidth) / 2)
   const imageY = SHARE_GIF_HEADER_HEIGHT + Math.round((SHARE_GIF_MAP_HEIGHT - imageHeight) / 2)
   context.fillStyle = '#dfe8ec'
   context.fillRect(0, SHARE_GIF_HEADER_HEIGHT, output.width, SHARE_GIF_MAP_HEIGHT)
@@ -652,40 +720,24 @@ function composeShareFrame(
   context.imageSmoothingQuality = 'high'
   context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
   context.imageSmoothingEnabled = true
+  drawShareVerticalLegend(context, details)
   context.strokeStyle = SHARE_FRAME_BORDER
   context.lineWidth = 1
-  context.strokeRect(0.5, SHARE_GIF_HEADER_HEIGHT + 0.5, output.width - 1, SHARE_GIF_MAP_HEIGHT - 1)
+  context.strokeRect(0.5, SHARE_GIF_HEADER_HEIGHT + 0.5, SHARE_GIF_MAP_WIDTH - 1, SHARE_GIF_MAP_HEIGHT - 1)
 
   const footerY = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
-  context.fillStyle = SHARE_FRAME_BORDER
-  context.fillRect(0, footerY, output.width, 1)
-  context.fillStyle = '#51616e'
-  context.font = '700 9px Arial, sans-serif'
-  context.fillText(`${isHistorical ? 'ARCHIVE' : 'LIVE'} · OBSERVED FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 16)
-
-  const legendEntries = [...details.legend].reverse()
-  const legendX = 20
-  const legendY = footerY + 28
-  const legendWidth = output.width - 150
-  const swatchWidth = legendWidth / legendEntries.length
-  legendEntries.forEach((entry, index) => {
-    context.fillStyle = entry.color
-    context.fillRect(legendX + index * swatchWidth, legendY, swatchWidth + 1, 14)
-  })
-  context.strokeStyle = 'rgba(255,255,255,.35)'
-  context.strokeRect(legendX, legendY, legendWidth, 14)
-  context.fillStyle = '#2d3b45'
-  context.font = '8px Arial, sans-serif'
-  legendEntries.forEach((entry, index) => {
-    context.textAlign = index === 0 ? 'left' : index === legendEntries.length - 1 ? 'right' : 'center'
-    context.fillText(entry.label, legendX + (index + (index === 0 ? 0 : index === legendEntries.length - 1 ? 1 : 0.5)) * swatchWidth, legendY + 27)
-  })
-  context.textAlign = 'right'
   context.fillStyle = SHARE_BRAND_NAVY
-  context.font = '700 9px Arial, sans-serif'
-  context.fillText('wall.cloud · NC', output.width - 20, footerY + 66)
+  context.fillRect(0, footerY, output.width, SHARE_GIF_FOOTER_HEIGHT)
+  context.fillStyle = SHARE_BRAND_TEAL
+  context.fillRect(0, footerY, output.width, 2)
+  context.fillStyle = SHARE_BRAND_LIGHT
+  context.font = '800 11px Arial, sans-serif'
+  const archivePrefix = isHistorical ? 'ARCHIVE · ' : ''
+  context.fillText(`${archivePrefix}OBSERVED LOOP · ${loopPeriod} · FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 14, footerY + 22)
+  context.textAlign = 'right'
+  context.fillStyle = SHARE_BRAND_TEAL
+  context.font = '800 10px Arial, sans-serif'
+  context.fillText('wall.cloud', output.width - 14, footerY + 22)
   context.textAlign = 'left'
   context.strokeStyle = SHARE_FRAME_BORDER
   context.lineWidth = 1
@@ -931,7 +983,7 @@ export function RadarApp() {
   const [counties, setCounties] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
   const [geographyError, setGeographyError] = useState<string | null>(null)
   const [highways, setHighways] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
-  const [highwaysLoading, setHighwaysLoading] = useState(false)
+  const [highwaysLoading, setHighwaysLoading] = useState(true)
   const [highwaysError, setHighwaysError] = useState<string | null>(null)
   const [surfaceObservations, setSurfaceObservations] = useState<SurfaceObservation[]>([])
   const [surfaceLoading, setSurfaceLoading] = useState(false)
@@ -1108,7 +1160,6 @@ export function RadarApp() {
   }, [])
 
   useEffect(() => {
-    if (!layers.highways || highways.features.length || highwaysLoading) return
     let cancelled = false
     const controller = new AbortController()
     fetchRegionalHighways(controller.signal)
@@ -1128,7 +1179,7 @@ export function RadarApp() {
       cancelled = true
       controller.abort()
     }
-  }, [highways.features.length, highwaysLoading, layers.highways])
+  }, [])
 
   useEffect(() => {
     if (!layers.surface || isHistorical) return
@@ -1191,19 +1242,23 @@ export function RadarApp() {
         layers: [{ id: 'wallcloud-basemap', type: 'raster', source: 'basemap', paint: { 'raster-opacity': 1 } }],
       },
       center: MAP_CENTER,
-      zoom: 6.25,
+      zoom: initialMapZoom(),
       canvasContextAttributes: { preserveDrawingBuffer: true },
       minZoom: 5.2,
       maxZoom: 12,
       maxBounds: [[REGIONAL_BOUNDS[0] - 1, REGIONAL_BOUNDS[1] - 1], [REGIONAL_BOUNDS[2] + 1, REGIONAL_BOUNDS[3] + 1]],
       attributionControl: false,
+      dragRotate: false,
+      touchPitch: false,
+      pitchWithRotate: false,
     })
+    map.touchZoomRotate.disableRotation()
+    map.keyboard.disableRotation()
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA radar · NWS' }), 'bottom-right')
     map.on('load', () => {
       createMapSources(map)
-      map.fitBounds(INITIAL_VIEW_BOUNDS, { padding: { top: 24, right: 24, bottom: 170, left: 24 }, duration: 0 })
-      map.panBy(INITIAL_VIEW_PAN, { duration: 0 })
+      map.jumpTo({ center: MAP_CENTER, zoom: initialMapZoom(), bearing: 0, pitch: 0 })
       map.resize()
       setMapReady(true)
     })
@@ -1291,13 +1346,13 @@ export function RadarApp() {
           id: layerId,
           type: 'raster',
           source: sourceId,
-          paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
+          paint: { 'raster-opacity': radarOpacity, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
         }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
       } else {
         source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
       }
     })
-  }, [manifest, manifestPath, mapReady])
+  }, [manifest, manifestPath, mapReady, radarOpacity])
 
   useEffect(() => {
     if (!activeFrame) return
@@ -1315,6 +1370,10 @@ export function RadarApp() {
     const map = mapRef.current
     if (!map || !mapReady) return
     if (map.getLayer(RADAR_LAYER_ID)) map.setPaintProperty(RADAR_LAYER_ID, 'raster-opacity', radarOpacity)
+    ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
+      const layerId = analysisLayerId(definition.productId)
+      if (map.getLayer(layerId)) map.setPaintProperty(layerId, 'raster-opacity', radarOpacity)
+    })
     setLayerVisibility(map, [RADAR_LAYER_ID], layers.radar && Boolean(activeFrame))
     setLayerVisibility(map, ['wallcloud-county-line'], layers.counties)
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
@@ -1375,6 +1434,7 @@ export function RadarApp() {
     try {
       await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
+      const loopPeriod = formatShareLoopPeriod(frames[0]?.valid_time, frames.at(-1)?.valid_time)
       const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
       for (let index = 0; index < frames.length; index += 1) {
         const frame = frames[index]
@@ -1406,7 +1466,7 @@ export function RadarApp() {
           if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
           mapImage = mapCapture
         }
-        captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length))
+        captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length, loopPeriod))
         setGifExportProgress(Math.round((index + 1) / frames.length * 100))
       }
       const blob = encodeGif(captured, playbackFps)
@@ -1438,7 +1498,6 @@ export function RadarApp() {
   }
 
   const toggleLayer = (key: keyof typeof layers) => {
-    if (key === 'highways' && !layers.highways) setHighwaysLoading(true)
     setLayers((current) => ({ ...current, [key]: !current[key] }))
   }
 
@@ -1459,6 +1518,10 @@ export function RadarApp() {
           <div className="radar-valid-time">{formatEasternTime(activeFrame?.valid_time)} ET</div>
         </div>
         <div className="radar-header-actions">
+          <span className="radar-dedication">
+            <strong>Dedicated to Jack Roney</strong>
+            <span>7.29.86–7.5.26</span>
+          </span>
           <span className="radar-warning-count">{isHistorical ? manifest?.label ?? 'Historical loop' : `${warnings.length} active warning${warnings.length === 1 ? '' : 's'}`}</span>
           <button type="button" className="radar-settings-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>
             <span className="radar-sliders-icon" aria-hidden="true">☷</span> Layers
@@ -1649,7 +1712,7 @@ export function RadarApp() {
             ))}
           </div>
 
-          <label className="radar-field-label" htmlFor="radar-opacity">Radar opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
+          <label className="radar-field-label" htmlFor="radar-opacity">Radar & storm opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}
           {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}

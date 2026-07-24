@@ -277,6 +277,7 @@ def build_radar_dataset(
                     product_id=product_id,
                     product_label=str(product["label"]),
                     geography=geography,
+                    mode_label="ARCHIVE" if mode == "historical" else "OBSERVED",
                 )
                 product["loop_url"] = f"./loops/{loop_path.name}?v={loop_cache_key}"
                 product["loop_frame_count"] = frame_count

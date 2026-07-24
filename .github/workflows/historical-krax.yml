@@ -109,6 +109,7 @@ jobs:
         env:
           NEXRAD_MAX_FRAMES: '18'
           NEXRAD_RETENTION_MINUTES: '90'
+          NEXRAD_IMAGE_WIDTH: '2400'
         run: python scripts/build_krax_radar.py
 
       - name: Build requested historical KRAX loop
@@ -139,6 +140,7 @@ jobs:
           HISTORY_END: ${{ steps.resolve_window.outputs.end }}
           HISTORY_LABEL: ${{ inputs.label }}
           HISTORY_MAX_FRAMES: ${{ inputs.max_frames }}
+          NEXRAD_IMAGE_WIDTH: '2400'
         run: |
           args=(--start "$HISTORY_START" --end "$HISTORY_END" --max-frames "$HISTORY_MAX_FRAMES")
           if [[ -n "$HISTORY_LABEL" ]]; then args+=(--label "$HISTORY_LABEL"); fi
@@ -163,3 +165,4 @@ jobs:
               workflow_id: 'radar-refresh.yml',
               ref: 'main'
             })
+

@@ -10,6 +10,7 @@ from radar_processing.config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, DE
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
 from radar_processing.mrms import _archive_listing, sample_frames
+from radar_processing.nexrad_rendering import NEXRAD_PRODUCT_DEFINITIONS
 from radar_processing.observations import _parse_realtime
 from radar_processing.rendering import REFLECTIVITY_STOPS, analysis_palette_for_tests, palette_category_for_tests
 
@@ -82,6 +83,16 @@ def test_analysis_products_are_configured_for_latest_only_rendering() -> None:
     assert all(PRODUCTS[product_id].render_kind not in {"scalar", "reflectivity", "precip_type"} for product_id in ANALYSIS_PRODUCT_IDS)
     assert PRODUCTS["MESH"].directory == "MESH"
     assert PRODUCTS["NLDN_CG_005min_AvgDensity"].filename_prefix.startswith("MRMS_NLDN_CG")
+
+
+def test_level2_products_have_explicit_field_aliases_and_ranges() -> None:
+    assert NEXRAD_PRODUCT_DEFINITIONS["NEXRADLevel2BaseReflectivity"]["fields"] == (
+        "reflectivity", "REF", "reflectivity_horizontal"
+    )
+    assert "velocity" in NEXRAD_PRODUCT_DEFINITIONS["NEXRADLevel2Velocity"]["fields"]
+    assert "cross_correlation_ratio" in NEXRAD_PRODUCT_DEFINITIONS["NEXRADLevel2CorrelationCoefficient"]["fields"]
+    assert NEXRAD_PRODUCT_DEFINITIONS["NEXRADLevel2Velocity"]["minimum"] < 0
+    assert NEXRAD_PRODUCT_DEFINITIONS["NEXRADLevel2CorrelationCoefficient"]["maximum"] > 1
 
 
 def test_analysis_palettes_map_weak_signal_to_transparent_and_higher_values_to_color() -> None:

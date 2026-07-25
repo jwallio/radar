@@ -5,6 +5,8 @@ export type RadarProductId =
   | 'PrecipFlag'
   | 'MultiSensor_QPE_01H_Pass1'
   | 'NEXRADLevel2BaseReflectivity'
+  | 'NEXRADLevel2Velocity'
+  | 'NEXRADLevel2CorrelationCoefficient'
 
 export type RadarAnalysisProductId =
   | 'MultiSensor_QPE_01H_Pass1'

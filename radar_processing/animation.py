@@ -307,6 +307,30 @@ def _vertical_legend_entries(
             for index, value in reversed(list(enumerate(stops)))
         ]
         return "mm", entries, False
+    if product_id == "NEXRADLevel2Velocity":
+        return (
+            "m/s",
+            [
+                ("+50", (215, 48, 39, 255)),
+                ("+25", (252, 141, 89, 255)),
+                ("0", (247, 247, 247, 255)),
+                ("-25", (145, 191, 219, 255)),
+                ("-50", (69, 117, 180, 255)),
+            ],
+            False,
+        )
+    if product_id == "NEXRADLevel2CorrelationCoefficient":
+        return (
+            "ρhv",
+            [
+                ("1.00", (10, 119, 123, 255)),
+                ("0.98", (53, 167, 161, 255)),
+                ("0.95", (145, 212, 199, 255)),
+                ("0.90", (213, 238, 231, 255)),
+                ("0.80", (243, 245, 244, 255)),
+            ],
+            False,
+        )
     return "dBZ", _reflectivity_legend_entries(), False
 
 

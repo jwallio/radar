@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -105,7 +106,18 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
+        last_error: PermissionError | None = None
+        for attempt in range(5):
+            try:
+                os.replace(temporary_name, path)
+                last_error = None
+                break
+            except PermissionError as exc:
+                last_error = exc
+                if attempt < 4:
+                    time.sleep(0.25 * (attempt + 1))
+        if last_error is not None:
+            raise last_error
     finally:
         temporary_path = Path(temporary_name)
         if temporary_path.exists():

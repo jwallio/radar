@@ -10,7 +10,7 @@ The default map covers North Carolina, southern Virginia, eastern Tennessee, nor
 - KRAX-only NOAA NEXRAD Level II base reflectivity with recent completed-volume playback.
 - Historical MRMS and KRAX loops generated from official public archives.
 - Exact observed-frame playback with Previous, Play/Pause, Next, timeline scrubbing, and 2/4/8/20/30 FPS controls.
-- Product modes for Composite Reflectivity, MRMS PrecipFlag, and one-hour MRMS rainfall.
+- Product modes for Composite Reflectivity, MRMS PrecipFlag, one-hour MRMS rainfall, and KRAX Level II Base Reflectivity, Radial Velocity, and Correlation Coefficient (ρhv).
 - Latest-analysis overlays for azimuthal shear, rotation tracks, MESH, POSH, and NLDN cloud-to-ground lightning density when generated.
 - Active NWS warning polygons for tornado, severe thunderstorm, flash flood, and special marine warnings.
 - High-contrast warning halos and borders that remain visible over heavy radar echoes.
@@ -202,7 +202,7 @@ Fast KRAX smoke test:
 python scripts/build_krax_radar.py --max-frames 1 --retention-minutes 30
 ```
 
-The KRAX processor discovers completed `KRAX` volume files from the public archive, downloads them to temporary storage, decodes the lowest available sweep with Py-ART, projects the gates to the configured NC region, writes PNG frames, and removes temporary raw files unless explicitly retained.
+The KRAX processor discovers completed `KRAX` volume files from the public archive, downloads them to temporary storage, and decodes the lowest available sweep with Py-ART. Each volume can produce separate Base Reflectivity, Radial Velocity, and Correlation Coefficient (ρhv) frames and branded loops. If a volume does not contain one of those fields, that product is marked unavailable in the manifest rather than synthesized. Raw files are removed unless explicitly retained.
 
 Useful MRMS environment settings:
 
@@ -293,7 +293,7 @@ public/data/radar/krax/loops/
 public/data/radar/krax/history/catalog.json
 ```
 
-Manifests include product status, valid times, relative frame URLs, bounds, source metadata, loop metadata, and error messages. They are written atomically so the frontend does not read a partially generated file.
+Manifests include product status, valid times, relative frame URLs, bounds, source metadata, loop metadata, and error messages. They are written atomically so the frontend does not read a partially generated file. Level II product availability is per field: the frontend disables products that were not present or decodable in the selected live or historical volume set.
 
 ## Project layout
 

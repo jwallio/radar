@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
@@ -724,6 +724,8 @@ function shareProductDetails(productId: RadarProductId): { label: string; source
   if (productId === 'PrecipFlag') return { label: 'Precipitation Type', source: 'MRMS', resolution: '1 km', unit: 'TYPE', legend: PRECIP_LEGEND }
   if (productId === 'MultiSensor_QPE_01H_Pass1') return { label: '1-hour Rainfall', source: 'MRMS', resolution: '1 km', unit: 'mm', legend: RAINFALL_LEGEND }
   if (productId === 'NEXRADLevel2BaseReflectivity') return { label: 'Base Reflectivity', source: 'KRAX Level II', resolution: 'native', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
+  if (productId === 'NEXRADLevel2Velocity') return { label: 'Radial Velocity', source: 'KRAX Level II', resolution: 'native', unit: 'm/s', legend: VELOCITY_LEGEND }
+  if (productId === 'NEXRADLevel2CorrelationCoefficient') return { label: 'Correlation Coefficient (ρhv)', source: 'KRAX Level II', resolution: 'native', unit: 'ρhv', legend: CORRELATION_LEGEND }
   return { label: 'Composite Reflectivity', source: 'MRMS', resolution: '1 km', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
 }
 
@@ -961,11 +963,14 @@ function RadarAnalysisLegends({
   layers,
   manifest,
   isHistorical,
+  sourceId,
 }: {
   layers: Record<AnalysisLayerKey, boolean>
   manifest: RadarManifest | null
   isHistorical: boolean
+  sourceId: RadarSourceId
 }) {
+  if (sourceId !== 'mrms') return null
   const active = ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').filter((definition) => {
     const product = manifest?.products[definition.productId]
     return !isHistorical && layers[definition.key] && Boolean(product?.frames.length)
@@ -1060,10 +1065,31 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
     ? PRECIP_LEGEND
     : productId === 'MultiSensor_QPE_01H_Pass1'
       ? RAINFALL_LEGEND
-      : REFLECTIVITY_LEGEND
-  const heading = productId === 'PrecipFlag' ? 'TYPE' : productId === 'MultiSensor_QPE_01H_Pass1' ? 'mm' : 'dBZ'
+      : productId === 'NEXRADLevel2Velocity'
+        ? VELOCITY_LEGEND
+        : productId === 'NEXRADLevel2CorrelationCoefficient'
+          ? CORRELATION_LEGEND
+          : REFLECTIVITY_LEGEND
+  const heading = productId === 'PrecipFlag'
+    ? 'TYPE'
+    : productId === 'MultiSensor_QPE_01H_Pass1'
+      ? 'mm'
+      : productId === 'NEXRADLevel2Velocity'
+        ? 'm/s'
+        : productId === 'NEXRADLevel2CorrelationCoefficient'
+          ? 'ρhv'
+          : 'dBZ'
+  const label = productId === 'PrecipFlag'
+    ? 'Precipitation type'
+    : productId === 'MultiSensor_QPE_01H_Pass1'
+      ? 'Rainfall accumulation'
+      : productId === 'NEXRADLevel2Velocity'
+        ? 'Radial velocity'
+        : productId === 'NEXRADLevel2CorrelationCoefficient'
+          ? 'Correlation coefficient'
+          : 'Reflectivity'
   return (
-    <aside className="radar-legend" aria-label={`${productId === 'PrecipFlag' ? 'Precipitation type' : productId === 'MultiSensor_QPE_01H_Pass1' ? 'Rainfall accumulation' : 'Reflectivity'} legend`}>
+    <aside className="radar-legend" aria-label={`${label} legend`}>
       <div className="radar-legend-heading">{heading}</div>
       <div className="radar-legend-swatches">
         {entries.map((entry) => <span key={entry.label} style={{ backgroundColor: entry.color }} title={entry.label} />)}
@@ -1144,7 +1170,8 @@ export function RadarApp() {
   const historyCatalog = historyCatalogs[sourceId]
   const historyError = historyErrors[sourceId]
   const isKrax = sourceId === 'krax'
-  const sourceLabel = isKrax ? 'KRAX Level II' : 'MRMS'
+  const sourceLabel = isKrax ? 'Level II' : 'MRMS mosaic'
+  const stormAnalysisAvailable = sourceId === 'mrms'
 
   const frames = useMemo(() => productFrames(manifest, productId), [manifest, productId])
   const activeIndex = frames.length ? Math.min(Math.max(frameIndex, 0), frames.length - 1) : 0
@@ -1749,7 +1776,7 @@ export function RadarApp() {
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>
           <div>
             <div className="radar-product-name">wall.cloud Radar</div>
-            <div className="radar-region-name">North Carolina <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'KRAX single-site' : 'regional view'}</span></div>
+            <div className="radar-region-name">North Carolina <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'Level II radar' : 'regional mosaic'}</span></div>
           </div>
         </div>
         <div className="radar-header-status">
@@ -1764,7 +1791,7 @@ export function RadarApp() {
             <span>7.29.86–7.5.26</span>
           </span>
           <span className="radar-warning-count">{isHistorical ? manifest?.label ?? 'Historical loop' : `${warnings.length} active warning${warnings.length === 1 ? '' : 's'}`}</span>
-          <button type="button" className="radar-settings-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>
+          <button type="button" className="radar-settings-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen} aria-controls="radar-settings">
             <span className="radar-sliders-icon" aria-hidden="true">☷</span> Layers
           </button>
         </div>
@@ -1809,9 +1836,10 @@ export function RadarApp() {
           layers={layers}
           manifest={manifest}
           isHistorical={isHistorical}
+          sourceId={sourceId}
         />
 
-        <aside className={`radar-settings ${settingsOpen ? 'open' : ''}`} aria-label="Radar controls and layers">
+        <aside id="radar-settings" className={`radar-settings ${settingsOpen ? 'open' : ''}`} aria-label="Radar controls and layers">
           <div className="radar-settings-head">
             <div>
               <span className="radar-panel-kicker">Display</span>
@@ -1849,7 +1877,7 @@ export function RadarApp() {
               }}
             >
               <option value="mrms">MRMS regional mosaic</option>
-              <option value="krax">KRAX Level II</option>
+              <option value="krax">Level II radar</option>
             </select>
           </div>
 
@@ -1904,13 +1932,15 @@ export function RadarApp() {
           </div>
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
           {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
-          {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Native KRAX Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}
+          {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}
+          {productId === 'NEXRADLevel2Velocity' && <p className="radar-field-note">Radial velocity in meters per second from the lowest sweep. Positive and negative motion are shown with a diverging palette.</p>}
+          {productId === 'NEXRADLevel2CorrelationCoefficient' && <p className="radar-field-note">Correlation coefficient (ρhv) from the lowest sweep. Lower values can help identify non-meteorological echoes.</p>}
 
           <section className="radar-polling-control" aria-label="Live radar feed control">
             <div>
               <span className="radar-layer-section-heading">Live Level II feed</span>
-              <strong>{!livePollingConfigured ? 'Control not configured' : pollingControl?.enabled ? '5-minute polling enabled' : 'Archive mode · polling off'}</strong>
-              <small>{!livePollingConfigured ? 'Set VITE_RADAR_CONTROL_API_URL after deploying the control Worker.' : 'Archive browsing and GIF generation remain available either way.'}</small>
+              <strong>{!livePollingConfigured ? 'Admin control unavailable' : pollingControl?.enabled ? 'Live Level II is on' : 'Live Level II is off'}</strong>
+              <small>{!livePollingConfigured ? 'The administrator control service is not configured in this build.' : 'Administrator-only 5-minute polling. Archive browsing remains public.'}</small>
             </div>
             <button
               type="button"
@@ -1919,7 +1949,7 @@ export function RadarApp() {
               disabled={!livePollingConfigured || pollingControlBusy || pollingControl === null}
               onClick={() => { void changePollingState(pollingControl?.enabled !== true) }}
             >
-              {pollingControlBusy ? 'Saving…' : pollingControl?.enabled ? 'Turn off' : 'Turn on'}
+              {pollingControlBusy ? 'Saving…' : pollingControl?.enabled ? 'Turn off Live Level II (Admin)' : 'Turn on Live Level II (Admin)'}
             </button>
           </section>
           {pollingControlError && <p className="radar-field-note error">Live feed control: {pollingControlError}</p>}
@@ -1944,8 +1974,9 @@ export function RadarApp() {
           </section>
 
           <div className="radar-layer-list">
-            <div className="radar-layer-section-heading">Storm analysis <small>latest generated analysis</small></div>
-            {ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
+            <div className="radar-layer-section-heading">Storm analysis <small>{stormAnalysisAvailable ? 'latest generated analysis' : 'MRMS mosaic only'}</small></div>
+            {!stormAnalysisAvailable && <p className="radar-field-note">Storm Analysis unavailable with Level II — select MRMS regional mosaic.</p>}
+            {stormAnalysisAvailable && ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
               const product = manifest?.products[definition.productId]
               const ready = product?.status === 'ready' || product?.status === 'partial'
               const note = isHistorical

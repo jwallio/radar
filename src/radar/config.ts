@@ -24,7 +24,25 @@ export const PRODUCT_OPTIONS: Array<{ id: RadarProductId; label: string; source:
   { id: 'MergedReflectivityQCComposite', label: 'Composite Reflectivity', source: 'mrms' },
   { id: 'PrecipFlag', label: 'Precipitation Type', source: 'mrms' },
   { id: 'MultiSensor_QPE_01H_Pass1', label: '1-hour Rainfall', source: 'mrms' },
-  { id: 'NEXRADLevel2BaseReflectivity', label: 'KRAX Base Reflectivity', source: 'krax' },
+  { id: 'NEXRADLevel2BaseReflectivity', label: 'Base Reflectivity', source: 'krax' },
+  { id: 'NEXRADLevel2Velocity', label: 'Radial Velocity', source: 'krax' },
+  { id: 'NEXRADLevel2CorrelationCoefficient', label: 'Correlation Coefficient (ρhv)', source: 'krax' },
+]
+
+export const VELOCITY_LEGEND = [
+  { label: '+50', color: '#d73027' },
+  { label: '+25', color: '#fc8d59' },
+  { label: '0', color: '#f7f7f7' },
+  { label: '-25', color: '#91bfdb' },
+  { label: '-50', color: '#4575b4' },
+]
+
+export const CORRELATION_LEGEND = [
+  { label: '1.00', color: '#0a777b' },
+  { label: '0.98', color: '#35a7a1' },
+  { label: '0.95', color: '#91d4c7' },
+  { label: '0.90', color: '#d5eee7' },
+  { label: '0.80', color: '#f3f5f4' },
 ]
 
 export const REFLECTIVITY_LEGEND = [

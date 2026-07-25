@@ -48,7 +48,7 @@ From the repository root:
 
 ```powershell
 $image = "$region-docker.pkg.dev/$project/wallcloud/radar:latest"
-gcloud builds submit --tag $image --file Dockerfile.cloudrun .
+gcloud builds submit --config cloudbuild.yaml --substitutions=_IMAGE=$image .
 ```
 
 ## Create the historical job

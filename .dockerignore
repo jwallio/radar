@@ -1,0 +1,11 @@
+.git
+.github
+.pytest_cache
+.radar-raw
+.radar-tmp
+.nexrad-raw
+dist
+node_modules
+control_worker/node_modules
+tests
+*.log

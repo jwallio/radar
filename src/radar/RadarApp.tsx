@@ -8,15 +8,29 @@ import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } fr
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
 import './radar.css'
 
+function normalizeDataBaseUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return `${import.meta.env.BASE_URL}data/`
+  return `${trimmed.replace(/\/+$/, '')}/`
+}
+
+const RADAR_DATA_BASE_URL = normalizeDataBaseUrl(
+  import.meta.env.VITE_RADAR_DATA_BASE_URL || `${import.meta.env.BASE_URL}data/`,
+)
 const LIVE_MANIFEST_PATHS: Record<RadarSourceId, string> = {
-  mrms: `${import.meta.env.BASE_URL}data/radar/manifest.json`,
-  krax: `${import.meta.env.BASE_URL}data/radar/krax/manifest.json`,
+  mrms: `${RADAR_DATA_BASE_URL}radar/manifest.json`,
+  krax: `${RADAR_DATA_BASE_URL}radar/krax/manifest.json`,
 }
 const HISTORY_CATALOG_PATHS: Record<RadarSourceId, string> = {
-  mrms: `${import.meta.env.BASE_URL}data/radar/history/catalog.json`,
-  krax: `${import.meta.env.BASE_URL}data/radar/krax/history/catalog.json`,
+  mrms: `${RADAR_DATA_BASE_URL}radar/history/catalog.json`,
+  krax: `${RADAR_DATA_BASE_URL}radar/krax/history/catalog.json`,
 }
-const BUOY_DATA_PATH = `${import.meta.env.BASE_URL}data/observations/buoys.json`
+const BUOY_DATA_PATH = `${RADAR_DATA_BASE_URL}observations/buoys.json`
+// Public endpoint only; the activation token is never bundled into the app.
+// Override this with VITE_RADAR_CONTROL_API_URL when a custom Worker domain is ready.
+const DEFAULT_RADAR_CONTROL_API_URL = 'https://wallcloud-radar-control.jlwall33.workers.dev'
+const RADAR_CONTROL_API_URL = (import.meta.env.VITE_RADAR_CONTROL_API_URL || (import.meta.env.DEV ? '' : DEFAULT_RADAR_CONTROL_API_URL)).trim().replace(/\/+$/, '')
+const CONTROL_TOKEN_SESSION_KEY = 'wallcloud-radar-control-token'
 const RADAR_SOURCE_ID = 'wallcloud-radar-image'
 const RADAR_LAYER_ID = 'wallcloud-radar-layer'
 const WARNING_SOURCE_ID = 'wallcloud-warning-source'
@@ -45,6 +59,21 @@ const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
+type PollingControlState = {
+  enabled: boolean
+  updated_at: string | null
+}
+
+type HistoryJobStatus = {
+  job_id: string
+  status: 'pending' | 'running' | 'complete' | 'failed'
+  source?: string
+  dataset_id?: string
+  manifest_url?: string
+  message?: string
+  execution?: string
+}
+
 function initialMapZoom(): number {
   if (window.innerWidth <= 680) return 7.15
   if (window.innerWidth <= 1024) return 7.65
@@ -64,6 +93,99 @@ function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {
 function historicalManifestUrl(manifestUrl: string, sourceId: RadarSourceId): string {
   const catalogUrl = new URL(HISTORY_CATALOG_PATHS[sourceId], window.location.href)
   return new URL(manifestUrl, catalogUrl).toString()
+}
+
+async function fetchPollingControlStatus(): Promise<PollingControlState> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/control/status`, { cache: 'no-store' })
+  const payload = await response.json() as Partial<PollingControlState> & { error?: string }
+  if (!response.ok || typeof payload.enabled !== 'boolean') {
+    throw new Error(payload.error || `Polling control returned HTTP ${response.status}`)
+  }
+  return { enabled: payload.enabled, updated_at: typeof payload.updated_at === 'string' ? payload.updated_at : null }
+}
+
+async function updatePollingControl(enabled: boolean, token: string): Promise<PollingControlState> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/control/polling`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  const payload = await response.json() as Partial<PollingControlState> & { error?: string }
+  if (!response.ok || typeof payload.enabled !== 'boolean') {
+    throw new Error(payload.error || `Polling control returned HTTP ${response.status}`)
+  }
+  return { enabled: payload.enabled, updated_at: typeof payload.updated_at === 'string' ? payload.updated_at : null }
+}
+
+function controlTokenFromSession(): string {
+  try { return window.sessionStorage.getItem(CONTROL_TOKEN_SESSION_KEY) || '' } catch { return '' }
+}
+
+function promptForControlToken(): string {
+  const existing = controlTokenFromSession()
+  if (existing) return existing
+  const token = window.prompt('Enter the radar control key. It is kept only for this browser session.')?.trim() || ''
+  if (!token) return ''
+  try { window.sessionStorage.setItem(CONTROL_TOKEN_SESSION_KEY, token) } catch { /* best effort */ }
+  return token
+}
+
+function easternInputValue(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '00'
+  const hour = value('hour') === '24' ? '00' : value('hour')
+  return `${value('year')}-${value('month')}-${value('day')}T${hour}:${value('minute')}`
+}
+
+function easternInputToIso(value: string): string {
+  const [datePart, timePart] = value.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute] = timePart.split(':').map(Number)
+  const naive = new Date(Date.UTC(year, month - 1, day, hour, minute))
+  const offsetMilliseconds = (date: Date): number => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'longOffset',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).formatToParts(date)
+    const raw = parts.find((part) => part.type === 'timeZoneName')?.value ?? 'GMT-05:00'
+    const match = raw.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/)
+    if (!match) return -5 * 60 * 60 * 1000
+    const sign = match[1] === '+' ? 1 : -1
+    return sign * (Number(match[2]) * 60 + Number(match[3] || 0)) * 60 * 1000
+  }
+  const first = new Date(naive.getTime() - offsetMilliseconds(naive))
+  const corrected = new Date(naive.getTime() - offsetMilliseconds(first))
+  return corrected.toISOString()
+}
+
+async function requestHistoryJob(payload: { start: string; end: string; max_frames: number }, token: string): Promise<HistoryJobStatus> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/history/jobs`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'krax', ...payload }),
+  })
+  const result = await response.json() as HistoryJobStatus & { error?: string }
+  if (!response.ok || !result.job_id) throw new Error(result.error || `Historical job request returned HTTP ${response.status}`)
+  return result
+}
+
+async function fetchHistoryJobStatus(jobId: string, token: string): Promise<HistoryJobStatus> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/history/jobs/${encodeURIComponent(jobId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  const result = await response.json() as HistoryJobStatus & { error?: string }
+  if (!response.ok || !result.status) throw new Error(result.error || `Historical job status returned HTTP ${response.status}`)
+  return result
 }
 
 function formatEasternTime(value: string | null | undefined): string {
@@ -967,6 +1089,15 @@ export function RadarApp() {
   const [sourceFallbackNotice, setSourceFallbackNotice] = useState<string | null>(null)
   const [historyCatalogs, setHistoryCatalogs] = useState<Record<RadarSourceId, RadarHistoryCatalog | null>>({ mrms: null, krax: null })
   const [historyErrors, setHistoryErrors] = useState<Record<RadarSourceId, string | null>>({ mrms: null, krax: null })
+  const [historyRefreshNonce, setHistoryRefreshNonce] = useState(0)
+  const [historyStart, setHistoryStart] = useState(() => easternInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)))
+  const [historyEnd, setHistoryEnd] = useState(() => easternInputValue(new Date()))
+  const [historyJobStatus, setHistoryJobStatus] = useState<HistoryJobStatus | null>(null)
+  const [historyRequestBusy, setHistoryRequestBusy] = useState(false)
+  const [historyRequestError, setHistoryRequestError] = useState<string | null>(null)
+  const [pollingControl, setPollingControl] = useState<PollingControlState | null>(null)
+  const [pollingControlError, setPollingControlError] = useState<string | null>(null)
+  const [pollingControlBusy, setPollingControlBusy] = useState(false)
   const [datasetId, setDatasetId] = useState('live')
   const [productId, setProductId] = useState<RadarProductId>(DEFAULT_RADAR_PRODUCT)
   const [frameIndex, setFrameIndex] = useState(0)
@@ -1024,6 +1155,7 @@ export function RadarApp() {
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const isHistorical = manifest?.mode === 'historical' || datasetId !== 'live'
+  const livePollingConfigured = Boolean(RADAR_CONTROL_API_URL)
   const latestAge = ageMinutes(manifest?.latest_valid_time)
   const activeAge = ageMinutes(activeFrame?.valid_time)
   const isLatest = Boolean(activeFrame && latestFrame && activeFrame.id === latestFrame.id)
@@ -1031,6 +1163,8 @@ export function RadarApp() {
     ? 'DATA UNAVAILABLE'
     : isHistorical
       ? 'HISTORICAL'
+    : livePollingConfigured && pollingControl?.enabled === false
+      ? 'ARCHIVE MODE'
     : !isLatest
       ? 'PLAYBACK'
       : latestAge === null || latestAge <= 8
@@ -1057,6 +1191,60 @@ export function RadarApp() {
         })
     })
     return () => { cancelled = true }
+  }, [historyRefreshNonce])
+
+  useEffect(() => {
+    if (!historyJobStatus || historyJobStatus.status === 'complete' || historyJobStatus.status === 'failed' || !RADAR_CONTROL_API_URL) return
+    let cancelled = false
+    const token = controlTokenFromSession()
+    if (!token) return
+    const poll = async () => {
+      try {
+        const next = await fetchHistoryJobStatus(historyJobStatus.job_id, token)
+        if (cancelled) return
+        setHistoryJobStatus(next)
+        if (next.status === 'complete') {
+          setHistoryRefreshNonce((value) => value + 1)
+          if (next.dataset_id) {
+            setSourceId('krax')
+            setDatasetId(next.dataset_id)
+          }
+        }
+      } catch (error: unknown) {
+        if (!cancelled) setHistoryRequestError(error instanceof Error ? error.message : 'Historical job status unavailable')
+      }
+    }
+    const timer = window.setInterval(() => { void poll() }, 10_000)
+    void poll()
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [historyJobStatus])
+
+  useEffect(() => {
+    if (!RADAR_CONTROL_API_URL) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const state = await fetchPollingControlStatus()
+        if (!cancelled) {
+          setPollingControl(state)
+          setPollingControlError(null)
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setPollingControl(null)
+          setPollingControlError(error instanceof Error ? error.message : 'Polling control unavailable')
+        }
+      }
+    }
+    void load()
+    const refresh = window.setInterval(() => { void load() }, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(refresh)
+    }
   }, [])
 
   useEffect(() => {
@@ -1115,12 +1303,13 @@ export function RadarApp() {
       }
     }
     void load()
-    const refresh = datasetId === 'live' ? window.setInterval(() => { void load() }, RADAR_POLL_INTERVAL_MS) : null
+    const shouldPollLiveManifest = datasetId === 'live' && (!livePollingConfigured || pollingControl?.enabled === true)
+    const refresh = shouldPollLiveManifest ? window.setInterval(() => { void load() }, RADAR_POLL_INTERVAL_MS) : null
     return () => {
       cancelled = true
       if (refresh !== null) window.clearInterval(refresh)
     }
-  }, [datasetId, historyCatalog, productId, sourceId])
+  }, [datasetId, historyCatalog, livePollingConfigured, pollingControl?.enabled, productId, sourceId])
 
   useEffect(() => {
     if (!playing || frames.length < 2) return
@@ -1519,6 +1708,48 @@ export function RadarApp() {
     setLayers((current) => ({ ...current, [key]: !current[key] }))
   }
 
+  const changePollingState = async (enabled: boolean) => {
+    if (!RADAR_CONTROL_API_URL || pollingControlBusy) return
+    const token = promptForControlToken()
+    if (!token) return
+    setPollingControlBusy(true)
+    setPollingControlError(null)
+    try {
+      const state = await updatePollingControl(enabled, token)
+      setPollingControl(state)
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        try { window.sessionStorage.removeItem(CONTROL_TOKEN_SESSION_KEY) } catch { /* best effort */ }
+      }
+      setPollingControlError(error instanceof Error ? error.message : 'Polling control update failed')
+    } finally {
+      setPollingControlBusy(false)
+    }
+  }
+
+  const requestHistoricalLoop = async () => {
+    if (!RADAR_CONTROL_API_URL || historyRequestBusy) return
+    const token = promptForControlToken()
+    if (!token) return
+    setHistoryRequestBusy(true)
+    setHistoryRequestError(null)
+    try {
+      const next = await requestHistoryJob({
+        start: easternInputToIso(historyStart),
+        end: easternInputToIso(historyEnd),
+        max_frames: 30,
+      }, token)
+      setHistoryJobStatus(next)
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        try { window.sessionStorage.removeItem(CONTROL_TOKEN_SESSION_KEY) } catch { /* best effort */ }
+      }
+      setHistoryRequestError(error instanceof Error ? error.message : 'Historical job request failed')
+    } finally {
+      setHistoryRequestBusy(false)
+    }
+  }
+
   return (
     <div className="radar-app" data-build-sha={BUILD_SHA}>
       <header className="radar-header">
@@ -1551,7 +1782,7 @@ export function RadarApp() {
         <div ref={mapContainer} className="radar-map" aria-label="Interactive North Carolina radar map" />
 
         <div className="radar-map-badge">
-          <span>{sourceLabel} {isHistorical ? 'archive' : 'live'}</span>
+          <span>{sourceLabel} {isHistorical || (livePollingConfigured && pollingControl?.enabled === false) ? 'archive mode' : 'live'}</span>
           <span className="radar-badge-divider" />
           <span>{selectedProduct?.label ?? 'Composite Reflectivity'}</span>
         </div>
@@ -1682,6 +1913,43 @@ export function RadarApp() {
           {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
           {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
           {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Native KRAX Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}
+
+          <section className="radar-polling-control" aria-label="Live radar feed control">
+            <div>
+              <span className="radar-layer-section-heading">Live Level II feed</span>
+              <strong>{!livePollingConfigured ? 'Control not configured' : pollingControl?.enabled ? '5-minute polling enabled' : 'Archive mode · polling off'}</strong>
+              <small>{!livePollingConfigured ? 'Set VITE_RADAR_CONTROL_API_URL after deploying the control Worker.' : 'Archive browsing and GIF generation remain available either way.'}</small>
+            </div>
+            <button
+              type="button"
+              className={`radar-polling-toggle ${pollingControl?.enabled ? 'enabled' : ''}`}
+              aria-pressed={pollingControl?.enabled === true}
+              disabled={!livePollingConfigured || pollingControlBusy || pollingControl === null}
+              onClick={() => { void changePollingState(pollingControl?.enabled !== true) }}
+            >
+              {pollingControlBusy ? 'Saving…' : pollingControl?.enabled ? 'Turn off' : 'Turn on'}
+            </button>
+          </section>
+          {pollingControlError && <p className="radar-field-note error">Live feed control: {pollingControlError}</p>}
+
+          <section className="radar-history-request" aria-label="Historical KRAX radar request">
+            <div className="radar-layer-section-heading">Historical GIF maker <small>KRAX Level II · Eastern Time</small></div>
+            <div className="radar-history-fields">
+              <label>Start<input type="datetime-local" value={historyStart} onChange={(event) => setHistoryStart(event.target.value)} /></label>
+              <label>End<input type="datetime-local" value={historyEnd} onChange={(event) => setHistoryEnd(event.target.value)} /></label>
+            </div>
+            <button
+              type="button"
+              className="radar-history-request-button"
+              disabled={!livePollingConfigured || historyRequestBusy || !historyStart || !historyEnd}
+              onClick={() => { void requestHistoricalLoop() }}
+            >
+              {historyRequestBusy ? 'Starting job…' : 'Generate historical loop'}
+            </button>
+            {!livePollingConfigured && <p className="radar-field-note">The Cloud Run admin service is not configured in this build.</p>}
+            {historyJobStatus && <p className={`radar-field-note ${historyJobStatus.status === 'failed' ? 'error' : ''}`} role="status">History job {historyJobStatus.status}{historyJobStatus.message ? ` · ${historyJobStatus.message}` : ''}</p>}
+            {historyRequestError && <p className="radar-field-note error">Historical job: {historyRequestError}</p>}
+          </section>
 
           <div className="radar-layer-list">
             <div className="radar-layer-section-heading">Storm analysis <small>latest generated analysis</small></div>

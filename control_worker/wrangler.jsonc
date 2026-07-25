@@ -1,0 +1,23 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "wallcloud-radar-control",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-25",
+	"workers_dev": true,
+	"r2_buckets": [
+		{
+			"binding": "CONTROL_BUCKET",
+			"bucket_name": "wallcloud-radar-data"
+		},
+		{
+			"bucket_name": "wallcloud-radar-data",
+			"binding": "wallcloud_radar_data",
+			"remote": true
+		}
+	],
+	"vars": {
+    "ALLOWED_ORIGIN": "https://radar.wall.cloud",
+    "CONTROL_OBJECT_KEY": "control/polling.json",
+    "ADMIN_SERVICE_URL": ""
+	}
+}

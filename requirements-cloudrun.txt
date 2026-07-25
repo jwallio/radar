@@ -1,0 +1,7 @@
+# Cloud Run Jobs and the scale-to-zero administrator service.
+-r requirements-nexrad.txt
+boto3>=1.35,<2
+Flask>=3.1,<4
+gunicorn>=23,<24
+google-auth>=2.40,<3
+requests>=2.32,<3

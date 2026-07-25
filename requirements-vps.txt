@@ -1,0 +1,3 @@
+# Long-lived VPS worker dependencies.
+-r requirements-nexrad.txt
+boto3>=1.35,<2

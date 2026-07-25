@@ -43,6 +43,97 @@ The browser never downloads or decodes full MRMS GRIB2 or NEXRAD Level II files.
 
 The ingestion layer is intentionally separate from the frontend. It can later move to Cloud Run, a small VPS, a scheduled worker, or object storage without changing the MapLibre client.
 
+## Historical-first Cloud Run deployment
+
+The recommended production architecture is now Cloud Run Jobs plus Cloudflare R2. GitHub Pages remains the static frontend, while `cloudrun/` contains a Py-ART/ecCodes container with separate historical and live KRAX jobs. Historical jobs are requested with bounded Eastern Time ranges and upload frames, branded GIFs, manifests, and job status to R2. The live Scheduler job is paused by default and is resumed only by the administrator control path during severe weather.
+
+Cloud Run Jobs are not public HTTP servers; the Scheduler calls the authenticated Cloud Run Jobs API, and the scale-to-zero admin service handles historical execution requests and Scheduler pause/resume. See [`cloudrun/README.md`](cloudrun/README.md) for the Google Cloud setup, Secret Manager requirements, job commands, and operational checks.
+
+## Stable VPS + Cloudflare R2 ingestion
+
+GitHub Actions is not the radar clock. For dependable five-minute polling, run the existing Python processors on an always-on Ubuntu VPS and publish only the generated browser assets to Cloudflare R2. GitHub Pages can continue serving the frontend; the browser then reads manifests and frames from the R2 custom domain.
+
+```text
+NOAA MRMS + Unidata KRAX
+          |
+          v
+  2 GB Ubuntu VPS
+  systemd timer every 5 minutes
+  Py-ART/cfgrib renderers
+          |
+          v
+  R2 upload assets first
+  publish manifests last
+          |
+          v
+  data.radar.wall.cloud
+          |
+          v
+  radar.wall.cloud frontend
+```
+
+The worker is `scripts/refresh_radar_worker.py`. It uses an OS lock so overlapping runs exit safely, keeps MRMS and KRAX failures independent, writes a small `worker-status.json`, uploads live assets to R2, publishes manifests last, and prunes only old live frames. Historical catalogs are refreshed, but historical frame payloads are intentionally left for the standalone publisher so the five-minute timer does not retransmit an archive on every run.
+
+### Cloudflare R2 setup
+
+Create one private R2 bucket and a scoped API token with Object Read & Write for that bucket. Add a custom R2 domain such as `data.radar.wall.cloud` in Cloudflare. The R2 custom domain should allow `GET`/`HEAD` requests from `https://radar.wall.cloud`; the public read path is the custom domain, not the S3 credential endpoint. R2 is S3-compatible, uses `region=auto`, and has no egress charge; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) for storage and request charges.
+
+Configure the bucket CORS policy from `deploy/vps/r2-cors.json` using the R2 dashboard or the S3-compatible API. If using AWS CLI, the equivalent command is:
+
+```bash
+aws s3api put-bucket-cors \
+  --bucket wallcloud-radar-data \
+  --endpoint-url "https://ACCOUNT_ID.r2.cloudflarestorage.com" \
+  --cors-configuration file://deploy/vps/r2-cors.json
+```
+
+The frontend uses `VITE_RADAR_DATA_BASE_URL` at build time. Set the repository variable `RADAR_DATA_BASE_URL` to `https://data.radar.wall.cloud/` under GitHub Settings → Secrets and variables → Actions → Variables, then run the normal Pages deployment once. The VPS never needs to rebuild or redeploy the frontend after that. The URL is public configuration, so it is a repository variable rather than a secret.
+
+### Cost-safe live feed control
+
+The five-minute VPS timer and live feed are separate from archive browsing and GIF generation. The timer can remain installed while ingestion is disabled; each run checks a protected Cloudflare Worker before starting MRMS or KRAX processing. A missing control state defaults to **off**, and an unavailable configured control endpoint fails closed.
+
+Deploy the control Worker from `control_worker/`:
+
+```powershell
+cd control_worker
+npm install
+npx wrangler login
+npx wrangler secret put POLLING_CONTROL_TOKEN
+npx wrangler deploy
+```
+
+Use the resulting Worker origin, or a custom domain such as `https://control.radar.wall.cloud`, for both settings:
+
+- GitHub Actions/Pages repository variable `RADAR_CONTROL_API_URL` — optional public Worker origin, without `/control`; the currently deployed `workers.dev` origin is the frontend default.
+- `/etc/wallcloud-radar.env` value `RADAR_CONTROL_STATUS_URL` — the same origin plus `/control/status`.
+
+After rebuilding the frontend, open **Layers → Live Level II feed**. Enter the control key once; it is kept only in that browser session. **Turn on** starts the next five-minute VPS run, and **Turn off** returns the worker to archive mode. The control key is never bundled into the public site.
+
+### Ubuntu VPS setup
+
+The lowest-maintenance path is a 2 GB Ubuntu VPS with a persistent disk. From the cloned repository on the VPS:
+
+```bash
+sudo bash deploy/vps/install-ubuntu.sh
+sudoedit /etc/wallcloud-radar.env
+sudo systemctl start wallcloud-radar-refresh.service
+sudo systemctl status wallcloud-radar-refresh.service
+journalctl -u wallcloud-radar-refresh.service -f
+```
+
+The install script creates `/opt/wallcloud-radar/.venv`, installs `requirements-vps.txt` including Py-ART and boto3, adds a 2 GB swapfile to protect the small VPS during Py-ART/GRIB processing, and installs the systemd service/timer. The timer is enabled, but production ingestion remains off until the control Worker state is turned on. The service runs as an unprivileged `wallcloud` user. Before starting it, replace the R2 and `RADAR_CONTROL_STATUS_URL` values in `/etc/wallcloud-radar.env`; do not commit that file or put its credentials in frontend `VITE_*` variables.
+
+Useful maintenance commands:
+
+```bash
+systemctl list-timers wallcloud-radar-refresh.timer
+systemctl start wallcloud-radar-refresh.service
+journalctl -u wallcloud-radar-refresh.service --since '30 minutes ago'
+```
+
+The deployment files are under `deploy/vps/`. Use `scripts/publish_radar_to_r2.py --dry-run` to inspect the object keys before uploading. The worker publishes live contents from `public/data`, so the dedicated bucket contains `radar/` and `observations/` beneath its custom-domain root. Run the standalone publisher after generating a historical pack to upload its frame payloads.
+
 ## Official sources and attribution
 
 Radar data comes from official public NOAA/NCEP/Unidata sources:
@@ -214,10 +305,13 @@ Manifests include product status, valid times, relative frame URLs, bounds, sour
 - `radar_processing/nexrad_rendering.py` — Py-ART Level II decode and geographic projection.
 - `radar_processing/nexrad_pipeline.py` — KRAX rendering, rotation, manifests, and branded loops.
 - `radar_processing/animation.py` — shared branded GIF composition.
+- `radar_processing/r2.py` — R2-compatible upload ordering, cache headers, and live-frame pruning.
 - `scripts/build_radar_frames.py` — recent MRMS CLI.
 - `scripts/build_historical_radar.py` — historical MRMS CLI.
 - `scripts/build_krax_radar.py` — recent KRAX CLI.
 - `scripts/build_historical_krax.py` — historical KRAX CLI.
+- `scripts/refresh_radar_worker.py` — locked VPS refresh and R2 publish worker.
+- `scripts/publish_radar_to_r2.py` — standalone R2 publisher/dry-run tool.
 - `tests/` — Python pipeline tests.
 - `.github/workflows/` — CI, Pages, scheduled refresh, and historical build workflows.
 
@@ -297,9 +391,9 @@ npm run build
 - Py-ART/ecCodes has a larger native dependency footprint than the MRMS renderer. GitHub Actions Linux is the reference deployment environment if a Windows Python distribution lacks compatible wheels.
 - MRMS storm-analysis layers are latest-analysis overlays, not historical animated products.
 - Historical packs are generated selections; anonymous visitors cannot request arbitrary archive dates from static GitHub Pages.
-- GitHub Actions is not a guaranteed real-time scheduler. A persistent worker and object storage are recommended for lower latency and permanent history.
+- GitHub Actions is not a guaranteed real-time scheduler. Cloud Run Jobs plus R2 are the recommended production ingestion path; the VPS/R2 files remain as a fallback for local or emergency processing, and GitHub Actions remains useful for source deployment.
 - External CARTO, Census, NWS, and NDBC services can be rate-limited or temporarily unavailable. The viewer reports degraded states where possible.
 
 ## Future migration path
 
-The frontend only needs manifests and raster URLs. A future scheduled worker can run the existing Python processors on Cloud Run, a small VPS, or a container worker, then upload frames, loops, manifests, and history catalogs to Cloudflare R2, S3-compatible storage, or a CDN. The MapLibre viewer and playback controls can remain unchanged.
+The frontend only needs manifests and raster URLs. The current Cloud Run jobs can later move to a small VPS, Cloud Run replacement, scheduled container worker, or another S3-compatible object store without changing the MapLibre viewer and playback controls.

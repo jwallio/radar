@@ -1,0 +1,21 @@
+[Unit]
+Description=Wall Cloud radar refresh and R2 publish
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wallcloud
+Group=wallcloud
+WorkingDirectory=/opt/wallcloud-radar
+EnvironmentFile=/etc/wallcloud-radar.env
+ExecStart=/opt/wallcloud-radar/.venv/bin/python /opt/wallcloud-radar/scripts/refresh_radar_worker.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=25min
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

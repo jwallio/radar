@@ -19,6 +19,21 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  control-worker-typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control_worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: control_worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -45,3 +60,4 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest -q
+      - run: python -m py_compile radar_processing/r2.py radar_processing/control.py scripts/run_cloud_run_live.py scripts/run_cloud_run_historical.py cloudrun/admin_service.py

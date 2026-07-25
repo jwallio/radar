@@ -79,6 +79,8 @@ jobs:
         env:
           VITE_BASE_PATH: /
           VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_RADAR_DATA_BASE_URL: ${{ vars.RADAR_DATA_BASE_URL }}
+          VITE_RADAR_CONTROL_API_URL: ${{ vars.RADAR_CONTROL_API_URL }}
         run: npm run build
 
       - name: Verify this run is still current main

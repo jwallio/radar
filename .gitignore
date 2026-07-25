@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.wrangler/
+control_worker/.wrangler-config/
+control_worker/.wrangler-*/
 dist
 dist-ssr
 *.local
@@ -40,6 +43,7 @@ public/data/radar/loops/*
 public/data/radar/history/*
 !public/data/radar/history/.gitkeep
 !public/data/radar/history/catalog.json
+public/data/radar/worker-status.json
 public/data/radar/krax/frames/*
 !public/data/radar/krax/frames/.gitkeep
 public/data/radar/krax/loops/*

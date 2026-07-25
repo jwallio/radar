@@ -101,7 +101,6 @@ export default {
       }
     }
     if (request.method === 'GET' && isHistoryItem) {
-      if (!hasValidToken(request, env)) return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
       const proxied = await proxyAdmin(env, url.pathname, 'GET')
       return jsonResponse(request, env, proxied.body, proxied.status)
     }
@@ -109,8 +108,10 @@ export default {
       return jsonResponse(request, env, { error: 'Method not allowed' }, 405)
     }
     if (request.headers.get('Origin') && !allowedOrigin(request, env)) return jsonResponse(request, env, { error: 'Origin not allowed' }, 403)
-    if (!hasValidToken(request, env)) return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
-    let payload: { enabled?: unknown }
+    if (url.pathname === '/control/polling' && !hasValidToken(request, env)) {
+      return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
+    }
+    let payload: { enabled?: unknown; source?: unknown; start?: unknown; end?: unknown; max_frames?: unknown }
     try {
       payload = await request.json<{ enabled?: unknown }>()
     } catch {

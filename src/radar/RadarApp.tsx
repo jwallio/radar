@@ -167,10 +167,10 @@ function easternInputToIso(value: string): string {
   return corrected.toISOString()
 }
 
-async function requestHistoryJob(payload: { start: string; end: string; max_frames: number }, token: string): Promise<HistoryJobStatus> {
+async function requestHistoryJob(payload: { start: string; end: string; max_frames: number }): Promise<HistoryJobStatus> {
   const response = await fetch(`${RADAR_CONTROL_API_URL}/history/jobs`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source: 'krax', ...payload }),
   })
   const result = await response.json() as HistoryJobStatus & { error?: string }
@@ -178,9 +178,8 @@ async function requestHistoryJob(payload: { start: string; end: string; max_fram
   return result
 }
 
-async function fetchHistoryJobStatus(jobId: string, token: string): Promise<HistoryJobStatus> {
+async function fetchHistoryJobStatus(jobId: string): Promise<HistoryJobStatus> {
   const response = await fetch(`${RADAR_CONTROL_API_URL}/history/jobs/${encodeURIComponent(jobId)}`, {
-    headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })
   const result = await response.json() as HistoryJobStatus & { error?: string }
@@ -1196,11 +1195,9 @@ export function RadarApp() {
   useEffect(() => {
     if (!historyJobStatus || historyJobStatus.status === 'complete' || historyJobStatus.status === 'failed' || !RADAR_CONTROL_API_URL) return
     let cancelled = false
-    const token = controlTokenFromSession()
-    if (!token) return
     const poll = async () => {
       try {
-        const next = await fetchHistoryJobStatus(historyJobStatus.job_id, token)
+        const next = await fetchHistoryJobStatus(historyJobStatus.job_id)
         if (cancelled) return
         setHistoryJobStatus(next)
         if (next.status === 'complete') {
@@ -1729,8 +1726,6 @@ export function RadarApp() {
 
   const requestHistoricalLoop = async () => {
     if (!RADAR_CONTROL_API_URL || historyRequestBusy) return
-    const token = promptForControlToken()
-    if (!token) return
     setHistoryRequestBusy(true)
     setHistoryRequestError(null)
     try {
@@ -1738,12 +1733,9 @@ export function RadarApp() {
         start: easternInputToIso(historyStart),
         end: easternInputToIso(historyEnd),
         max_frames: 30,
-      }, token)
+      })
       setHistoryJobStatus(next)
     } catch (error: unknown) {
-      if (error instanceof Error && error.message.includes('Unauthorized')) {
-        try { window.sessionStorage.removeItem(CONTROL_TOKEN_SESSION_KEY) } catch { /* best effort */ }
-      }
       setHistoryRequestError(error instanceof Error ? error.message : 'Historical job request failed')
     } finally {
       setHistoryRequestBusy(false)
@@ -1933,7 +1925,7 @@ export function RadarApp() {
           {pollingControlError && <p className="radar-field-note error">Live feed control: {pollingControlError}</p>}
 
           <section className="radar-history-request" aria-label="Historical KRAX radar request">
-            <div className="radar-layer-section-heading">Historical GIF maker <small>KRAX Level II · Eastern Time</small></div>
+            <div className="radar-layer-section-heading">Historical GIF maker <small>KRAX Level II · Eastern Time · no key required</small></div>
             <div className="radar-history-fields">
               <label>Start<input type="datetime-local" value={historyStart} onChange={(event) => setHistoryStart(event.target.value)} /></label>
               <label>End<input type="datetime-local" value={historyEnd} onChange={(event) => setHistoryEnd(event.target.value)} /></label>

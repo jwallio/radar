@@ -29,7 +29,7 @@ Create a dedicated service account. It needs only the permissions required to ru
 ```powershell
 $serviceAccount = "wallcloud-radar-control@$project.iam.gserviceaccount.com"
 gcloud iam service-accounts create wallcloud-radar-control --display-name="Wall Cloud radar control"
-gcloud iam roles create wallcloudRadarControl --project=$project --title="Wall Cloud radar control" --permissions="cloudscheduler.jobs.pause,cloudscheduler.jobs.resume,run.jobs.run" --stage=GA
+gcloud iam roles create wallcloudRadarControl --project=$project --title="Wall Cloud radar control" --permissions="cloudscheduler.jobs.pause,cloudscheduler.jobs.enable,run.jobs.run" --stage=GA
 gcloud projects add-iam-policy-binding $project --member="serviceAccount:$serviceAccount" --role="projects/$project/roles/wallcloudRadarControl"
 gcloud projects add-iam-policy-binding $project --member="serviceAccount:$serviceAccount" --role="roles/secretmanager.secretAccessor"
 ```

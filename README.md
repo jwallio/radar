@@ -339,9 +339,9 @@ Enable Pages in the repository settings with **GitHub Actions** as the build sou
 
 ### Scheduled radar refresh
 
-`.github/workflows/radar-refresh.yml` targets approximately every five minutes. GitHub Actions schedules are best-effort and are not guaranteed real-time ingestion.
+`.github/workflows/radar-refresh.yml` is now manual-only. Cloud Run Scheduler owns the production five-minute live path and remains paused by default; use this workflow only for an intentional manual Pages refresh or recovery.
 
-Each refresh:
+Each manual refresh:
 
 1. Restores cached historical packs.
 2. Installs MRMS and Py-ART/NEXRAD dependencies.

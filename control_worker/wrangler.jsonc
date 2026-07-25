@@ -18,6 +18,6 @@
 	"vars": {
     "ALLOWED_ORIGIN": "https://radar.wall.cloud",
     "CONTROL_OBJECT_KEY": "control/polling.json",
-    "ADMIN_SERVICE_URL": ""
+    "ADMIN_SERVICE_URL": "https://wallcloud-radar-admin-o76krwi72a-ue.a.run.app"
 	}
 }

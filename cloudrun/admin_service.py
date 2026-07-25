@@ -86,8 +86,8 @@ def _write_polling_state(enabled: bool) -> None:
     )
 
 
-@app.get("/healthz")
-def healthz():
+@app.get("/health")
+def health():
     return jsonify({"ok": True, "service": "wallcloud-radar-admin"})
 
 

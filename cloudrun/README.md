@@ -115,7 +115,7 @@ gcloud run deploy wallcloud-radar-admin `
   --set-secrets ADMIN_SERVICE_TOKEN=wallcloud-admin-token:latest,R2_ACCESS_KEY_ID=wallcloud-r2-access-key:latest,R2_SECRET_ACCESS_KEY=wallcloud-r2-secret-key:latest
 ```
 
-Copy the service URL into the Cloudflare Worker as `ADMIN_SERVICE_URL`, and set the Worker secret `ADMIN_SERVICE_TOKEN` to the same value stored in Secret Manager. Redeploy the Worker. The public site continues to use only the Worker URL and the administrator enters the existing `POLLING_CONTROL_TOKEN` in the browser.
+Test the service with `curl "$ADMIN_SERVICE_URL/health"`. Then copy the service URL into the Cloudflare Worker as `ADMIN_SERVICE_URL`, and set the Worker secret `ADMIN_SERVICE_TOKEN` to the same value stored in Secret Manager. Redeploy the Worker. The public site continues to use only the Worker URL and the administrator enters the existing `POLLING_CONTROL_TOKEN` in the browser.
 
 ## Test and operate
 

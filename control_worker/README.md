@@ -13,6 +13,8 @@ Storm focus accepts one region only. A new selection replaces the previous regio
 
 ## Deploy
 
+Wrangler 4 requires Node.js 22 or newer.
+
 From PowerShell:
 
 ```powershell

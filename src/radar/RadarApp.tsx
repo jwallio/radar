@@ -2483,7 +2483,7 @@ export function RadarApp() {
               <span className="radar-panel-kicker">Timeline</span>
               <strong>{activeFrame ? formatEasternDateTime(activeFrame.valid_time) : 'No frame selected'}</strong>
             </div>
-            <span className="radar-frame-count">{frames.length ? `${activeIndex + 1} / ${frames.length}` : '0 frames'}</span>
+            <span className="radar-frame-count">{frames.length === 1 ? '1 frame · waiting' : frames.length ? `${activeIndex + 1} / ${frames.length}` : '0 frames'}</span>
           </div>
           <input
             className="radar-timeline-range"
@@ -2503,19 +2503,21 @@ export function RadarApp() {
           <div className="radar-control-row" data-playback-mode="observed" data-playback-fps={playbackFps}>
             <div className="radar-transport-control">
               <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>‹ <span>Previous</span></button>
-              <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
+              <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2} title={frames.length < 2 ? 'Waiting for at least two radar frames' : undefined}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
               <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
             </div>
             <div className="radar-playback-options">
               <span className="radar-observed-badge" title={`Playback displays exact observed ${sourceLabel} frames`}>Observed</span>
               <span className="radar-fps-label">FPS</span>
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
-                {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
+                {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} disabled={frames.length < 2} onClick={() => setPlaybackFps(value)}>{value}</button>)}
               </div>
               <select
                 className="radar-mobile-speed-control"
                 aria-label="Playback rate in frames per second"
                 value={playbackFps}
+                disabled={frames.length < 2}
+                title={frames.length < 2 ? 'Waiting for at least two radar frames' : undefined}
                 onChange={(event) => setPlaybackFps(Number(event.target.value) as (typeof PLAYBACK_FPS_OPTIONS)[number])}
               >
                 {PLAYBACK_FPS_OPTIONS.map((value) => <option key={value} value={value}>{value} fps</option>)}

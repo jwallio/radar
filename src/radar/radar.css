@@ -288,16 +288,13 @@
   .radar-observed-badge, .radar-fps-label { display: none; }
   .radar-speed-control { display: none; }
   .radar-mobile-speed-control { display: block; width: 60px; min-width: 60px; min-height: 44px; padding: 7px 3px; border: 1px solid rgba(156, 201, 205, .48); border-radius: 6px; background: #0c2630; color: #eaf7f5; font-size: 15px; }
+  .radar-mobile-speed-control:disabled { opacity: .56; cursor: not-allowed; }
   .radar-download-button { min-width: 64px; min-height: 44px; padding-inline: 5px; border-color: rgba(211,196,255,.66); background: rgba(100,74,149,.48); }
   .radar-static-download { position: absolute; top: 5px; right: 38px; display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 5px; font-size: 8px; }
   .radar-download-unavailable { margin-left: auto; text-align: center; }
   .radar-timeline.single-frame .radar-timeline-range,
-  .radar-timeline.single-frame .radar-timeline-endpoints,
-  .radar-timeline.single-frame .radar-transport-control,
-  .radar-timeline.single-frame .radar-mobile-speed-control { display: none; }
+  .radar-timeline.single-frame .radar-timeline-endpoints { display: none; }
   .radar-timeline.single-frame .radar-control-row { margin-top: 5px; }
-  .radar-timeline.single-frame .radar-playback-options { width: 100%; }
-  .radar-timeline.single-frame .radar-download-button { width: 100%; }
 }
 
 @media (max-width: 932px) and (max-height: 500px) {
@@ -337,12 +334,8 @@
   .radar-mobile-speed-control { display: block; width: 66px; min-width: 66px; min-height: 44px; padding: 7px 5px; border: 1px solid rgba(156, 201, 205, .48); border-radius: 6px; background: #0c2630; color: #eaf7f5; font-size: 16px; }
   .radar-download-button { min-width: 68px; min-height: 44px; }
   .radar-timeline.single-frame .radar-timeline-range,
-  .radar-timeline.single-frame .radar-timeline-endpoints,
-  .radar-timeline.single-frame .radar-transport-control,
-  .radar-timeline.single-frame .radar-mobile-speed-control { display: none; }
+  .radar-timeline.single-frame .radar-timeline-endpoints { display: none; }
   .radar-timeline.single-frame .radar-control-row { margin-top: 5px; }
-  .radar-timeline.single-frame .radar-playback-options { width: 100%; }
-  .radar-timeline.single-frame .radar-download-button { width: 100%; }
 }
 
 @media (max-width: 680px), (max-width: 932px) and (max-height: 500px) {

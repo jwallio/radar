@@ -83,17 +83,17 @@ def test_national_pmtiles_content_type_and_retention_prefixes() -> None:
     assert "radar/focus/previews/" in PRUNE_PREFIXES
 
 
-def test_incremental_pmtiles_build_bootstraps_latest_then_reuses_overlap() -> None:
+def test_incremental_pmtiles_build_bootstraps_short_loop_then_reuses_overlap() -> None:
     frames = [
         RemoteFrame(
             valid_time=datetime(2026, 7, 27, 18, minute, 41, tzinfo=timezone.utc),
             filename=f"frame-{minute}.grib2.gz",
             url=f"https://mrms.ncep.noaa.gov/frame-{minute}.grib2.gz",
         )
-        for minute in (24, 26, 28)
+        for minute in (20, 22, 24, 26, 28)
     ]
 
-    assert select_incremental_frames(frames, None) == frames[-1:]
+    assert select_incremental_frames(frames, None) == frames[-3:]
     assert select_incremental_frames(
         frames,
         {
@@ -113,7 +113,7 @@ def test_incremental_pmtiles_build_bootstraps_latest_then_reuses_overlap() -> No
                 }
             }
         },
-    ) == frames[-1:]
+    ) == frames[-3:]
 
 
 def test_national_manifest_reuses_retained_pmtiles_without_rerendering(tmp_path: Path) -> None:

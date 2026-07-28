@@ -78,8 +78,11 @@
 .radar-map-area { position: absolute; inset: calc(var(--radar-header-height) + var(--radar-safe-top)) 0 0; overflow: hidden; }
 .radar-map { position: absolute; inset: 0; background: #e5edf4; }
 .radar-map .maplibregl-ctrl-group { overflow: hidden; border: 1px solid rgba(147, 182, 190, .24); border-radius: 7px; background: rgba(12, 23, 30, .86); box-shadow: 0 3px 12px rgba(0,0,0,.2); }
+.radar-map .maplibregl-ctrl-group button + button { border-top-color: rgba(210, 231, 232, .28); }
+.radar-map .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon, .radar-map .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon { filter: brightness(0) invert(1); }
 .radar-map .maplibregl-ctrl button { width: 29px; height: 29px; }
 .radar-map .maplibregl-ctrl-attrib { max-width: 260px; border: 1px solid rgba(147, 182, 190, .24); border-radius: 7px; background: rgba(9, 18, 24, .92); color: #b5c7ca; font-size: 9px; box-shadow: 0 3px 12px rgba(0,0,0,.2); }
+.radar-map .maplibregl-ctrl-attrib-button { background-position: center; background-repeat: no-repeat; background-size: 24px 24px; }
 .radar-map .maplibregl-ctrl-attrib a { color: #a8c9c8; }
 .radar-map-badge { position: absolute; top: 16px; left: max(18px, var(--radar-safe-left)); z-index: 4; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid rgba(153, 190, 194, .24); border-radius: 6px; background: rgba(9, 19, 25, .76); color: #e2edeb; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(8px); }
 .radar-map-badge > span:first-child { color: var(--radar-accent); font-weight: 800; }

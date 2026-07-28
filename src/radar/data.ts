@@ -1,9 +1,8 @@
 import {
   CENSUS_GEOGRAPHY_BASE,
-  CENSUS_QUERY_GEOMETRY,
   CENSUS_TRANSPORTATION_BASE,
-  NWS_MARINE_EVENT,
   NWS_ALERT_AREAS,
+  NATIONAL_BOUNDS,
   REGIONAL_BOUNDS,
   WARNING_EVENTS,
 } from './config'
@@ -144,46 +143,18 @@ function toWarning(feature: NwsAlertFeature, fallbackId: string, sourceUrl: stri
   }
 }
 
-function geometryIntersectsRegion(geometry: GeoJSON.Geometry): boolean {
-  const positions: Array<[number, number]> = []
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return
-    if (typeof value[0] === 'number' && typeof value[1] === 'number') {
-      positions.push([Number(value[0]), Number(value[1])])
-      return
-    }
-    value.forEach(collect)
-  }
-  const collectGeometry = (value: GeoJSON.Geometry) => {
-    if (value.type === 'GeometryCollection') value.geometries.forEach(collectGeometry)
-    else collect(value.coordinates)
-  }
-  collectGeometry(geometry)
-  if (!positions.length) return false
-  const longitudes = positions.map(([longitude]) => longitude)
-  const latitudes = positions.map(([, latitude]) => latitude)
-  return Math.max(...longitudes) >= REGIONAL_BOUNDS[0]
-    && Math.min(...longitudes) <= REGIONAL_BOUNDS[2]
-    && Math.max(...latitudes) >= REGIONAL_BOUNDS[1]
-    && Math.min(...latitudes) <= REGIONAL_BOUNDS[3]
-}
-
 export async function fetchRegionalWarnings(signal?: AbortSignal): Promise<WarningsResult> {
-  const requests = [
-    ...NWS_ALERT_AREAS.map((area) => ({ label: area, area, event: undefined })),
-    { label: 'marine', area: undefined, event: NWS_MARINE_EVENT },
-  ]
-  const results = await Promise.allSettled(requests.map(async ({ area, event }) => {
+  const requests = WARNING_EVENTS.map((event) => ({ label: event, event }))
+  const results = await Promise.allSettled(requests.map(async ({ event }) => {
     const url = new URL('https://api.weather.gov/alerts/active')
     url.searchParams.set('status', 'actual')
     url.searchParams.set('message_type', 'alert')
-    if (area) url.searchParams.set('area', area)
-    if (event) url.searchParams.set('event', event)
+    url.searchParams.set('event', event)
     const payload = await fetchJson<NwsAlertResponse>(url.toString(), signal)
     return {
       url: url.toString(),
       warnings: (payload.features ?? [])
-        .map((feature, index) => toWarning(feature, `${area}-${index}`, url.toString()))
+        .map((feature, index) => toWarning(feature, `${event}-${index}`, url.toString()))
         .filter((warning): warning is RadarWarning => Boolean(warning)),
     }
   }))
@@ -196,9 +167,7 @@ export async function fetchRegionalWarnings(signal?: AbortSignal): Promise<Warni
       errors.push(`${request.label}: ${result.reason instanceof Error ? result.reason.message : 'request failed'}`)
       return
     }
-    result.value.warnings
-      .filter((warning) => request.label !== 'marine' || geometryIntersectsRegion(warning.geometry))
-      .forEach((warning) => warnings.set(warning.id, warning))
+    result.value.warnings.forEach((warning) => warnings.set(warning.id, warning))
   })
   return {
     warnings: Array.from(warnings.values()).sort((a, b) => (a.expires ?? '').localeCompare(b.expires ?? '')),
@@ -207,10 +176,15 @@ export async function fetchRegionalWarnings(signal?: AbortSignal): Promise<Warni
   }
 }
 
-function censusQueryUrl(base: string, layer: number, outFields: string): string {
+function censusQueryUrl(
+  base: string,
+  layer: number,
+  outFields: string,
+  bounds: readonly [number, number, number, number],
+): string {
   const params = new URLSearchParams({
     where: '1=1',
-    geometry: CENSUS_QUERY_GEOMETRY,
+    geometry: bounds.join(','),
     geometryType: 'esriGeometryEnvelope',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
@@ -222,19 +196,30 @@ function censusQueryUrl(base: string, layer: number, outFields: string): string 
   return `${base}/${layer}/query?${params.toString()}`
 }
 
-export async function fetchRegionalGeography(signal?: AbortSignal): Promise<{
+export async function fetchRegionalGeography(
+  signal?: AbortSignal,
+  countyBounds: readonly [number, number, number, number] | null = NATIONAL_BOUNDS,
+): Promise<{
   states: GeoJSON.FeatureCollection
   counties: GeoJSON.FeatureCollection
 }> {
   const [states, counties] = await Promise.all([
-    fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_GEOGRAPHY_BASE, 7, 'NAME,STATE'), signal),
-    fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_GEOGRAPHY_BASE, 12, 'NAME,STATE,COUNTY'), signal),
+    fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_GEOGRAPHY_BASE, 7, 'NAME,STATE', NATIONAL_BOUNDS), signal),
+    countyBounds
+      ? fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_GEOGRAPHY_BASE, 12, 'NAME,STATE,COUNTY', countyBounds), signal)
+      : Promise.resolve(emptyFeatureCollection()),
   ])
   return { states, counties }
 }
 
-export async function fetchRegionalHighways(signal?: AbortSignal): Promise<GeoJSON.FeatureCollection> {
-  return fetchJson<GeoJSON.FeatureCollection>(censusQueryUrl(CENSUS_TRANSPORTATION_BASE, 0, 'NAME,BASENAME'), signal)
+export async function fetchRegionalHighways(
+  signal?: AbortSignal,
+  bounds: readonly [number, number, number, number] = REGIONAL_BOUNDS,
+): Promise<GeoJSON.FeatureCollection> {
+  return fetchJson<GeoJSON.FeatureCollection>(
+    censusQueryUrl(CENSUS_TRANSPORTATION_BASE, 0, 'NAME,BASENAME', bounds),
+    signal,
+  )
 }
 
 function quantityValue(quantity: NwsQuantity | null | undefined): number | null {

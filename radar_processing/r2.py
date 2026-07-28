@@ -8,9 +8,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-PUBLISH_LAST_NAMES = frozenset({"manifest.json", "catalog.json", "worker-status.json"})
+PUBLISH_LAST_NAMES = frozenset(
+    {"manifest.json", "catalog.json", "worker-status.json", "mrms-worker-status.json"}
+)
 PRUNE_PREFIXES = (
     "radar/frames/",
+    "radar/national/frames/",
+    "radar/national/previews/",
+    "radar/focus/frames/",
+    "radar/focus/previews/",
     "radar/krax/frames/",
     "radar/loops/",
     "radar/krax/loops/",
@@ -73,6 +79,7 @@ def content_type_for(path: Path) -> str:
         ".gif": "image/gif",
         ".json": "application/json; charset=utf-8",
         ".png": "image/png",
+        ".pmtiles": "application/vnd.pmtiles",
         ".webp": "image/webp",
     }
     return known.get(path.suffix.lower(), mimetypes.guess_type(path.name)[0] or "application/octet-stream")
@@ -134,22 +141,36 @@ def publish_directory(
     return uploaded
 
 
-def put_json_object(client: Any, config: R2PublishConfig, key: str, payload: dict[str, Any]) -> None:
+def put_json_object(
+    client: Any,
+    config: R2PublishConfig,
+    key: str,
+    payload: dict[str, Any],
+    *,
+    if_match: str | None = None,
+) -> None:
     """Write a small control/status JSON object with no local temporary file."""
     import json
 
     object_key_name = f"{_normalize_prefix(config.object_prefix)}{key.lstrip('/')}"
-    client.put_object(
-        Bucket=config.bucket,
-        Key=object_key_name,
-        Body=json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
-        ContentType="application/json; charset=utf-8",
-        CacheControl="no-store, max-age=0, must-revalidate",
-    )
+    request: dict[str, Any] = {
+        "Bucket": config.bucket,
+        "Key": object_key_name,
+        "Body": json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
+        "ContentType": "application/json; charset=utf-8",
+        "CacheControl": "no-store, max-age=0, must-revalidate",
+    }
+    if if_match:
+        request["IfMatch"] = if_match
+    client.put_object(**request)
 
 
-def get_json_object(client: Any, config: R2PublishConfig, key: str) -> dict[str, Any] | None:
-    """Read a small JSON object, returning None when it does not exist."""
+def get_json_object_with_etag(
+    client: Any,
+    config: R2PublishConfig,
+    key: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Read a small JSON object and its version tag, or two ``None`` values."""
     import json
 
     object_key_name = f"{_normalize_prefix(config.object_prefix)}{key.lstrip('/')}"
@@ -158,11 +179,25 @@ def get_json_object(client: Any, config: R2PublishConfig, key: str) -> dict[str,
     except Exception as exc:  # boto3 exposes provider-specific not-found exceptions.
         error = getattr(exc, "response", {}).get("Error", {})
         if error.get("Code") in {"NoSuchKey", "404", "NotFound"}:
-            return None
+            return None, None
         raise
     body = response["Body"].read()
     parsed = json.loads(body)
-    return parsed if isinstance(parsed, dict) else None
+    return (parsed if isinstance(parsed, dict) else None), response.get("ETag")
+
+
+def get_json_object(client: Any, config: R2PublishConfig, key: str) -> dict[str, Any] | None:
+    """Read a small JSON object, returning None when it does not exist."""
+    payload, _etag = get_json_object_with_etag(client, config, key)
+    return payload
+
+
+def is_precondition_failed(exc: Exception) -> bool:
+    """Return whether an S3-compatible write lost an ``If-Match`` race."""
+    response = getattr(exc, "response", {})
+    error = response.get("Error", {}) if isinstance(response, dict) else {}
+    metadata = response.get("ResponseMetadata", {}) if isinstance(response, dict) else {}
+    return error.get("Code") in {"PreconditionFailed", "412"} or metadata.get("HTTPStatusCode") == 412
 
 
 def _iter_old_keys(client: Any, config: R2PublishConfig, cutoff: datetime) -> Iterable[str]:

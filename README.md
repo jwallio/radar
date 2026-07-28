@@ -1,162 +1,110 @@
 # wall.cloud Radar
 
-wall.cloud Radar is a static-build-compatible North Carolina radar viewer for [radar.wall.cloud](https://radar.wall.cloud). It is designed as an operational meteorology tool: the radar remains dominant, controls stay compact, and the browser consumes prepared raster frames instead of decoding raw weather files.
+wall.cloud Radar is a national operational radar viewer and regional historical GIF maker for [radar.wall.cloud](https://radar.wall.cloud). The public default is the official NOAA/NCEP MRMS quality-controlled CONUS composite. An administrator can temporarily activate one higher-detail MRMS storm-focus region, while KRAX NEXRAD Level II remains available for archive work and optional live polling.
 
-The default map covers North Carolina, southern Virginia, eastern Tennessee, northern South Carolina, and nearby Atlantic waters.
+The browser never downloads or decodes GRIB2 or Level II files.
 
-## What it includes
+## Features
 
-- MRMS regional composite reflectivity with recent-frame animation.
-- KRAX-only NOAA NEXRAD Level II base reflectivity with recent completed-volume playback.
-- Historical MRMS and KRAX loops generated from official public archives.
-- Exact observed-frame playback with Previous, Play/Pause, Next, timeline scrubbing, and 2/4/8/20/30 FPS controls.
-- Product modes for Composite Reflectivity, MRMS PrecipFlag, one-hour MRMS rainfall, and KRAX Level II Base Reflectivity, Radial Velocity, and Correlation Coefficient (ρhv).
-- Latest-analysis overlays for azimuthal shear, rotation tracks, MESH, POSH, and NLDN cloud-to-ground lightning density when generated.
-- Active NWS warning polygons for tornado, severe thunderstorm, flash flood, and special marine warnings.
-- High-contrast warning halos and borders that remain visible over heavy radar echoes.
-- NWS surface observations and NOAA NDBC buoy observations.
-- State, county, city, and optional highway overlays.
-- A pre-rendered branded loop and a client-side **Save GIF** export.
-
-The viewer shows radar valid times in Eastern Time. Missing, stale, partial, or unavailable data is displayed as an explicit status rather than a blank map.
+- National MRMS composite reflectivity delivered as compact PMTiles raster archives.
+- One administrator-selected regional MRMS storm focus at zoom 10, refreshed every five minutes and automatically expired after 12 hours.
+- Map presets for CONUS and major U.S. regions, plus current-view regional exports.
+- Exact observed-frame animation, timeline scrubbing, previous/next, and 2/4/8/20/30 FPS playback.
+- Adjacent PMTiles preloading to reduce frame-change flashing.
+- Owner-triggered regional MRMS and KRAX historical jobs using Eastern Time date controls.
+- Branded current-view GIF downloads.
+- Active NWS Tornado, Severe Thunderstorm, Flash Flood, and Special Marine warning polygons.
+- National state boundaries, zoom-dependent counties, major cities, and on-demand highways.
+- Radar and storm-layer opacity control.
+- Graceful missing, stale, unavailable, and source-fallback states.
+- Mobile controls with rotation and map pitch disabled.
 
 ## Architecture
 
 ```text
-Official NOAA/NCEP source
-        |
-        +--> MRMS GRIB2 --> Python/cfgrib/eccodes --> regional PNG frames
-        |
-        +--> KRAX Level II --> Python/Py-ART --> projected PNG frames
-                                      |
-                                      v
-                         manifests, loops, and history catalogs
-                                      |
-                                      v
-                       Vite + React + TypeScript + MapLibre
-                                      |
-                                      v
-                              GitHub Pages / static host
+Official NOAA/NCEP MRMS live directory
+                  |
+                  v
+    GitHub Actions national job
+       cfgrib/ecCodes + rasterio
+                  |
+                  v
+  one PMTiles archive + preview per frame
+                  |
+                  v
+        Cloudflare R2 custom domain
+                  |
+                  v
+  GitHub Pages + Vite + MapLibre + PMTiles
+
+Historical selection in browser
+                  |
+                  v
+   Cloudflare Worker (owner-authorized)
+                  |
+                  v
+    scale-to-zero Cloud Run admin service
+        |                         |
+        v                         v
+regional history job      selected storm-focus job
+        |                         |
+        +------------+------------+
+                     v
+      frames / PMTiles + manifests in R2
 ```
 
-The browser never downloads or decodes full MRMS GRIB2 or NEXRAD Level II files. Python handles discovery, download, decoding, regional rendering, retention, atomic manifest replacement, and GIF generation. The frontend consumes `manifest.json`, relative frame URLs, and optional history catalogs.
+Responsibilities are intentionally split:
 
-The ingestion layer is intentionally separate from the frontend. It can later move to Cloud Run, a small VPS, a scheduled worker, or object storage without changing the MapLibre client.
+- GitHub Actions publishes the continuously refreshed national MRMS sequence; GitHub Pages publishes only static application code.
+- Cloud Run downloads and decodes owner-requested history, optional KRAX live data, and only the single storm-focus region selected by the owner, then scales to zero.
+- R2 stores generated browser assets and atomic manifests.
+- The Worker hides the Cloud Run service token and requires the owner key before starting billable work.
+- MapLibre renders the basemap, boundaries, labels, warnings, and radar overlays.
 
-## Historical-first Cloud Run deployment
+This prevents a Pages deployment from replacing fresh radar with repository fixtures.
 
-The recommended production architecture is now Cloud Run Jobs plus Cloudflare R2. GitHub Pages remains the static frontend, while `cloudrun/` contains a Py-ART/ecCodes container with separate historical and live KRAX jobs. Historical jobs are requested with bounded Eastern Time ranges and upload frames, branded GIFs, manifests, and job status to R2. The live Scheduler job is paused by default and is resumed only by the administrator control path during severe weather.
+## Official data and attribution
 
-Cloud Run Jobs are not public HTTP servers; the Scheduler calls the authenticated Cloud Run Jobs API, and the scale-to-zero admin service handles historical execution requests and Scheduler pause/resume. See [`cloudrun/README.md`](cloudrun/README.md) for the Google Cloud setup, Secret Manager requirements, job commands, and operational checks.
+Radar data is sourced only from official NOAA/NCEP or NOAA-hosted public datasets:
 
-## Stable VPS + Cloudflare R2 ingestion
-
-GitHub Actions is not the radar clock. For dependable five-minute polling, run the existing Python processors on an always-on Ubuntu VPS and publish only the generated browser assets to Cloudflare R2. GitHub Pages can continue serving the frontend; the browser then reads manifests and frames from the R2 custom domain.
-
-```text
-NOAA MRMS + Unidata KRAX
-          |
-          v
-  2 GB Ubuntu VPS
-  systemd timer every 5 minutes
-  Py-ART/cfgrib renderers
-          |
-          v
-  R2 upload assets first
-  publish manifests last
-          |
-          v
-  data.radar.wall.cloud
-          |
-          v
-  radar.wall.cloud frontend
-```
-
-The worker is `scripts/refresh_radar_worker.py`. It uses an OS lock so overlapping runs exit safely, keeps MRMS and KRAX failures independent, writes a small `worker-status.json`, uploads live assets to R2, publishes manifests last, and prunes only old live frames. Historical catalogs are refreshed, but historical frame payloads are intentionally left for the standalone publisher so the five-minute timer does not retransmit an archive on every run.
-
-### Cloudflare R2 setup
-
-Create one private R2 bucket and a scoped API token with Object Read & Write for that bucket. Add a custom R2 domain such as `data.radar.wall.cloud` in Cloudflare. The R2 custom domain should allow `GET`/`HEAD` requests from `https://radar.wall.cloud`; the public read path is the custom domain, not the S3 credential endpoint. R2 is S3-compatible, uses `region=auto`, and has no egress charge; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) for storage and request charges.
-
-Configure the bucket CORS policy from `deploy/vps/r2-cors.json` using the R2 dashboard or the S3-compatible API. If using AWS CLI, the equivalent command is:
-
-```bash
-aws s3api put-bucket-cors \
-  --bucket wallcloud-radar-data \
-  --endpoint-url "https://ACCOUNT_ID.r2.cloudflarestorage.com" \
-  --cors-configuration file://deploy/vps/r2-cors.json
-```
-
-The frontend uses `VITE_RADAR_DATA_BASE_URL` at build time. Set the repository variable `RADAR_DATA_BASE_URL` to `https://data.radar.wall.cloud/` under GitHub Settings → Secrets and variables → Actions → Variables, then run the normal Pages deployment once. The VPS never needs to rebuild or redeploy the frontend after that. The URL is public configuration, so it is a repository variable rather than a secret.
-
-### Cost-safe live feed control
-
-The five-minute VPS timer and live feed are separate from archive browsing and GIF generation. The timer can remain installed while ingestion is disabled; each run checks a protected Cloudflare Worker before starting MRMS or KRAX processing. A missing control state defaults to **off**, and an unavailable configured control endpoint fails closed.
-
-Deploy the control Worker from `control_worker/`:
-
-```powershell
-cd control_worker
-npm install
-npx wrangler login
-npx wrangler secret put POLLING_CONTROL_TOKEN
-npx wrangler deploy
-```
-
-Use the resulting Worker origin, or a custom domain such as `https://control.radar.wall.cloud`, for both settings:
-
-- GitHub Actions/Pages repository variable `RADAR_CONTROL_API_URL` — optional public Worker origin, without `/control`; the currently deployed `workers.dev` origin is the frontend default.
-- `/etc/wallcloud-radar.env` value `RADAR_CONTROL_STATUS_URL` — the same origin plus `/control/status`.
-
-After rebuilding the frontend, open **Layers → Live Level II feed**. Enter the control key once; it is kept only in that browser session. **Turn on** starts the next five-minute VPS run, and **Turn off** returns the worker to archive mode. The control key is never bundled into the public site.
-
-### Ubuntu VPS setup
-
-The lowest-maintenance path is a 2 GB Ubuntu VPS with a persistent disk. From the cloned repository on the VPS:
-
-```bash
-sudo bash deploy/vps/install-ubuntu.sh
-sudoedit /etc/wallcloud-radar.env
-sudo systemctl start wallcloud-radar-refresh.service
-sudo systemctl status wallcloud-radar-refresh.service
-journalctl -u wallcloud-radar-refresh.service -f
-```
-
-The install script creates `/opt/wallcloud-radar/.venv`, installs `requirements-vps.txt` including Py-ART and boto3, adds a 2 GB swapfile to protect the small VPS during Py-ART/GRIB processing, and installs the systemd service/timer. The timer is enabled, but production ingestion remains off until the control Worker state is turned on. The service runs as an unprivileged `wallcloud` user. Before starting it, replace the R2 and `RADAR_CONTROL_STATUS_URL` values in `/etc/wallcloud-radar.env`; do not commit that file or put its credentials in frontend `VITE_*` variables.
-
-Useful maintenance commands:
-
-```bash
-systemctl list-timers wallcloud-radar-refresh.timer
-systemctl start wallcloud-radar-refresh.service
-journalctl -u wallcloud-radar-refresh.service --since '30 minutes ago'
-```
-
-The deployment files are under `deploy/vps/`. Use `scripts/publish_radar_to_r2.py --dry-run` to inspect the object keys before uploading. The worker publishes live contents from `public/data`, so the dedicated bucket contains `radar/` and `observations/` beneath its custom-domain root. Run the standalone publisher after generating a historical pack to upload its frame payloads.
-
-## Official sources and attribution
-
-Radar data comes from official public NOAA/NCEP/Unidata sources:
-
-- [MRMS operational directory](https://mrms.ncep.noaa.gov/2D/)
+- [MRMS operational products](https://mrms.ncep.noaa.gov/2D/)
 - [MergedReflectivityQCComposite](https://mrms.ncep.noaa.gov/2D/MergedReflectivityQCComposite/)
 - [PrecipFlag](https://mrms.ncep.noaa.gov/2D/PrecipFlag/)
-- [MRMS NODD archive](https://registry.opendata.aws/noaa-mrms-pds/)
-- [NOAA NEXRAD Level II on AWS](https://registry.opendata.aws/noaa-nexrad/)
-- [NEXRAD archive bucket](https://unidata-nexrad-level2.s3.amazonaws.com/)
-- [NEXRAD real-time chunks bucket](https://unidata-nexrad-level2-chunks.s3.amazonaws.com/)
-- [NOAA NCEI NEXRAD documentation](https://www.ncei.noaa.gov/products/radar/next-generation-weather-radar)
-- [ARM Py-ART](https://arm-doe.github.io/pyart/) for Archive II decoding
-- [National Weather Service API](https://www.weather.gov/documentation/services-web-api)
-- [NWS active alerts](https://api.weather.gov/alerts/active)
-- [NOAA NDBC station data](https://www.ndbc.noaa.gov/)
-- [U.S. Census TIGERweb](https://tigerweb.geo.census.gov/)
+- [NOAA MRMS archive on the Registry of Open Data on AWS](https://registry.opendata.aws/noaa-mrms-pds/)
+- [NOAA NEXRAD Level II archive](https://registry.opendata.aws/noaa-nexrad/)
+- [NWS API](https://www.weather.gov/documentation/services-web-api) for active warning geometry
+- [NOAA NDBC](https://www.ndbc.noaa.gov/) for buoy observations
 
-The map uses label-free CARTO raster tiles with OpenStreetMap attribution. City and highway labels are supplied by wall.cloud/Census overlays so important labels appear once and remain readable above radar.
+The viewer and generated share graphics include NOAA/NWS attribution where appropriate. wall.cloud is not an official government warning service; users should consult official NWS products for safety decisions.
 
-## Local development — Windows PowerShell
+## Radar products
 
-From the project directory:
+Public national live mode currently publishes:
+
+- `MergedReflectivityQCComposite`
+
+Regional MRMS processing also supports the existing product architecture for:
+
+- `PrecipFlag`
+- one-hour multi-sensor QPE
+- low- and mid-level azimuthal shear
+- 30-minute rotation tracks
+- MESH and POSH
+- NLDN cloud-to-ground lightning density
+
+National tiled generation for those secondary MRMS fields is intentionally disabled until each field has its own tested tiling, legend, and retention policy. The UI labels unavailable products instead of fabricating output.
+
+KRAX Level II supports:
+
+- Base Reflectivity
+- Radial Velocity
+- Correlation Coefficient
+
+Level II is single-site radar data, not a replacement for the quality-controlled national MRMS mosaic.
+
+## Local setup — Windows PowerShell
+
+Frontend:
 
 ```powershell
 cd D:\weather-projects\wallcloud-weather-dashboard
@@ -164,236 +112,277 @@ npm install
 npm run dev
 ```
 
-The frontend normally opens at `http://localhost:5173`.
+Open [http://localhost:5173](http://localhost:5173). To make the local frontend read production R2 data, create an untracked `.env.local`:
 
-Install all development and radar-processing dependencies:
-
-```powershell
-python -m pip install -r requirements-dev.txt
+```text
+VITE_RADAR_DATA_BASE_URL=https://data.radar.wall.cloud
+VITE_RADAR_CONTROL_API_URL=https://wallcloud-radar-control.jlwall33.workers.dev
 ```
 
-`requirements-dev.txt` includes the base MRMS requirements and the isolated NEXRAD/Py-ART requirements. If only the KRAX processor is needed:
+Restart `npm run dev` after changing an environment file.
+
+Python 3.12 virtual environment:
 
 ```powershell
-python -m pip install -r requirements-nexrad.txt
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-cloudrun.txt -r requirements-dev.txt
 ```
 
-The committed seed manifests intentionally start unavailable. Generate data locally before expecting radar imagery.
+`requirements-cloudrun.txt` includes:
 
-## Generate recent radar
+- cfgrib and ecCodes for MRMS GRIB2
+- Py-ART, SciPy, and pyproj for Level II
+- rasterio and rio-pmtiles for national tiles
+- boto3 for R2
+- Flask, gunicorn, and google-auth for Cloud Run control
 
-MRMS:
+On Windows, a fresh isolated Python environment is strongly preferred over mixing binary NumPy/SciPy packages into an existing Conda base environment.
+
+## Generate current national MRMS locally
+
+One validation frame:
 
 ```powershell
-python scripts/build_radar_frames.py
-npm run dev
+python scripts/build_national_mrms.py `
+  --max-frames 1 `
+  --retention-minutes 10 `
+  --min-zoom 3 `
+  --max-zoom 8 `
+  --workers 2
 ```
 
-KRAX Level II:
+Normal recent sequence:
 
 ```powershell
-python scripts/build_krax_radar.py
-npm run dev
-```
-
-Fast KRAX smoke test:
-
-```powershell
-python scripts/build_krax_radar.py --max-frames 1 --retention-minutes 30
-```
-
-The KRAX processor discovers completed `KRAX` volume files from the public archive, downloads them to temporary storage, and decodes the lowest available sweep with Py-ART. Each volume can produce separate Base Reflectivity, Radial Velocity, and Correlation Coefficient (ρhv) frames and branded loops. If a volume does not contain one of those fields, that product is marked unavailable in the manifest rather than synthesized. Raw files are removed unless explicitly retained.
-
-Useful MRMS environment settings:
-
-```powershell
-$env:MRMS_MAX_FRAMES = '45'
+$env:MRMS_MAX_FRAMES = '30'
 $env:MRMS_RETENTION_MINUTES = '90'
-$env:MRMS_INCLUDE_PRECIP_TYPE = 'true'
-python scripts/build_radar_frames.py
+python scripts/build_national_mrms.py
 ```
 
-Useful KRAX environment settings:
-
-```powershell
-$env:NEXRAD_MAX_FRAMES = '18'
-$env:NEXRAD_RETENTION_MINUTES = '90'
-$env:NEXRAD_IMAGE_WIDTH = '2400'
-python scripts/build_krax_radar.py
-```
-
-Raw downloads and generated frames/loops are ignored by Git. Do not commit GRIB2, Level II, PNG, or GIF output.
-
-## Historical radar
-
-Historical MRMS loop:
-
-```powershell
-python scripts/build_historical_radar.py `
-  --start '2025-06-19T14:00:00-04:00' `
-  --end '2025-06-19T15:30:00-04:00' `
-  --label 'June 19, 2025 severe weather' `
-  --max-frames 45
-```
-
-Historical KRAX loop:
-
-```powershell
-python scripts/build_historical_krax.py `
-  --start '2025-06-19T14:00:00-04:00' `
-  --end '2025-06-19T15:30:00-04:00' `
-  --label 'KRAX June 19, 2025' `
-  --max-frames 30
-```
-
-Historical times must include a timezone. The scripts convert the range to UTC while the viewer displays valid times in Eastern Time.
-
-The GitHub Actions historical workflows provide dropdowns for common Eastern
-Time ranges: today, yesterday, recent days, the current time, recent offsets,
-and loop duration. Choose `custom` only for an older date or a specific ET
-clock time. The workflow runs `scripts/resolve_history_window.py`, which turns
-those selections into timezone-aware ISO timestamps before invoking the MRMS
-or KRAX builder. No manual ISO timestamp entry is needed for routine builds.
-
-Generated MRMS packs are written under `public/data/radar/history/<dataset-id>/`. KRAX packs are written under `public/data/radar/krax/history/<dataset-id>/`. Each source has an independent atomic catalog, and the viewer discovers generated packs through the **Loop source** selector.
-
-Historical packs are limited to 24 hours and 90 sampled frames per request to keep download, decode, GIF, and static-hosting costs bounded.
-
-## GIF exports
-
-The **Branded loop** is a server-generated 1,200-pixel-wide reference-style loop with:
-
-- `wall.cloud Radar` header and dark-navy/teal `wall.cloud` branding.
-- Large, bold Eastern valid time and product/source metadata.
-- State/county/city geography and clean borders.
-- A compact, semi-transparent lower-right reflectivity, precipitation, or rainfall legend that preserves map width and minimizes obscured data.
-- Primary and secondary city-label tiers for a cleaner geographic hierarchy.
-- Footer branding, observed-loop period, frame count, and playback FPS.
-- Central NC framing with coastal North Carolina and nearby Atlantic waters.
-
-The **Save GIF** button is client-side. It uses the current map zoom/pan, selected playback FPS, local radar raster, geography overlays, warnings, optional highways, city labels, valid times, and the same branded header, compact legend overlay, and footer treatment as the pre-rendered loop. Custom exports use a 1,200 × 750 map canvas and `gifenc` adaptive RGB565 palette quantization with one stable loop palette to preserve radar colors without frame-to-frame flashing. KRAX source rasters are generated at 2,400 pixels wide so zoomed GIF crops retain substantially more Level II detail. Recent exports use the neutral **Observed loop** label; historical exports add **Archive**. GIF timing is quantized to centiseconds by the GIF format, so 20 and 30 FPS use the nearest representable delay.
-
-## Generated artifact contract
-
-MRMS live data is published at:
+Output:
 
 ```text
 public/data/radar/manifest.json
-public/data/radar/frames/
-public/data/radar/loops/
-public/data/radar/history/catalog.json
+public/data/radar/national/frames/*.pmtiles
+public/data/radar/national/previews/*.webp
 ```
 
-KRAX live data uses:
+Use `--output-dir .radar-tmp\national-validation` to validate without changing the tracked placeholder manifest.
+
+The official operational directory is centralized through `MRMS_BASE_URL`; the default is `https://mrms.ncep.noaa.gov/2D`. Network requests use timeouts and retries. Raw GRIB2 files stay in temporary storage unless raw retention is explicitly enabled.
+
+## Historical radar and regional GIFs
+
+The website’s **Historical GIF maker** sends:
+
+- source: MRMS or KRAX
+- Eastern Time start/end
+- maximum frame count
+- a named regional preset or current map bounds
+
+The browser sends the owner key to the Cloudflare Worker, which verifies it before proxying the request. The Cloud Run admin service then validates the bounded parameters, starts the job with environment overrides, and writes status to R2. The same owner key controls Level II live polling and the expiring MRMS storm focus; it is kept only in browser session storage.
+
+Local regional MRMS command:
+
+```powershell
+$env:MRMS_REGION_WEST = '-82.5'
+$env:MRMS_REGION_SOUTH = '33.5'
+$env:MRMS_REGION_EAST = '-75.0'
+$env:MRMS_REGION_NORTH = '37.0'
+python scripts/build_historical_radar.py `
+  --start "2026-07-25T12:00:00-04:00" `
+  --end "2026-07-25T14:00:00-04:00" `
+  --max-frames 30 `
+  --region-id mid-atlantic
+```
+
+Local KRAX command:
+
+```powershell
+python scripts/build_historical_krax.py `
+  --start "2026-07-25T12:00:00-04:00" `
+  --end "2026-07-25T14:00:00-04:00" `
+  --max-frames 30
+```
+
+Generated history is catalog-driven; frame names are never hardcoded in the frontend.
+
+## GIF exports
+
+The browser’s **Save GIF** action uses:
+
+- the current map pan and zoom
+- the selected observed loop and FPS
+- geography, city labels, and warning overlays
+- a wall.cloud header and footer
+- valid time and loop period
+- a compact product-specific legend
+
+The client uses the preview rasters from each PMTiles frame for deterministic export composition. GIF timing uses centiseconds, so very high FPS values use the nearest representable delay. GIF is palette-limited by design; lossless PMTiles/WebP remain the higher-fidelity interactive source. On phone-sized viewports, browser-generated GIFs use the latest 12 frames to remain within iOS memory limits; the full interactive loop remains available.
+
+## Data contract
+
+The public live manifest is `radar/manifest.json`:
+
+```json
+{
+  "coverage": "conus",
+  "delivery": "pmtiles",
+  "latest_valid_time": "2026-07-27T18:28:41Z",
+  "products": {
+    "MergedReflectivityQCComposite": {
+      "status": "ready",
+      "frames": [
+        {
+          "valid_time": "2026-07-27T18:28:41Z",
+          "url": "./national/previews/reflectivity-20260727T182841Z.webp",
+          "pmtiles_url": "./national/frames/reflectivity-20260727T182841Z.pmtiles",
+          "bounds": [-130, 20, -60, 55],
+          "minzoom": 3,
+          "maxzoom": 8
+        }
+      ]
+    }
+  }
+}
+```
+
+Manifest replacement is atomic and manifests are uploaded after their referenced assets. Retained R2 frame references are reused so an unchanged observation is not downloaded and tiled again. Expired live frames and previews are pruned separately from historical datasets.
+
+## Near-zero operating profile
+
+The default production profile keeps recurring cloud charges near zero without removing the live national loop:
+
+- The public repository runs `.github/workflows/national-radar-refresh.yml` every five minutes on a standard GitHub-hosted runner.
+- GitHub Pages, the Cloudflare Worker, and current R2 live-data volume remain within their respective free allowances under normal traffic.
+- Live frame objects are retained for one day while the public manifest exposes at most 30 observations selected from the recent 90-minute window, leaving most of R2's free storage allowance available for requested history.
+- Cloud Run stays scale-to-zero and is used only when the owner requests a historical pack, explicitly enables KRAX live polling, or activates one storm-focus region.
+- Storm focus replaces the previous selected region instead of creating another Scheduler, is limited to a 25° × 20° processing box, and expires after 12 hours unless the owner extends it.
+- A new or long-stale national/focus dataset publishes the newest frame first, then grows its rolling loop incrementally so five-minute triggers do not overlap a large bootstrap.
+- The expensive `wallcloud-mrms-refresh` Cloud Scheduler job is not enabled.
+- Historical jobs, KRAX live control, and storm-focus control require the same owner key, preventing anonymous visitors from starting billable compute.
+
+This targets a recurring baseline of approximately $0. Occasional owner-requested Cloud Run history work and unusually high R2/Worker traffic remain variable. GitHub scheduled workflows are best-effort: they can be delayed or dropped under load, and GitHub automatically disables schedules in a public repository after 60 days without repository activity. A later run reuses the R2 manifest and catches up recent observations still inside the 90-minute window.
+
+## Cloud Run and R2 deployment
+
+Detailed copy/paste commands are in [cloudrun/README.md](cloudrun/README.md). The near-zero production policy is:
+
+- `wallcloud-mrms-refresh`: not deployed, or paused if it already exists
+- `wallcloud-focus-refresh`: deployed once but paused unless an owner-selected storm focus is active
+- `wallcloud-live-refresh`: paused by default, administrator-controlled
+- `wallcloud-radar-history`: scale-to-zero and started only with the owner key
+
+After changing processor code:
+
+1. Build and push `Dockerfile.cloudrun` with `cloudbuild.yaml` when history, storm focus, KRAX, or the admin service changed.
+2. Redeploy the shared history job, storm-focus job, optional KRAX job, and admin service as needed.
+3. Apply R2 CORS, connect the R2 custom domain, and redeploy the Cloudflare Worker if its API contract changed.
+4. Set the repository variables and bucket-scoped R2 Actions secrets below.
+5. Push application code to `main`; Pages deploys the frontend and the national workflow begins using the new processor.
+6. Manually dispatch `Refresh national MRMS radar` once and verify the R2 manifest before relying on its schedule.
+
+Apply the checked-in R2 CORS policy and connect the production data hostname with current Wrangler:
+
+```powershell
+Push-Location control_worker
+npx wrangler r2 bucket cors set wallcloud-radar-data --file ../deploy/vps/r2-cors.json --force
+npx wrangler r2 bucket cors list wallcloud-radar-data
+npx wrangler r2 bucket domain add wallcloud-radar-data --domain data.radar.wall.cloud --zone-id ZONE_ID --min-tls 1.2 --force
+Pop-Location
+```
+
+The custom-domain command is one-time; use `npx wrangler r2 bucket domain list wallcloud-radar-data` to verify an existing connection rather than adding it again.
+
+## GitHub Pages and Actions
+
+Set repository variables:
+
+- `RADAR_DATA_BASE_URL=https://data.radar.wall.cloud`
+- `RADAR_CONTROL_API_URL=https://wallcloud-radar-control.jlwall33.workers.dev`
+- `R2_ENDPOINT_URL=https://ACCOUNT_ID.r2.cloudflarestorage.com`
+- `R2_BUCKET=wallcloud-radar-data`
+
+Set repository Actions secrets using an R2 Object Read & Write token scoped only to the radar bucket:
+
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+
+`.github/workflows/pages.yml` builds and deploys the static frontend on every push to `main`.
+
+`.github/workflows/national-radar-refresh.yml` uses the minimal `requirements-mrms-live.txt` dependency set, refreshes up to 30 national PMTiles observations from the recent 90-minute window every five minutes, publishes assets before the atomic manifest, and prunes expired live objects. Standard GitHub-hosted runners are free only while this repository remains public.
+
+`.github/workflows/radar-refresh.yml` is a compatibility/manual deployment entry point. It now builds only the frontend. It does not generate radar data, so it cannot overwrite R2 or reintroduce an old NC manifest.
+
+`.github/workflows/ci.yml` runs:
+
+- frontend TypeScript checks
+- Cloudflare Worker TypeScript checks
+- production Vite build
+- Python tests and Cloud Run script compilation
+
+The older manual historical Actions workflows remain downloadable-artifact fallback tools. They upload generated packs to the workflow run for seven days and intentionally do not deploy or modify live R2 data. Production historical requests use Cloud Run and R2.
+
+Custom domain:
 
 ```text
-public/data/radar/krax/manifest.json
-public/data/radar/krax/frames/
-public/data/radar/krax/loops/
-public/data/radar/krax/history/catalog.json
+public/CNAME -> radar.wall.cloud
 ```
 
-Manifests include product status, valid times, relative frame URLs, bounds, source metadata, loop metadata, and error messages. They are written atomically so the frontend does not read a partially generated file. Level II product availability is per field: the frontend disables products that were not present or decodable in the selected live or historical volume set.
-
-## Project layout
-
-- `src/radar/` — MapLibre viewer, controls, layers, legends, playback, and GIF export.
-- `radar_processing/mrms.py` — MRMS discovery and download.
-- `radar_processing/rendering.py` — MRMS decode, crop, palettes, and raster output.
-- `radar_processing/pipeline.py` — MRMS live/history orchestration.
-- `radar_processing/nexrad.py` — KRAX archive listing, filtering, sampling, retries, and downloads.
-- `radar_processing/nexrad_rendering.py` — Py-ART Level II decode and geographic projection.
-- `radar_processing/nexrad_pipeline.py` — KRAX rendering, rotation, manifests, and branded loops.
-- `radar_processing/animation.py` — shared branded GIF composition.
-- `radar_processing/r2.py` — R2-compatible upload ordering, cache headers, and live-frame pruning.
-- `scripts/build_radar_frames.py` — recent MRMS CLI.
-- `scripts/build_historical_radar.py` — historical MRMS CLI.
-- `scripts/build_krax_radar.py` — recent KRAX CLI.
-- `scripts/build_historical_krax.py` — historical KRAX CLI.
-- `scripts/refresh_radar_worker.py` — locked VPS refresh and R2 publish worker.
-- `scripts/publish_radar_to_r2.py` — standalone R2 publisher/dry-run tool.
-- `tests/` — Python pipeline tests.
-- `.github/workflows/` — CI, Pages, scheduled refresh, and historical build workflows.
+The DNS record should point to the configured GitHub Pages host. The R2 custom domain should allow range requests and CORS from `https://radar.wall.cloud`; PMTiles depends on HTTP byte-range responses.
 
 ## Validation
 
-Run the focused checks:
-
 ```powershell
-python -m pytest -q
 npm run typecheck
 npm run build
+Push-Location control_worker
+npm run typecheck
+Pop-Location
+python -m pytest -q
 ```
 
-The NEXRAD test suite covers filename parsing, official-listing parsing, KRAX-only configuration, retention and sampling, geographic gate projection, chronological manifests, and atomic output generation.
-
-The focused radar frontend files are lint-clean. The repository-wide `npm run lint` command also scans older dashboard hooks outside the radar surface and may report legacy errors unrelated to this viewer.
-
-## GitHub Actions and Pages
-
-### Normal Pages deployment
-
-`.github/workflows/pages.yml` runs the shared radar refresh/deployment workflow from `main`. This prevents a source-only deployment from replacing generated live radar with the unavailable seed manifests. A push to `main` is the normal source-code deployment path.
-
-Enable Pages in the repository settings with **GitHub Actions** as the build source. The workflow requires Pages write and deployment permissions.
-
-### Scheduled radar refresh
-
-`.github/workflows/radar-refresh.yml` is now manual-only. Cloud Run Scheduler owns the production five-minute live path and remains paused by default; use this workflow only for an intentional manual Pages refresh or recovery.
-
-Each manual refresh:
-
-1. Restores cached historical packs.
-2. Installs MRMS and Py-ART/NEXRAD dependencies.
-3. Builds fresh MRMS radar.
-4. Attempts the KRAX build without discarding a working MRMS deployment if KRAX fails.
-5. Builds the Vite site with generated artifacts.
-6. Deploys a Pages artifact.
-
-The workflow does not commit generated radar output to Git.
-
-Radar manifests and history catalogs are requested with a cache-busting query so
-five-minute browser polling cannot be held behind the GitHub Pages CDN cache.
-Every production build also exposes its commit through the root
-`data-build-sha` attribute for deployment verification.
-
-### Historical workflows
-
-- `historical-radar.yml` builds a requested MRMS archive loop and saves it to the
-  Actions cache.
-- `historical-krax.yml` builds a requested KRAX Level II archive loop and saves it
-  to the Actions cache.
-
-Historical workflows do not deploy GitHub Pages directly. A historical run may
-start from an older commit and finish after newer frontend code has been
-published; deploying from that old checkout could roll the site backward. After
-saving the archive, the workflow dispatches `radar-refresh.yml` on the current
-`main` branch. The refresh workflow restores the archive and deploys the latest
-frontend source. The regular refresh also verifies that its commit is still the
-current `main` commit immediately before deploying.
-
-Both workflows accept timezone-aware start/end values and preserve prior history through GitHub Actions caches. Caches are suitable for the MVP but are not permanent archival storage.
-
-### Custom domain
-
-`public/CNAME` contains `radar.wall.cloud`. In GitHub repository settings, configure Pages with the custom domain `radar.wall.cloud`. At the DNS provider, point the `radar` CNAME to the repository owner’s `*.github.io` hostname. For the custom-domain root, use:
+For an end-to-end national processor check:
 
 ```powershell
-$env:VITE_BASE_PATH = '/'
-npm run build
+python scripts/build_national_mrms.py `
+  --max-frames 1 `
+  --retention-minutes 10 `
+  --min-zoom 3 `
+  --max-zoom 8 `
+  --output-dir .radar-tmp\national-validation
 ```
+
+## Project layout
+
+- `src/radar/` — MapLibre viewer, animation, layers, warnings, GIF export, and responsive UI.
+- `radar_processing/mrms.py` — official MRMS discovery, archive listing, retries, and downloads.
+- `radar_processing/rendering.py` — MRMS decode, crop, and Wall Cloud palettes.
+- `radar_processing/national_tiles.py` — shared georeferenced national/focus GeoTIFF, PMTiles, preview, manifest, and retention.
+- `radar_processing/nexrad_*` — KRAX Level II listing, Py-ART decode, projection, and products.
+- `radar_processing/r2.py` — R2 upload ordering, content types, cache headers, and pruning.
+- `scripts/run_cloud_run_mrms_live.py` — national MRMS publisher used by GitHub Actions and the optional Cloud Run fallback.
+- `scripts/run_cloud_run_mrms_focus.py` — expiring owner-selected regional MRMS publisher.
+- `scripts/run_cloud_run_historical.py` — shared MRMS/KRAX history job.
+- `scripts/run_cloud_run_live.py` — admin-controlled KRAX live job.
+- `cloudrun/admin_service.py` — bounded job launch plus storm-focus and Level II Scheduler control.
+- `control_worker/` — public browser proxy and protected admin control.
+- `tests/` — deterministic pipeline and manifest tests.
 
 ## Known limitations
 
-- MRMS source files are full CONUS GRIB2 downloads and are cropped after decode.
-- KRAX is a single radar, not a quality-controlled mosaic. Beam height, terrain blockage, ground clutter, and biological returns vary with range.
-- Current KRAX live mode uses the newest completed archive volumes. Direct assembly of the real-time chunk bucket is reserved for a future persistent worker.
-- Py-ART/ecCodes has a larger native dependency footprint than the MRMS renderer. GitHub Actions Linux is the reference deployment environment if a Windows Python distribution lacks compatible wheels.
-- MRMS storm-analysis layers are latest-analysis overlays, not historical animated products.
-- Historical packs are generated selections; anonymous visitors cannot request arbitrary archive dates from static GitHub Pages.
-- GitHub Actions is not a guaranteed real-time scheduler. Cloud Run Jobs plus R2 are the recommended production ingestion path; the VPS/R2 files remain as a fallback for local or emergency processing, and GitHub Actions remains useful for source deployment.
-- External CARTO, Census, NWS, and NDBC services can be rate-limited or temporarily unavailable. The viewer reports degraded states where possible.
+- National tiled live mode currently publishes composite reflectivity only.
+- Storm focus currently supports one named regional preset at a time and publishes composite reflectivity only.
+- Regional historical output remains image-frame based; it is intentionally cropped before browser delivery.
+- National county and highway detail is loaded only after selecting or zooming into a region to avoid expensive CONUS geometry requests.
+- Surface and buoy coverage still follows the existing eastern U.S./North Carolina station configuration.
+- NWS, Census, CARTO, NDBC, NOAA operational directories, and R2 can be temporarily unavailable or rate-limited.
+- PMTiles playback quality depends on network range-request latency on the first loop; visible adjacent frames are warmed in advance.
+- KRAX has normal single-radar limitations including beam height, terrain blockage, ground clutter, and range.
+- Cloud Run history limits are 24 hours for MRMS, 6 hours for KRAX, and 90 frames per request.
 
-## Future migration path
+## Future migration
 
-The frontend only needs manifests and raster URLs. The current Cloud Run jobs can later move to a small VPS, Cloud Run replacement, scheduled container worker, or another S3-compatible object store without changing the MapLibre viewer and playback controls.
+The manifest separates the frontend from the processor. A future worker, VPS, additional Cloud Run region, or another S3-compatible store can replace the current ingestion runtime without rewriting map playback. Planned extensions include nationally tiled PrecipFlag/QPE/storm-analysis products, dynamic nationwide surface observations, more Level II sites, and durable job queues with per-user rate limits.

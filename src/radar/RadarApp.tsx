@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
+import { PMTiles, Protocol } from 'pmtiles'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, GRID_GEOJSON, MAP_CENTER, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
@@ -21,6 +22,7 @@ const LIVE_MANIFEST_PATHS: Record<RadarSourceId, string> = {
   mrms: `${RADAR_DATA_BASE_URL}radar/manifest.json`,
   krax: `${RADAR_DATA_BASE_URL}radar/krax/manifest.json`,
 }
+const FOCUS_MANIFEST_PATH = `${RADAR_DATA_BASE_URL}radar/focus/manifest.json`
 const HISTORY_CATALOG_PATHS: Record<RadarSourceId, string> = {
   mrms: `${RADAR_DATA_BASE_URL}radar/history/catalog.json`,
   krax: `${RADAR_DATA_BASE_URL}radar/krax/history/catalog.json`,
@@ -51,11 +53,14 @@ const BUOY_DOT_ID = 'wallcloud-buoy-dot'
 const BUOY_LABEL_ID = 'wallcloud-buoy-label'
 const BUILD_SHA = import.meta.env.VITE_BUILD_SHA || 'local'
 const RADAR_POLL_INTERVAL_MS = 5 * 60 * 1000
-const DEFAULT_RADAR_SOURCE: RadarSourceId = 'krax'
-const DEFAULT_RADAR_PRODUCT: RadarProductId = 'NEXRADLevel2BaseReflectivity'
+const DEFAULT_RADAR_SOURCE: RadarSourceId = 'mrms'
+const DEFAULT_RADAR_PRODUCT: RadarProductId = 'MergedReflectivityQCComposite'
+const PMTILES_PROTOCOL = new Protocol()
+maplibregl.addProtocol('pmtiles', PMTILES_PROTOCOL.tile)
 
 const EMPTY_STATE = emptyFeatureCollection()
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
+const MOBILE_GIF_FRAME_LIMIT = 12
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
@@ -63,6 +68,15 @@ type PollingControlState = {
   enabled: boolean
   updated_at: string | null
 }
+
+type FocusPollingControlState = PollingControlState & {
+  expires_at: string | null
+  region_id: string | null
+  region_label: string | null
+  bounds: [number, number, number, number] | null
+}
+
+type MrmsLiveCoverage = 'national' | 'focus'
 
 type HistoryJobStatus = {
   job_id: string
@@ -75,9 +89,9 @@ type HistoryJobStatus = {
 }
 
 function initialMapZoom(): number {
-  if (window.innerWidth <= 680) return 7.15
-  if (window.innerWidth <= 1024) return 7.65
-  return 8.15
+  if (window.innerWidth <= 680) return 2.55
+  if (window.innerWidth <= 1024) return 2.8
+  return 3.25
 }
 
 function assetUrl(path: string, manifestPath: string): string {
@@ -88,6 +102,58 @@ function assetUrl(path: string, manifestPath: string): string {
 function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
   return new URL(frame.url, manifestUrl).toString()
+}
+
+function framePmtilesUrl(frame: RadarFrameManifest, manifestPath: string): string | null {
+  if (!frame.pmtiles_url) return null
+  const manifestUrl = new URL(manifestPath, window.location.href)
+  return new URL(frame.pmtiles_url, manifestUrl).toString()
+}
+
+function longitudeToTileX(longitude: number, zoom: number): number {
+  const scale = 2 ** zoom
+  return Math.min(scale - 1, Math.max(0, Math.floor(((longitude + 180) / 360) * scale)))
+}
+
+function latitudeToTileY(latitude: number, zoom: number): number {
+  const scale = 2 ** zoom
+  const clamped = Math.min(85.05112878, Math.max(-85.05112878, latitude))
+  const radians = clamped * Math.PI / 180
+  const value = (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2
+  return Math.min(scale - 1, Math.max(0, Math.floor(value * scale)))
+}
+
+async function preloadPmtilesFrame(
+  frame: RadarFrameManifest,
+  manifestPath: string,
+  map: maplibregl.Map,
+): Promise<void> {
+  const url = framePmtilesUrl(frame, manifestPath)
+  if (!url) return
+  let archive = PMTILES_PROTOCOL.get(url)
+  if (!archive) {
+    archive = new PMTiles(url)
+    PMTILES_PROTOCOL.add(archive)
+  }
+  await archive.getHeader()
+  const zoom = Math.min(frame.maxzoom ?? 8, Math.max(frame.minzoom ?? 3, Math.floor(map.getZoom())))
+  const bounds = map.getBounds()
+  const west = Math.max(frame.bounds[0], bounds.getWest())
+  const east = Math.min(frame.bounds[2], bounds.getEast())
+  const south = Math.max(frame.bounds[1], bounds.getSouth())
+  const north = Math.min(frame.bounds[3], bounds.getNorth())
+  if (west >= east || south >= north) return
+  const minX = longitudeToTileX(west, zoom)
+  const maxX = longitudeToTileX(east, zoom)
+  const minY = latitudeToTileY(north, zoom)
+  const maxY = latitudeToTileY(south, zoom)
+  const requests: Array<Promise<unknown>> = []
+  for (let x = minX; x <= maxX && requests.length < 64; x += 1) {
+    for (let y = minY; y <= maxY && requests.length < 64; y += 1) {
+      requests.push(archive.getZxy(zoom, x, y))
+    }
+  }
+  await Promise.allSettled(requests)
 }
 
 function historicalManifestUrl(manifestUrl: string, sourceId: RadarSourceId): string {
@@ -115,6 +181,60 @@ async function updatePollingControl(enabled: boolean, token: string): Promise<Po
     throw new Error(payload.error || `Polling control returned HTTP ${response.status}`)
   }
   return { enabled: payload.enabled, updated_at: typeof payload.updated_at === 'string' ? payload.updated_at : null }
+}
+
+function parseFocusControlPayload(
+  payload: Partial<FocusPollingControlState> & { error?: string },
+  responseStatus: number,
+): FocusPollingControlState {
+  if (typeof payload.enabled !== 'boolean') {
+    throw new Error(payload.error || `Storm focus control returned HTTP ${responseStatus}`)
+  }
+  const bounds = Array.isArray(payload.bounds)
+    && payload.bounds.length === 4
+    && payload.bounds.every((value) => typeof value === 'number' && Number.isFinite(value))
+    ? payload.bounds as [number, number, number, number]
+    : null
+  return {
+    enabled: payload.enabled,
+    updated_at: typeof payload.updated_at === 'string' ? payload.updated_at : null,
+    expires_at: typeof payload.expires_at === 'string' ? payload.expires_at : null,
+    region_id: typeof payload.region_id === 'string' ? payload.region_id : null,
+    region_label: typeof payload.region_label === 'string' ? payload.region_label : null,
+    bounds,
+  }
+}
+
+async function fetchFocusControlStatus(): Promise<FocusPollingControlState> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/focus/status`, { cache: 'no-store' })
+  const payload = await response.json() as Partial<FocusPollingControlState> & { error?: string }
+  if (!response.ok) throw new Error(payload.error || `Storm focus control returned HTTP ${response.status}`)
+  return parseFocusControlPayload(payload, response.status)
+}
+
+async function updateFocusControl(
+  enabled: boolean,
+  token: string,
+  region?: { id: string; label: string; bounds: readonly [number, number, number, number] },
+): Promise<FocusPollingControlState> {
+  const response = await fetch(`${RADAR_CONTROL_API_URL}/focus/polling`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enabled,
+      ...(enabled && region
+        ? {
+            region_id: region.id,
+            region_label: region.label,
+            bounds: [...region.bounds],
+            duration_hours: 12,
+          }
+        : {}),
+    }),
+  })
+  const payload = await response.json() as Partial<FocusPollingControlState> & { error?: string }
+  if (!response.ok) throw new Error(payload.error || `Storm focus control returned HTTP ${response.status}`)
+  return parseFocusControlPayload(payload, response.status)
 }
 
 function controlTokenFromSession(): string {
@@ -167,11 +287,18 @@ function easternInputToIso(value: string): string {
   return corrected.toISOString()
 }
 
-async function requestHistoryJob(payload: { start: string; end: string; max_frames: number }): Promise<HistoryJobStatus> {
+async function requestHistoryJob(payload: {
+  source: RadarSourceId
+  start: string
+  end: string
+  max_frames: number
+  bounds?: [number, number, number, number]
+  region_id?: string
+}, token: string): Promise<HistoryJobStatus> {
   const response = await fetch(`${RADAR_CONTROL_API_URL}/history/jobs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source: 'krax', ...payload }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   })
   const result = await response.json() as HistoryJobStatus & { error?: string }
   if (!response.ok || !result.job_id) throw new Error(result.error || `Historical job request returned HTTP ${response.status}`)
@@ -240,6 +367,7 @@ function createMapSources(map: maplibregl.Map): void {
     id: 'wallcloud-county-line',
     type: 'line',
     source: COUNTY_SOURCE_ID,
+    minzoom: 5,
     paint: { 'line-color': '#7f8b94', 'line-opacity': 0.58, 'line-width': 0.58 },
   })
 
@@ -806,6 +934,7 @@ function composeShareFrame(
   mapImage: ImageData,
   frame: RadarFrameManifest,
   productId: RadarProductId,
+  regionLabel: string,
   isHistorical: boolean,
   playbackFps: number,
   frameNumber: number,
@@ -837,7 +966,7 @@ function composeShareFrame(
   context.fillText('wall.cloud Radar', 20, 31)
   context.fillStyle = SHARE_BRAND_LIGHT
   context.font = '700 15px Arial, sans-serif'
-  const subtitleParts = ['North Carolina', details.source]
+  const subtitleParts = [regionLabel, details.source]
   if (details.resolution !== 'native') subtitleParts.push(details.resolution)
   subtitleParts.push(details.label)
   context.fillText(subtitleParts.join(' · '), 20, 63)
@@ -887,9 +1016,16 @@ function composeShareFrame(
 }
 
 function updateRadarMapImage(map: maplibregl.Map, frame: RadarFrameManifest, manifestPath: string): void {
-  const source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | undefined
+  const source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | maplibregl.RasterTileSource | undefined
   if (!source) throw new Error('Radar image source is not ready')
-  source.updateImage({ url: frameUrl(frame, manifestPath), coordinates: imageCoordinates(frame.bounds) })
+  const tilesUrl = framePmtilesUrl(frame, manifestPath)
+  if (tilesUrl && source.type === 'raster') {
+    ;(source as maplibregl.RasterTileSource).setUrl(`pmtiles://${tilesUrl}`)
+  } else if (source.type === 'image') {
+    source.updateImage({ url: frameUrl(frame, manifestPath), coordinates: imageCoordinates(frame.bounds) })
+  } else {
+    throw new Error('Radar source type does not match the selected frame')
+  }
 }
 
 function waitForMapPaint(map: maplibregl.Map): Promise<void> {
@@ -1108,8 +1244,10 @@ export function RadarApp() {
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
   const [manifest, setManifest] = useState<RadarManifest | null>(null)
+  const [manifestLoading, setManifestLoading] = useState(true)
   const [manifestError, setManifestError] = useState<string | null>(null)
   const [sourceId, setSourceId] = useState<RadarSourceId>(DEFAULT_RADAR_SOURCE)
+  const [mrmsLiveCoverage, setMrmsLiveCoverage] = useState<MrmsLiveCoverage>('national')
   const [manifestPath, setManifestPath] = useState(LIVE_MANIFEST_PATHS[DEFAULT_RADAR_SOURCE])
   const [sourceFallbackNotice, setSourceFallbackNotice] = useState<string | null>(null)
   const [historyCatalogs, setHistoryCatalogs] = useState<Record<RadarSourceId, RadarHistoryCatalog | null>>({ mrms: null, krax: null })
@@ -1117,12 +1255,18 @@ export function RadarApp() {
   const [historyRefreshNonce, setHistoryRefreshNonce] = useState(0)
   const [historyStart, setHistoryStart] = useState(() => easternInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)))
   const [historyEnd, setHistoryEnd] = useState(() => easternInputValue(new Date()))
+  const [mapRegionId, setMapRegionId] = useState('conus')
+  const [historyRegionId, setHistoryRegionId] = useState('current-view')
   const [historyJobStatus, setHistoryJobStatus] = useState<HistoryJobStatus | null>(null)
   const [historyRequestBusy, setHistoryRequestBusy] = useState(false)
   const [historyRequestError, setHistoryRequestError] = useState<string | null>(null)
   const [pollingControl, setPollingControl] = useState<PollingControlState | null>(null)
   const [pollingControlError, setPollingControlError] = useState<string | null>(null)
   const [pollingControlBusy, setPollingControlBusy] = useState(false)
+  const [focusControl, setFocusControl] = useState<FocusPollingControlState | null>(null)
+  const [focusControlError, setFocusControlError] = useState<string | null>(null)
+  const [focusControlBusy, setFocusControlBusy] = useState(false)
+  const [focusRegionId, setFocusRegionId] = useState('north-carolina')
   const [datasetId, setDatasetId] = useState('live')
   const [productId, setProductId] = useState<RadarProductId>(DEFAULT_RADAR_PRODUCT)
   const [frameIndex, setFrameIndex] = useState(0)
@@ -1157,7 +1301,7 @@ export function RadarApp() {
   const [counties, setCounties] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
   const [geographyError, setGeographyError] = useState<string | null>(null)
   const [highways, setHighways] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
-  const [highwaysLoading, setHighwaysLoading] = useState(true)
+  const [highwaysLoading, setHighwaysLoading] = useState(false)
   const [highwaysError, setHighwaysError] = useState<string | null>(null)
   const [surfaceObservations, setSurfaceObservations] = useState<SurfaceObservation[]>([])
   const [surfaceLoading, setSurfaceLoading] = useState(false)
@@ -1170,7 +1314,8 @@ export function RadarApp() {
   const historyCatalog = historyCatalogs[sourceId]
   const historyError = historyErrors[sourceId]
   const isKrax = sourceId === 'krax'
-  const sourceLabel = isKrax ? 'Level II' : 'MRMS mosaic'
+  const isFocusCoverage = sourceId === 'mrms' && datasetId === 'live' && mrmsLiveCoverage === 'focus'
+  const sourceLabel = isKrax ? 'Level II' : isFocusCoverage ? 'MRMS storm focus' : 'MRMS mosaic'
   const stormAnalysisAvailable = sourceId === 'mrms'
 
   const frames = useMemo(() => productFrames(manifest, productId), [manifest, productId])
@@ -1180,16 +1325,22 @@ export function RadarApp() {
   const selectedWarning = selectedWarningId ? warnings.find((warning) => warning.id === selectedWarningId) ?? null : null
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
+  const mapRegion = MAP_REGIONS.find((region) => region.id === mapRegionId) ?? MAP_REGIONS[0]
+  const focusRegion = MAP_REGIONS.find((region) => region.id === focusRegionId && region.id !== 'conus')
+    ?? MAP_REGIONS.find((region) => region.id === 'north-carolina')
+    ?? MAP_REGIONS[1]
   const isHistorical = manifest?.mode === 'historical' || datasetId !== 'live'
   const livePollingConfigured = Boolean(RADAR_CONTROL_API_URL)
   const latestAge = ageMinutes(manifest?.latest_valid_time)
   const activeAge = ageMinutes(activeFrame?.valid_time)
   const isLatest = Boolean(activeFrame && latestFrame && activeFrame.id === latestFrame.id)
   const freshnessLabel = !activeFrame
-    ? 'DATA UNAVAILABLE'
+    ? manifestLoading ? 'LOADING' : 'DATA UNAVAILABLE'
     : isHistorical
       ? 'HISTORICAL'
-    : livePollingConfigured && pollingControl?.enabled === false
+    : isFocusCoverage && livePollingConfigured && focusControl?.enabled === false
+      ? 'ARCHIVE MODE'
+    : isKrax && livePollingConfigured && pollingControl?.enabled === false
       ? 'ARCHIVE MODE'
     : !isLatest
       ? 'PLAYBACK'
@@ -1230,7 +1381,7 @@ export function RadarApp() {
         if (next.status === 'complete') {
           setHistoryRefreshNonce((value) => value + 1)
           if (next.dataset_id) {
-            setSourceId('krax')
+            setSourceId(next.source === 'mrms' ? 'mrms' : 'krax')
             setDatasetId(next.dataset_id)
           }
         }
@@ -1249,7 +1400,7 @@ export function RadarApp() {
   useEffect(() => {
     if (!RADAR_CONTROL_API_URL) return
     let cancelled = false
-    const load = async () => {
+    const loadLevel2 = async () => {
       try {
         const state = await fetchPollingControlStatus()
         if (!cancelled) {
@@ -1263,8 +1414,26 @@ export function RadarApp() {
         }
       }
     }
-    void load()
-    const refresh = window.setInterval(() => { void load() }, 30_000)
+    const loadFocus = async () => {
+      try {
+        const state = await fetchFocusControlStatus()
+        if (!cancelled) {
+          setFocusControl(state)
+          setFocusControlError(null)
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setFocusControl(null)
+          setFocusControlError(error instanceof Error ? error.message : 'Storm focus control unavailable')
+        }
+      }
+    }
+    void loadLevel2()
+    void loadFocus()
+    const refresh = window.setInterval(() => {
+      void loadLevel2()
+      void loadFocus()
+    }, 30_000)
     return () => {
       cancelled = true
       window.clearInterval(refresh)
@@ -1272,16 +1441,39 @@ export function RadarApp() {
   }, [])
 
   useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const bounds = mapRegion.bounds
+    map.fitBounds(
+      [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+      {
+        padding: window.innerWidth <= 680
+          ? { top: 92, right: 18, bottom: 230, left: 18 }
+          : { top: 70, right: 330, bottom: 175, left: 28 },
+        duration: 450,
+        bearing: 0,
+        pitch: 0,
+      },
+    )
+  }, [mapReady, mapRegion.bounds])
+
+  useEffect(() => {
     let cancelled = false
     const historyEntry = historyCatalog?.datasets.find((dataset) => dataset.id === datasetId)
+    const liveManifestPath = sourceId === 'mrms' && mrmsLiveCoverage === 'focus'
+      ? FOCUS_MANIFEST_PATH
+      : LIVE_MANIFEST_PATHS[sourceId]
     const nextManifestPath = datasetId === 'live'
-      ? LIVE_MANIFEST_PATHS[sourceId]
+      ? liveManifestPath
       : historyEntry
         ? historicalManifestUrl(historyEntry.manifest_url, sourceId)
         : null
     const load = async () => {
       if (!nextManifestPath) {
-        if (!cancelled) setManifestError('The selected historical loop is no longer in the catalog')
+        if (!cancelled) {
+          setManifestError('The selected historical loop is no longer in the catalog')
+          setManifestLoading(false)
+        }
         return
       }
       const applyManifest = (next: RadarManifest, path: string, nextProductId: RadarProductId) => {
@@ -1292,31 +1484,36 @@ export function RadarApp() {
         setFrameIndex(Math.max(productFrames(next, nextProductId).length - 1, 0))
         setPlaying(false)
         setManifestError(null)
+        setSourceFallbackNotice(null)
       }
       const loadMrmsFallback = async (reason: string) => {
         const fallbackPath = LIVE_MANIFEST_PATHS.mrms
         const fallback = await fetchRadarManifest(fallbackPath)
         applyManifest(fallback, fallbackPath, 'MergedReflectivityQCComposite')
         if (!cancelled) {
-          setSourceFallbackNotice(`KRAX Level II unavailable · showing MRMS regional fallback (${reason})`)
-          setSourceId('mrms')
+          const sourceName = sourceId === 'krax' ? 'Level II' : 'Storm focus'
+          setSourceFallbackNotice(`${sourceName} unavailable · showing national MRMS fallback (${reason})`)
+          if (sourceId === 'krax') {
+            setSourceId('mrms')
+            setMrmsLiveCoverage('national')
+          }
         }
       }
       try {
         const next = await fetchRadarManifest(nextManifestPath)
         const hasFrames = hasUsableFrames(next, productId)
-        if (datasetId === 'live' && sourceId === 'krax' && !hasFrames) {
-          await loadMrmsFallback('no usable Level II frames')
+        if (datasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus') && !hasFrames) {
+          await loadMrmsFallback(sourceId === 'krax' ? 'no usable Level II frames' : 'no usable regional frames')
         } else {
           applyManifest(next, nextManifestPath, productId)
         }
       } catch (error) {
-        if (datasetId === 'live' && sourceId === 'krax') {
+        if (datasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus')) {
           try {
             await loadMrmsFallback('source request failed')
           } catch (fallbackError) {
             if (!cancelled) {
-              const primaryMessage = error instanceof Error ? error.message : 'KRAX manifest request failed'
+              const primaryMessage = error instanceof Error ? error.message : 'Focused radar manifest request failed'
               const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : 'MRMS fallback request failed'
               setManifestError(`${primaryMessage}; ${fallbackMessage}`)
             }
@@ -1324,16 +1521,32 @@ export function RadarApp() {
         } else if (!cancelled) {
           setManifestError(error instanceof Error ? error.message : 'Manifest request failed')
         }
+      } finally {
+        if (!cancelled) setManifestLoading(false)
       }
     }
     void load()
-    const shouldPollLiveManifest = datasetId === 'live' && (!livePollingConfigured || pollingControl?.enabled === true)
+    const shouldPollLiveManifest = datasetId === 'live' && (
+      (sourceId === 'mrms' && mrmsLiveCoverage === 'national')
+      || (sourceId === 'mrms' && mrmsLiveCoverage === 'focus' && focusControl?.enabled === true)
+      || !livePollingConfigured
+      || (sourceId === 'krax' && pollingControl?.enabled === true)
+    )
     const refresh = shouldPollLiveManifest ? window.setInterval(() => { void load() }, RADAR_POLL_INTERVAL_MS) : null
     return () => {
       cancelled = true
       if (refresh !== null) window.clearInterval(refresh)
     }
-  }, [datasetId, historyCatalog, livePollingConfigured, pollingControl?.enabled, productId, sourceId])
+  }, [
+    datasetId,
+    focusControl?.enabled,
+    historyCatalog,
+    livePollingConfigured,
+    mrmsLiveCoverage,
+    pollingControl?.enabled,
+    productId,
+    sourceId,
+  ])
 
   useEffect(() => {
     if (!playing || frames.length < 2) return
@@ -1374,7 +1587,7 @@ export function RadarApp() {
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    fetchRegionalGeography(controller.signal)
+    fetchRegionalGeography(controller.signal, mapRegion.id === 'conus' ? null : mapRegion.bounds)
       .then((result) => {
         if (cancelled) return
         setStates(result.states)
@@ -1388,29 +1601,32 @@ export function RadarApp() {
       cancelled = true
       controller.abort()
     }
-  }, [])
+  }, [mapRegion.bounds, mapRegion.id])
 
   useEffect(() => {
+    if (!layers.highways || mapRegion.id === 'conus') return
     let cancelled = false
     const controller = new AbortController()
-    fetchRegionalHighways(controller.signal)
-      .then((result) => {
+    const load = async () => {
+      setHighwaysLoading(true)
+      try {
+        const result = await fetchRegionalHighways(controller.signal, mapRegion.bounds)
         if (!cancelled) {
           setHighways(result)
           setHighwaysError(null)
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!cancelled && error instanceof Error && error.name !== 'AbortError') setHighwaysError(error.message)
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setHighwaysLoading(false)
-      })
+      }
+    }
+    void load()
     return () => {
       cancelled = true
       controller.abort()
     }
-  }, [])
+  }, [layers.highways, mapRegion.bounds, mapRegion.id])
 
   useEffect(() => {
     if (!layers.surface || isHistorical) return
@@ -1475,9 +1691,9 @@ export function RadarApp() {
       center: MAP_CENTER,
       zoom: initialMapZoom(),
       canvasContextAttributes: { preserveDrawingBuffer: true },
-      minZoom: 5.2,
+      minZoom: 2.2,
       maxZoom: 12,
-      maxBounds: [[REGIONAL_BOUNDS[0] - 1, REGIONAL_BOUNDS[1] - 1], [REGIONAL_BOUNDS[2] + 1, REGIONAL_BOUNDS[3] + 1]],
+      maxBounds: [[NATIONAL_BOUNDS[0] - 4, NATIONAL_BOUNDS[1] - 4], [NATIONAL_BOUNDS[2] + 4, NATIONAL_BOUNDS[3] + 4]],
       attributionControl: false,
       dragRotate: false,
       touchPitch: false,
@@ -1534,28 +1750,42 @@ export function RadarApp() {
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
-    const source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | undefined
+    const tilesUrl = activeFrame ? framePmtilesUrl(activeFrame, manifestPath) : null
+    let source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | maplibregl.RasterTileSource | undefined
+    const desiredType = tilesUrl ? 'raster' : 'image'
+    if (source && source.type !== desiredType) {
+      if (map.getLayer(RADAR_LAYER_ID)) map.removeLayer(RADAR_LAYER_ID)
+      map.removeSource(RADAR_SOURCE_ID)
+      source = undefined
+    }
     if (activeFrame && !source) {
-      const bounds = activeFrame.bounds
-      map.addSource(RADAR_SOURCE_ID, {
-        type: 'image',
-        url: frameUrl(activeFrame, manifestPath),
-        coordinates: [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]],
-      })
+      if (tilesUrl) {
+        map.addSource(RADAR_SOURCE_ID, {
+          type: 'raster',
+          url: `pmtiles://${tilesUrl}`,
+          tileSize: 512,
+          minzoom: activeFrame.minzoom ?? 3,
+          maxzoom: activeFrame.maxzoom ?? 8,
+          attribution: 'NOAA/NCEP MRMS',
+        })
+      } else {
+        const bounds = activeFrame.bounds
+        map.addSource(RADAR_SOURCE_ID, {
+          type: 'image',
+          url: frameUrl(activeFrame, manifestPath),
+          coordinates: [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]],
+        })
+      }
       map.addLayer({
         id: RADAR_LAYER_ID,
         type: 'raster',
         source: RADAR_SOURCE_ID,
-        paint: { 'raster-opacity': radarOpacity, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
+        paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
       }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
     } else if (source && activeFrame) {
-      const bounds = activeFrame.bounds
-      source.updateImage({
-        url: frameUrl(activeFrame, manifestPath),
-        coordinates: [[bounds[0], bounds[3]], [bounds[2], bounds[3]], [bounds[2], bounds[1]], [bounds[0], bounds[1]]],
-      })
+      updateRadarMapImage(map, activeFrame, manifestPath)
     }
-  }, [activeFrame, manifestPath, mapReady, radarOpacity])
+  }, [activeFrame, manifestPath, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1577,13 +1807,13 @@ export function RadarApp() {
           id: layerId,
           type: 'raster',
           source: sourceId,
-          paint: { 'raster-opacity': radarOpacity, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
+          paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
         }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
       } else {
         source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
       }
     })
-  }, [manifest, manifestPath, mapReady, radarOpacity])
+  }, [manifest, manifestPath, mapReady])
 
   useEffect(() => {
     if (!activeFrame) return
@@ -1595,6 +1825,12 @@ export function RadarApp() {
       image.decoding = 'async'
       image.src = frameUrl(frame, manifestPath)
     })
+    const map = mapRef.current
+    if (map) {
+      frames
+        .slice(activeIndex, Math.min(frames.length, activeIndex + 4))
+        .forEach((frame) => { void preloadPmtilesFrame(frame, manifestPath, map).catch(() => undefined) })
+    }
   }, [activeFrame, activeIndex, frames, manifestPath, playbackFps])
 
   useEffect(() => {
@@ -1608,7 +1844,7 @@ export function RadarApp() {
     setLayerVisibility(map, [RADAR_LAYER_ID], layers.radar && Boolean(activeFrame))
     setLayerVisibility(map, ['wallcloud-county-line'], layers.counties)
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
-    setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways)
+    setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways && mapRegion.id !== 'conus')
     setLayerVisibility(map, [WARNING_FILL_ID, WARNING_CASING_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
     setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
     setLayerVisibility(map, [BUOY_DOT_ID, BUOY_LABEL_ID], layers.buoys && !isHistorical)
@@ -1616,7 +1852,7 @@ export function RadarApp() {
       const frame = productFrames(manifest, definition.productId).at(-1)
       setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && !isHistorical && Boolean(frame))
     })
-  }, [activeFrame, isHistorical, layers, manifest, mapReady, radarOpacity])
+  }, [activeFrame, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1630,7 +1866,7 @@ export function RadarApp() {
     const warningSource = map.getSource(WARNING_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
     stateSource?.setData(states)
     countySource?.setData(counties)
-    highwaySource?.setData(highways)
+    highwaySource?.setData(mapRegion.id === 'conus' ? EMPTY_STATE : highways)
     citySource?.setData(CITIES_GEOJSON)
     surfaceSource?.setData(surfaceFeatureCollection(surfaceObservations))
     buoySource?.setData(buoyFeatureCollection(buoys))
@@ -1644,16 +1880,21 @@ export function RadarApp() {
     if (map.getLayer(WARNING_LINE_ID)) {
       map.setPaintProperty(WARNING_LINE_ID, 'line-width', ['case', ['==', ['get', 'id'], selectedWarningId ?? '__none__'], 4.2, 2.7])
     }
-  }, [buoys, counties, highways, mapReady, selectedWarningId, states, surfaceObservations, warnings])
+  }, [buoys, counties, highways, mapReady, mapRegion.id, selectedWarningId, states, surfaceObservations, warnings])
 
   const selectedProduct = manifest?.products[productId]
-  const dataUnavailable = !manifest || manifest.status !== 'ready' || !activeFrame
+  const dataUnavailable = !manifestLoading && (!manifest || manifest.status !== 'ready' || !activeFrame)
   const dataStale = !isHistorical && latestAge !== null && latestAge > 15
   const loopDownloadUrl = selectedProduct?.loop_url ? assetUrl(selectedProduct.loop_url, manifestPath) : null
 
   const exportGif = async () => {
     const map = mapRef.current
     if (gifExporting || !map || !frames.length) return
+    const limitMobileFrames = Math.min(window.innerWidth, window.innerHeight) <= 680
+      && frames.length > MOBILE_GIF_FRAME_LIMIT
+    const exportFrames = limitMobileFrames ? frames.slice(-MOBILE_GIF_FRAME_LIMIT) : frames
+    const exportRegionLabel = manifest?.region_label
+      ?? (manifest?.coverage === 'conus' ? 'Continental U.S.' : mapRegion.label)
     const originalIndex = activeIndex
     const originalFrame = activeFrame
     const wasPlaying = playing
@@ -1663,12 +1904,12 @@ export function RadarApp() {
     setGifExportError(null)
     setPlaying(false)
     try {
-      await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
+      await Promise.all(exportFrames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
-      const loopPeriod = formatShareLoopPeriod(frames[0]?.valid_time, frames.at(-1)?.valid_time)
+      const loopPeriod = formatShareLoopPeriod(exportFrames[0]?.valid_time, exportFrames.at(-1)?.valid_time)
       const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
-      for (let index = 0; index < frames.length; index += 1) {
-        const frame = frames[index]
+      for (let index = 0; index < exportFrames.length; index += 1) {
+        const frame = exportFrames[index]
         let mapImage: ImageData
         try {
           // Build the export from the source raster and local vector layers. A
@@ -1697,8 +1938,8 @@ export function RadarApp() {
           if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
           mapImage = mapCapture
         }
-        captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length, loopPeriod))
-        setGifExportProgress(Math.round((index + 1) / frames.length * 100))
+        captured.push(composeShareFrame(mapImage, frame, productId, exportRegionLabel, isHistorical, playbackFps, index, exportFrames.length, loopPeriod))
+        setGifExportProgress(Math.round((index + 1) / exportFrames.length * 100))
       }
       const blob = encodeGif(captured, playbackFps)
       const zoom = Math.round(map.getZoom() * 10) / 10
@@ -1712,8 +1953,12 @@ export function RadarApp() {
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2_000)
-      if (usedMapCanvasFallback) setGifExportError('GIF saved with the browser map base because the deterministic export base was temporarily unavailable.')
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000)
+      const notices = [
+        ...(limitMobileFrames ? [`Mobile export used the latest ${MOBILE_GIF_FRAME_LIMIT} frames to stay within iOS memory limits.`] : []),
+        ...(usedMapCanvasFallback ? ['GIF saved with the browser map base because the deterministic export base was temporarily unavailable.'] : []),
+      ]
+      if (notices.length) setGifExportError(notices.join(' '))
     } catch (error: unknown) {
       setGifExportError(error instanceof Error ? error.message : 'GIF export failed')
     } finally {
@@ -1751,18 +1996,70 @@ export function RadarApp() {
     }
   }
 
+  const changeFocusState = async (enabled: boolean) => {
+    if (!RADAR_CONTROL_API_URL || focusControlBusy) return
+    const token = promptForControlToken()
+    if (!token) return
+    setFocusControlBusy(true)
+    setFocusControlError(null)
+    try {
+      const state = await updateFocusControl(enabled, token, enabled ? focusRegion : undefined)
+      setFocusControl(state)
+      if (enabled) {
+        setSourceId('mrms')
+        setMrmsLiveCoverage('focus')
+        setMapRegionId(focusRegion.id)
+        setDatasetId('live')
+        setProductId('MergedReflectivityQCComposite')
+        setManifestLoading(true)
+        setSourceFallbackNotice(null)
+        setFrameIndex(0)
+        setPlaying(false)
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        try { window.sessionStorage.removeItem(CONTROL_TOKEN_SESSION_KEY) } catch { /* best effort */ }
+      }
+      setFocusControlError(error instanceof Error ? error.message : 'Storm focus update failed')
+    } finally {
+      setFocusControlBusy(false)
+    }
+  }
+
   const requestHistoricalLoop = async () => {
     if (!RADAR_CONTROL_API_URL || historyRequestBusy) return
+    const token = promptForControlToken()
+    if (!token) return
     setHistoryRequestBusy(true)
     setHistoryRequestError(null)
     try {
+      const selectedHistoryRegion = MAP_REGIONS.find((region) => region.id === historyRegionId)
+      const viewBounds = mapRef.current?.getBounds()
+      const bounds: [number, number, number, number] | undefined = sourceId === 'mrms'
+        ? selectedHistoryRegion
+          ? [...selectedHistoryRegion.bounds]
+          : viewBounds
+            ? [
+                Math.max(NATIONAL_BOUNDS[0], viewBounds.getWest()),
+                Math.max(NATIONAL_BOUNDS[1], viewBounds.getSouth()),
+                Math.min(NATIONAL_BOUNDS[2], viewBounds.getEast()),
+                Math.min(NATIONAL_BOUNDS[3], viewBounds.getNorth()),
+              ]
+            : [...REGIONAL_BOUNDS]
+        : undefined
       const next = await requestHistoryJob({
+        source: sourceId,
         start: easternInputToIso(historyStart),
         end: easternInputToIso(historyEnd),
         max_frames: 30,
-      })
+        bounds,
+        region_id: sourceId === 'mrms' ? selectedHistoryRegion?.id ?? 'current-view' : undefined,
+      }, token)
       setHistoryJobStatus(next)
     } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        try { window.sessionStorage.removeItem(CONTROL_TOKEN_SESSION_KEY) } catch { /* best effort */ }
+      }
       setHistoryRequestError(error instanceof Error ? error.message : 'Historical job request failed')
     } finally {
       setHistoryRequestBusy(false)
@@ -1776,7 +2073,7 @@ export function RadarApp() {
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>
           <div>
             <div className="radar-product-name">wall.cloud Radar</div>
-            <div className="radar-region-name">North Carolina <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'Level II radar' : 'regional mosaic'}</span></div>
+            <div className="radar-region-name">United States <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'Level II radar' : isFocusCoverage ? 'storm focus' : 'national mosaic'}</span></div>
           </div>
         </div>
         <div className="radar-header-status">
@@ -1798,10 +2095,16 @@ export function RadarApp() {
       </header>
 
       <main className="radar-map-area">
-        <div ref={mapContainer} className="radar-map" aria-label="Interactive North Carolina radar map" />
+        <div ref={mapContainer} className="radar-map" aria-label="Interactive United States radar map" />
 
         <div className="radar-map-badge">
-          <span>{sourceLabel} {isHistorical || (livePollingConfigured && pollingControl?.enabled === false) ? 'archive mode' : 'live'}</span>
+          <span>{sourceLabel} {
+            isHistorical
+            || (isKrax && livePollingConfigured && pollingControl?.enabled === false)
+            || (isFocusCoverage && livePollingConfigured && focusControl?.enabled === false)
+              ? 'archive mode'
+              : 'live'
+          }</span>
           <span className="radar-badge-divider" />
           <span>{selectedProduct?.label ?? 'Composite Reflectivity'}</span>
         </div>
@@ -1857,9 +2160,12 @@ export function RadarApp() {
               onChange={(event) => {
                 const nextSource = event.target.value as RadarSourceId
                 setSourceId(nextSource)
+                setMrmsLiveCoverage('national')
+                setManifestLoading(true)
+                setMapRegionId(nextSource === 'krax' ? 'north-carolina' : 'conus')
                 setSourceFallbackNotice(null)
                 setDatasetId('live')
-                setProductId(nextSource === 'krax' ? DEFAULT_RADAR_PRODUCT : 'MergedReflectivityQCComposite')
+                setProductId(nextSource === 'krax' ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
                 setFrameIndex(0)
                 setPlaying(false)
                 setSelectedWarningId(null)
@@ -1876,8 +2182,49 @@ export function RadarApp() {
                 }))
               }}
             >
-              <option value="mrms">MRMS regional mosaic</option>
-              <option value="krax">Level II radar</option>
+              <option value="mrms">MRMS national mosaic</option>
+              <option value="krax">Level II radar · admin live feed</option>
+            </select>
+          </div>
+
+          {!isKrax && datasetId === 'live' && (
+            <>
+              <label className="radar-field-label" htmlFor="radar-live-coverage">Live MRMS coverage</label>
+              <div className="radar-select-wrap">
+                <select
+                  id="radar-live-coverage"
+                  className="radar-select"
+                  value={mrmsLiveCoverage}
+                  onChange={(event) => {
+                    const nextCoverage = event.target.value as MrmsLiveCoverage
+                    setMrmsLiveCoverage(nextCoverage)
+                    setManifestLoading(true)
+                    setSourceFallbackNotice(null)
+                    setProductId('MergedReflectivityQCComposite')
+                    setPlaying(false)
+                    if (nextCoverage === 'focus' && focusControl?.region_id) {
+                      setMapRegionId(focusControl.region_id)
+                    }
+                  }}
+                >
+                  <option value="national">National overview · always available</option>
+                  <option value="focus">Storm focus · selected high-detail region</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          <label className="radar-field-label" htmlFor="radar-region">Map region</label>
+          <div className="radar-select-wrap">
+            <select
+              id="radar-region"
+              className="radar-select"
+              value={mapRegionId}
+              onChange={(event) => setMapRegionId(event.target.value)}
+            >
+              {MAP_REGIONS.map((region) => (
+                <option key={region.id} value={region.id}>{region.label}</option>
+              ))}
             </select>
           </div>
 
@@ -1890,6 +2237,7 @@ export function RadarApp() {
               onChange={(event) => {
                 const nextDatasetId = event.target.value
                 setDatasetId(nextDatasetId)
+                setManifestLoading(true)
                 setSourceFallbackNotice(null)
                 setLayers((current) => ({ ...current, warnings: nextDatasetId === 'live' }))
                 setSelectedWarningId(null)
@@ -1907,7 +2255,7 @@ export function RadarApp() {
               )}
             </select>
           </div>
-          {!historyCatalog?.datasets.length && <p className="radar-field-note">No {sourceLabel} historical packs are generated yet. Use the historical Python command or GitHub workflow documented in the README.</p>}
+          {!historyCatalog?.datasets.length && <p className="radar-field-note">No {sourceLabel} historical packs are generated yet. Generate one below or use the Cloud Run command documented in the README.</p>}
           {historyError && <p className="radar-field-note error">Historical catalog unavailable: {historyError}</p>}
 
           <label className="radar-field-label" htmlFor="radar-product">Product</label>
@@ -1936,6 +2284,65 @@ export function RadarApp() {
           {productId === 'NEXRADLevel2Velocity' && <p className="radar-field-note">Radial velocity in meters per second from the lowest sweep. Positive and negative motion are shown with a diverging palette.</p>}
           {productId === 'NEXRADLevel2CorrelationCoefficient' && <p className="radar-field-note">Correlation coefficient (ρhv) from the lowest sweep. Lower values can help identify non-meteorological echoes.</p>}
 
+          <section className="radar-polling-control radar-focus-control" aria-label="Storm focus radar control">
+            <div>
+              <span className="radar-layer-section-heading">MRMS storm focus</span>
+              <strong>{
+                !livePollingConfigured
+                  ? 'Admin control unavailable'
+                  : focusControl?.enabled
+                    ? `${focusControl.region_label ?? 'Selected region'} is active`
+                    : 'Storm focus is off'
+              }</strong>
+              <small>{
+                !livePollingConfigured
+                  ? 'The administrator control service is not configured in this build.'
+                  : focusControl?.enabled
+                    ? `Five-minute regional tiles until ${formatEasternDateTime(focusControl.expires_at)}.`
+                    : 'One selected region at a time · automatically expires after 12 hours.'
+              }</small>
+            </div>
+            <label className="radar-focus-region">
+              Focus region
+              <select
+                value={focusRegionId}
+                disabled={!livePollingConfigured || focusControlBusy}
+                onChange={(event) => setFocusRegionId(event.target.value)}
+              >
+                {MAP_REGIONS.filter((region) => region.id !== 'conus').map((region) => (
+                  <option key={region.id} value={region.id}>{region.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className="radar-focus-actions">
+              <button
+                type="button"
+                className={`radar-polling-toggle ${focusControl?.enabled ? 'enabled' : ''}`}
+                disabled={!livePollingConfigured || focusControlBusy || focusControl === null}
+                onClick={() => { void changeFocusState(true) }}
+              >
+                {focusControlBusy
+                  ? 'Saving…'
+                  : focusControl?.enabled && focusControl.region_id === focusRegion.id
+                    ? 'Extend focus 12 hours'
+                    : focusControl?.enabled
+                      ? `Switch focus to ${focusRegion.label}`
+                      : `Activate ${focusRegion.label}`}
+              </button>
+              {focusControl?.enabled && (
+                <button
+                  type="button"
+                  className="radar-polling-toggle radar-focus-off"
+                  disabled={focusControlBusy}
+                  onClick={() => { void changeFocusState(false) }}
+                >
+                  Turn off storm focus
+                </button>
+              )}
+            </div>
+          </section>
+          {focusControlError && <p className="radar-field-note error">Storm focus control: {focusControlError}</p>}
+
           <section className="radar-polling-control" aria-label="Live radar feed control">
             <div>
               <span className="radar-layer-section-heading">Live Level II feed</span>
@@ -1954,12 +2361,23 @@ export function RadarApp() {
           </section>
           {pollingControlError && <p className="radar-field-note error">Live feed control: {pollingControlError}</p>}
 
-          <section className="radar-history-request" aria-label="Historical KRAX radar request">
-            <div className="radar-layer-section-heading">Historical GIF maker <small>KRAX Level II · Eastern Time · no key required</small></div>
+          <section className="radar-history-request" aria-label={`Historical ${sourceLabel} radar request`}>
+            <div className="radar-layer-section-heading">Historical GIF maker <small>{isKrax ? 'Level II' : 'MRMS regional'} · Eastern Time · owner key required</small></div>
             <div className="radar-history-fields">
               <label>Start<input type="datetime-local" value={historyStart} onChange={(event) => setHistoryStart(event.target.value)} /></label>
               <label>End<input type="datetime-local" value={historyEnd} onChange={(event) => setHistoryEnd(event.target.value)} /></label>
             </div>
+            {!isKrax && (
+              <label className="radar-history-region">
+                Export region
+                <select value={historyRegionId} onChange={(event) => setHistoryRegionId(event.target.value)}>
+                  <option value="current-view">Current map view</option>
+                  {MAP_REGIONS.map((region) => (
+                    <option key={region.id} value={region.id}>{region.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               className="radar-history-request-button"
@@ -1968,14 +2386,14 @@ export function RadarApp() {
             >
               {historyRequestBusy ? 'Starting job…' : 'Generate historical loop'}
             </button>
-            {!livePollingConfigured && <p className="radar-field-note">The Cloud Run admin service is not configured in this build.</p>}
+            {!livePollingConfigured && <p className="radar-field-note">The Cloud Run historical service is not configured in this build.</p>}
             {historyJobStatus && <p className={`radar-field-note ${historyJobStatus.status === 'failed' ? 'error' : ''}`} role="status">History job {historyJobStatus.status}{historyJobStatus.message ? ` · ${historyJobStatus.message}` : ''}</p>}
             {historyRequestError && <p className="radar-field-note error">Historical job: {historyRequestError}</p>}
           </section>
 
           <div className="radar-layer-list">
             <div className="radar-layer-section-heading">Storm analysis <small>{stormAnalysisAvailable ? 'latest generated analysis' : 'MRMS mosaic only'}</small></div>
-            {!stormAnalysisAvailable && <p className="radar-field-note">Storm Analysis unavailable with Level II — select MRMS regional mosaic.</p>}
+            {!stormAnalysisAvailable && <p className="radar-field-note">Storm Analysis unavailable with Level II — select the MRMS national mosaic.</p>}
             {stormAnalysisAvailable && ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
               const product = manifest?.products[definition.productId]
               const ready = product?.status === 'ready' || product?.status === 'partial'
@@ -2010,7 +2428,7 @@ export function RadarApp() {
               ['radar', 'Radar', `${sourceLabel} observed raster frame`],
               ['warnings', 'Warnings', isHistorical ? 'Unavailable for historical playback' : warningStatus === 'degraded' ? 'NWS refresh degraded' : 'NWS active polygons'],
               ['counties', 'Counties', 'Census boundary overlay'],
-              ['cities', 'Cities', 'Priority NC locations'],
+              ['cities', 'Cities', 'Priority U.S. cities'],
               ['highways', 'Highways', highwaysLoading ? 'Loading on demand…' : 'Census interstate overlay'],
             ] as Array<[keyof typeof layers, string, string]>).map(([key, label, note]) => (
               <label key={key} className="radar-layer-row">
@@ -2079,7 +2497,7 @@ export function RadarApp() {
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (
-                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered reference-style NC loop">Branded loop</a>
+                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the processor-generated branded loop">Branded loop</a>
               ) : null}
             </div>
           </div>

@@ -49,6 +49,7 @@ def test_r2_keys_and_cache_headers() -> None:
     root = Path("public")
     assert object_key(Path("public/data/radar/manifest.json"), root) == "data/radar/manifest.json"
     assert cache_control_for(Path("manifest.json")).startswith("no-store")
+    assert cache_control_for(Path("mrms-worker-status.json")).startswith("no-store")
     assert "immutable" in cache_control_for(Path("frame.png"))
 
 
@@ -104,9 +105,16 @@ def test_live_worker_can_skip_history_payloads_but_publish_catalogs(tmp_path: Pa
 
 def test_include_prefixes_and_small_json_objects() -> None:
     client = FakeR2()
-    put_json_object(client, config(), "control/polling.json", {"enabled": False})
+    put_json_object(
+        client,
+        config(),
+        "control/polling.json",
+        {"enabled": False},
+        if_match='"object-version"',
+    )
     assert client.puts[0]["Key"] == "control/polling.json"
     assert client.puts[0]["ContentType"].startswith("application/json")
+    assert client.puts[0]["IfMatch"] == '"object-version"'
 
 
 def test_include_prefixes_limits_history_publish(tmp_path: Path) -> None:

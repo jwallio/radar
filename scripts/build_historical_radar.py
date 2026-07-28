@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 from datetime import timedelta, timezone
 from pathlib import Path
@@ -43,6 +44,7 @@ def main() -> int:
     parser.add_argument("--start", required=True, help="ISO-8601 start with timezone, for example 2025-06-19T14:00:00-04:00")
     parser.add_argument("--end", required=True, help="ISO-8601 end with timezone")
     parser.add_argument("--label", help="Optional label shown in the viewer")
+    parser.add_argument("--region-id", default="view", help="Stable region label used in the dataset id")
     parser.add_argument("--max-frames", type=int, default=45, help="Maximum evenly sampled frames (default: 45)")
     parser.add_argument("--no-precip-type", action="store_true", help="Skip historical PrecipFlag processing")
     parser.add_argument("--keep-raw", action="store_true", help="Keep downloaded GRIB2 files in .radar-raw")
@@ -91,7 +93,8 @@ def main() -> int:
         except RuntimeError as exc:
             LOGGER.warning("Historical PrecipFlag unavailable; reflectivity will still be built: %s", exc)
 
-    dataset_id = dataset_id_for_range(start, end)
+    region_id = re.sub(r"[^a-z0-9]+", "-", args.region_id.strip().lower()).strip("-") or "view"
+    dataset_id = f"mrms-{region_id}-{dataset_id_for_range(start, end)}"
     history_root = config.output_dir / "history"
     output_dir = history_root / dataset_id
     sources = {

@@ -116,7 +116,15 @@ export async function fetchRadarManifest(path: string, signal?: AbortSignal): Pr
 }
 
 export async function fetchHistoryCatalog(path: string, signal?: AbortSignal): Promise<RadarHistoryCatalog> {
-  const payload = await fetchJson<RadarHistoryCatalog>(freshStaticJsonUrl(path), signal)
+  let payload: RadarHistoryCatalog
+  try {
+    payload = await fetchJson<RadarHistoryCatalog>(freshStaticJsonUrl(path), signal)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'HTTP 404') {
+      return { schema_version: 1, generated_at: null, datasets: [] }
+    }
+    throw error
+  }
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.datasets)) {
     throw new Error('Historical radar catalog has an unsupported shape')
   }

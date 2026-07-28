@@ -1703,12 +1703,29 @@ export function RadarApp() {
     map.keyboard.disableRotation()
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors © CARTO · NOAA radar · NWS' }), 'bottom-right')
+    const collapseAttribution = () => {
+      const attribution = mapContainer.current?.querySelector<HTMLDetailsElement>('details.maplibregl-ctrl-attrib')
+      if (!attribution) return
+      attribution.open = false
+      attribution.classList.remove('maplibregl-compact-show')
+    }
+    const collapseAttributionOnInteraction = (event: Event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.maplibregl-ctrl-attrib')) return
+      collapseAttribution()
+    }
+    const mapElement = mapContainer.current
+    mapElement.addEventListener('pointerdown', collapseAttributionOnInteraction, true)
+    mapElement.addEventListener('wheel', collapseAttribution, { passive: true })
+    window.requestAnimationFrame(collapseAttribution)
     map.on('load', () => {
       createMapSources(map)
       map.jumpTo({ center: MAP_CENTER, zoom: initialMapZoom(), bearing: 0, pitch: 0 })
       map.resize()
+      collapseAttribution()
       setMapReady(true)
     })
+    map.on('movestart', collapseAttribution)
     map.on('click', WARNING_FILL_ID, (event) => {
       const feature = event.features?.[0]
       const id = feature?.properties?.id ?? feature?.id
@@ -1742,6 +1759,8 @@ export function RadarApp() {
     mapRef.current = map
     return () => {
       resizeObserver.disconnect()
+      mapElement.removeEventListener('pointerdown', collapseAttributionOnInteraction, true)
+      mapElement.removeEventListener('wheel', collapseAttribution)
       map.remove()
       mapRef.current = null
     }
@@ -2458,7 +2477,7 @@ export function RadarApp() {
           }}
         />
 
-        <section className="radar-timeline" aria-label="Radar animation controls">
+        <section className={`radar-timeline ${frames.length < 2 ? 'single-frame' : ''}`} aria-label="Radar animation controls">
           <div className="radar-timeline-top">
             <div>
               <span className="radar-panel-kicker">Timeline</span>
@@ -2493,6 +2512,14 @@ export function RadarApp() {
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
                 {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} onClick={() => setPlaybackFps(value)}>{value}</button>)}
               </div>
+              <select
+                className="radar-mobile-speed-control"
+                aria-label="Playback rate in frames per second"
+                value={playbackFps}
+                onChange={(event) => setPlaybackFps(Number(event.target.value) as (typeof PLAYBACK_FPS_OPTIONS)[number])}
+              >
+                {PLAYBACK_FPS_OPTIONS.map((value) => <option key={value} value={value}>{value} fps</option>)}
+              </select>
               <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length} title="Save a share-ready GIF using the current map view and playback FPS">
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
@@ -2501,11 +2528,11 @@ export function RadarApp() {
               ) : null}
             </div>
           </div>
-          <div className="radar-playback-note" aria-live="polite" aria-hidden={!gifExportError && !(activeAge !== null && !isLatest && !isHistorical)}>
-            {gifExportError ?? (activeAge !== null && !isLatest && !isHistorical
-              ? `Playback frame · latest observation is ${Math.max(0, latestAge ?? 0)} min old`
-              : '\u00a0')}
-          </div>
+          {(gifExportError || (activeAge !== null && !isLatest && !isHistorical)) && (
+            <div className="radar-playback-note" aria-live="polite">
+              {gifExportError ?? `Playback frame · latest observation is ${Math.max(0, latestAge ?? 0)} min old`}
+            </div>
+          )}
         </section>
       </main>
     </div>

@@ -20,6 +20,7 @@ from .rendering import load_reflectivity_rgba
 
 
 LOGGER = logging.getLogger("wallcloud.radar.national")
+BOOTSTRAP_FRAME_COUNT = 3
 
 
 def _parse_time(value: str) -> datetime:
@@ -50,11 +51,12 @@ def select_incremental_frames(
     remote_frames: list[RemoteFrame],
     existing_manifest: dict[str, Any] | None,
 ) -> list[RemoteFrame]:
-    """Bootstrap with the latest frame, then process the full rolling selection.
+    """Bootstrap with a short usable loop, then process the rolling selection.
 
-    Publishing one frame first keeps a new or long-stale dataset below the
-    five-minute schedule interval. Once a retained frame overlaps the current
-    selection, the normal builder reuses it and fills only newer observations.
+    Publishing three frames keeps a new or long-stale dataset bounded while
+    restoring playback in one run when GitHub drops later schedule events.
+    Once a retained frame overlaps the current selection, the normal builder
+    reuses it and fills only newer observations.
     """
 
     if not remote_frames:
@@ -69,7 +71,7 @@ def select_incremental_frames(
         if frame.timestamp_iso in existing_times
     ]
     if not overlapping:
-        return remote_frames[-1:]
+        return remote_frames[-BOOTSTRAP_FRAME_COUNT:]
     earliest_retained = min(overlapping)
     return [frame for frame in remote_frames if frame.valid_time >= earliest_retained]
 

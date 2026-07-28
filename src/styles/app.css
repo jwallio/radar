@@ -1,6 +1,8 @@
 :root { color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0c111b; color: #e8edf7; }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; width: 100%; height: 100%; background: radial-gradient(circle at 20% 20%, #162236 0%, #0a0f18 55%, #05070b 100%); }
+html, body { overscroll-behavior: none; }
+body { -webkit-text-size-adjust: 100%; }
 .app-shell, .map-root-wrap { position: absolute; inset: 0; }
 .app-shell .map-root-wrap .map-root { position: absolute; inset: 0; }
 .map-boot-splash { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; gap: 10px; text-align: center; background: radial-gradient(circle at 50% 40%, rgba(28,39,62,.92), rgba(7,11,20,.98)); color: #dce9ff; }

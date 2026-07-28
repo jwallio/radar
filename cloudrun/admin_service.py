@@ -12,6 +12,7 @@ import requests
 from flask import Flask, jsonify, request
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
+from radar_processing.control import parse_focus_polling_state
 from radar_processing.history import parse_timestamp
 from radar_processing.r2 import R2PublishConfig, create_r2_client, get_json_object, put_json_object
 
@@ -49,6 +50,19 @@ def _google_post(url: str, payload: dict | None = None) -> dict:
     return response.json() if response.content else {}
 
 
+def _google_get(url: str) -> dict:
+    credentials, _ = google.auth.default(scopes=[GOOGLE_SCOPE])
+    credentials.refresh(GoogleAuthRequest())
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {credentials.token}"},
+        timeout=30,
+    )
+    if not response.ok:
+        raise RuntimeError(f"Google API returned HTTP {response.status_code}: {response.text[:500]}")
+    return response.json() if response.content else {}
+
+
 def _project() -> str:
     value = os.getenv("GCP_PROJECT_ID", "").strip()
     if not value:
@@ -60,16 +74,32 @@ def _region() -> str:
     return os.getenv("GCP_REGION", "us-east1").strip()
 
 
-def _scheduler_url(action: str) -> str:
+def _scheduler_resource_url() -> str:
     job = os.getenv("LIVE_SCHEDULER_JOB", "wallcloud-live-refresh").strip()
-    name = f"projects/{_project()}/locations/{_region()}/jobs/{job}"
-    return f"https://cloudscheduler.googleapis.com/v1/{name}:{action}"
+    return f"https://cloudscheduler.googleapis.com/v1/projects/{_project()}/locations/{_region()}/jobs/{job}"
 
 
-def _focus_scheduler_url(action: str) -> str:
+def _focus_scheduler_resource_url() -> str:
     job = os.getenv("FOCUS_SCHEDULER_JOB", "wallcloud-focus-refresh").strip()
-    name = f"projects/{_project()}/locations/{_region()}/jobs/{job}"
-    return f"https://cloudscheduler.googleapis.com/v1/{name}:{action}"
+    return f"https://cloudscheduler.googleapis.com/v1/projects/{_project()}/locations/{_region()}/jobs/{job}"
+
+
+def _set_scheduler_enabled(resource_url: str, *, enabled: bool) -> None:
+    state = _google_get(resource_url).get("state")
+    if state not in {"ENABLED", "PAUSED"}:
+        raise RuntimeError(f"Cloud Scheduler returned an unexpected state: {state or 'missing'}")
+    if enabled and state == "PAUSED":
+        _google_post(f"{resource_url}:resume")
+    elif not enabled and state == "ENABLED":
+        _google_post(f"{resource_url}:pause")
+
+
+def _set_live_scheduler_enabled(enabled: bool) -> None:
+    _set_scheduler_enabled(_scheduler_resource_url(), enabled=enabled)
+
+
+def _set_focus_scheduler_enabled(enabled: bool) -> None:
+    _set_scheduler_enabled(_focus_scheduler_resource_url(), enabled=enabled)
 
 
 def _run_job_url(job_name: str) -> str:
@@ -123,6 +153,13 @@ def _focus_control_key() -> str:
 def _read_focus_state() -> dict:
     client, config = _r2_client()
     return get_json_object(client, config, _focus_control_key()) or {"enabled": False}
+
+
+def _focus_state_is_active(state: dict, *, now: datetime | None = None) -> bool:
+    try:
+        return parse_focus_polling_state(state).is_active(now=now)
+    except (TypeError, ValueError):
+        return False
 
 
 def _write_focus_state(state: dict) -> None:
@@ -192,12 +229,12 @@ def control_live():
             # cannot observe the old disabled state and exit unnecessarily.
             _write_polling_state(True)
             try:
-                _google_post(_scheduler_url("resume"))
+                _set_live_scheduler_enabled(True)
             except Exception:
                 _write_polling_state(False)
                 raise
         else:
-            _google_post(_scheduler_url("pause"))
+            _set_live_scheduler_enabled(False)
             _write_polling_state(False)
         return jsonify({"enabled": enabled})
     except Exception as exc:
@@ -215,13 +252,13 @@ def control_focus():
         return jsonify({"error": "enabled must be a boolean"}), 400
     try:
         previous = _read_focus_state()
-        was_enabled = previous.get("enabled") is True
+        was_active = _focus_state_is_active(previous)
         if enabled:
             state = _new_focus_state(payload)
             _write_focus_state(state)
-            if not was_enabled:
+            if not was_active:
                 try:
-                    _google_post(_focus_scheduler_url("resume"))
+                    _set_focus_scheduler_enabled(True)
                 except Exception:
                     _write_focus_state(
                         {
@@ -231,8 +268,7 @@ def control_focus():
                     )
                     raise
         else:
-            if was_enabled:
-                _google_post(_focus_scheduler_url("pause"))
+            _set_focus_scheduler_enabled(False)
             state = {
                 "enabled": False,
                 "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

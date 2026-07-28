@@ -2,17 +2,20 @@
   "schema_version": 1,
   "status": "unavailable",
   "mode": "live",
+  "coverage": "conus",
+  "delivery": "pmtiles",
   "dataset_id": "live",
-  "label": "Live / recent radar",
+  "label": "Live national MRMS",
+  "region_label": "Continental U.S.",
   "generated_at": null,
   "latest_valid_time": null,
   "start_time": null,
   "end_time": null,
   "region": {
-    "west": -86.5,
-    "south": 32.5,
-    "east": -73.5,
-    "north": 39.5
+    "west": -130.0,
+    "south": 20.0,
+    "east": -60.0,
+    "north": 55.0
   },
   "product": "MergedReflectivityQCComposite",
   "products": {

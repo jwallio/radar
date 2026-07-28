@@ -30,6 +30,7 @@ const CONUS_BOUNDS = [-130, 20, -60, 55] as const
 const FOCUS_MAX_LONGITUDE_SPAN = 25
 const FOCUS_MAX_LATITUDE_SPAN = 20
 const FOCUS_MAX_HOURS = 24
+const ADMIN_FETCH_TIMEOUT_MS = 45_000
 
 function allowedOrigin(request: Request, env: WorkerEnv): string | null {
   const origin = request.headers.get('Origin')
@@ -207,6 +208,7 @@ async function proxyAdmin(
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(ADMIN_FETCH_TIMEOUT_MS),
   })
   const text = await response.text()
   let parsed: unknown = { error: text || `Admin service returned HTTP ${response.status}` }

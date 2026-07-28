@@ -1,10 +1,12 @@
 {
-  "CORSRules": [
+  "rules": [
     {
-      "AllowedOrigins": ["https://radar.wall.cloud"],
-      "AllowedMethods": ["GET", "HEAD"],
-      "AllowedHeaders": ["*"],
-      "ExposeHeaders": [
+      "allowed": {
+        "origins": ["https://radar.wall.cloud"],
+        "methods": ["GET", "HEAD"],
+        "headers": ["Range", "If-None-Match", "If-Modified-Since"]
+      },
+      "exposeHeaders": [
         "ETag",
         "Content-Length",
         "Content-Range",
@@ -12,7 +14,7 @@
         "Content-Type",
         "Cache-Control"
       ],
-      "MaxAgeSeconds": 300
+      "maxAgeSeconds": 300
     }
   ]
 }

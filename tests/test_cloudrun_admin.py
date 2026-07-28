@@ -99,6 +99,7 @@ def test_focus_control_stores_one_bounded_region_and_resumes_scheduler(
     requests: list[str] = []
     monkeypatch.setattr(admin_service, "_read_focus_state", lambda: {"enabled": False})
     monkeypatch.setattr(admin_service, "_write_focus_state", lambda state: writes.append(state))
+    monkeypatch.setattr(admin_service, "_google_get", lambda _url: {"state": "PAUSED"})
     monkeypatch.setattr(
         admin_service,
         "_google_post",
@@ -148,7 +149,18 @@ def test_focus_control_switches_region_without_resuming_an_enabled_scheduler(
 ) -> None:
     monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
     writes: list[dict[str, Any]] = []
-    monkeypatch.setattr(admin_service, "_read_focus_state", lambda: {"enabled": True})
+    monkeypatch.setattr(
+        admin_service,
+        "_read_focus_state",
+        lambda: {
+            "enabled": True,
+            "updated_at": "2026-07-28T12:00:00Z",
+            "expires_at": "2099-07-29T00:00:00Z",
+            "region_id": "southeast",
+            "region_label": "Southeast",
+            "bounds": [-91.5, 24.0, -74.0, 37.8],
+        },
+    )
     monkeypatch.setattr(admin_service, "_write_focus_state", lambda state: writes.append(state))
     monkeypatch.setattr(
         admin_service,
@@ -215,8 +227,19 @@ def test_focus_control_pauses_scheduler_when_disabled(monkeypatch: pytest.Monkey
     monkeypatch.setenv("GCP_REGION", "us-east1")
     writes: list[dict[str, Any]] = []
     requests: list[str] = []
-    monkeypatch.setattr(admin_service, "_read_focus_state", lambda: {"enabled": True})
+    monkeypatch.setattr(
+        admin_service,
+        "_read_focus_state",
+        lambda: {
+            "enabled": True,
+            "expires_at": "2099-07-29T00:00:00Z",
+            "region_id": "southeast",
+            "region_label": "Southeast",
+            "bounds": [-91.5, 24.0, -74.0, 37.8],
+        },
+    )
     monkeypatch.setattr(admin_service, "_write_focus_state", lambda state: writes.append(state))
+    monkeypatch.setattr(admin_service, "_google_get", lambda _url: {"state": "ENABLED"})
     monkeypatch.setattr(
         admin_service,
         "_google_post",
@@ -232,3 +255,84 @@ def test_focus_control_pauses_scheduler_when_disabled(monkeypatch: pytest.Monkey
     assert response.status_code == 200
     assert writes[-1]["enabled"] is False
     assert requests[0].endswith("/jobs/wallcloud-focus-refresh:pause")
+
+
+def test_focus_control_resumes_after_an_expired_enabled_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setenv("GCP_PROJECT_ID", "wall-cloud-radar")
+    writes: list[dict[str, Any]] = []
+    requests: list[str] = []
+    monkeypatch.setattr(
+        admin_service,
+        "_read_focus_state",
+        lambda: {
+            "enabled": True,
+            "expires_at": "2020-01-01T00:00:00Z",
+            "region_id": "old-region",
+            "region_label": "Old Region",
+            "bounds": [-90.0, 30.0, -80.0, 40.0],
+        },
+    )
+    monkeypatch.setattr(admin_service, "_write_focus_state", lambda state: writes.append(state))
+    monkeypatch.setattr(admin_service, "_google_get", lambda _url: {"state": "PAUSED"})
+    monkeypatch.setattr(
+        admin_service,
+        "_google_post",
+        lambda url, payload=None: requests.append(url) or {},
+    )
+
+    response = admin_service.app.test_client().post(
+        "/control/focus",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "enabled": True,
+            "region_id": "central-plains",
+            "region_label": "Central Plains",
+            "bounds": [-106.0, 34.0, -90.0, 49.0],
+        },
+    )
+
+    assert response.status_code == 200
+    assert writes[-1]["region_id"] == "central-plains"
+    assert requests == [
+        "https://cloudscheduler.googleapis.com/v1/projects/wall-cloud-radar/locations/us-east1/"
+        "jobs/wallcloud-focus-refresh:resume"
+    ]
+
+
+def test_focus_control_disables_an_already_paused_expired_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setenv("GCP_PROJECT_ID", "wall-cloud-radar")
+    writes: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        admin_service,
+        "_read_focus_state",
+        lambda: {
+            "enabled": True,
+            "expires_at": "2020-01-01T00:00:00Z",
+            "region_id": "old-region",
+            "region_label": "Old Region",
+            "bounds": [-90.0, 30.0, -80.0, 40.0],
+        },
+    )
+    monkeypatch.setattr(admin_service, "_write_focus_state", lambda state: writes.append(state))
+    monkeypatch.setattr(admin_service, "_google_get", lambda _url: {"state": "PAUSED"})
+    monkeypatch.setattr(
+        admin_service,
+        "_google_post",
+        lambda *_args, **_kwargs: pytest.fail("an already-paused Scheduler should not be paused again"),
+    )
+
+    response = admin_service.app.test_client().post(
+        "/control/focus",
+        headers={"Authorization": "Bearer service-token"},
+        json={"enabled": False},
+    )
+
+    assert response.status_code == 200
+    assert writes == [response.get_json()]
+    assert writes[0]["enabled"] is False

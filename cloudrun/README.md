@@ -53,13 +53,13 @@ gcloud artifacts repositories describe wallcloud --location="$REGION" >/dev/null
   gcloud artifacts repositories create wallcloud --repository-format=docker --location="$REGION" --description="Wall Cloud radar images"
 ```
 
-The service account needs job execution, per-execution environment overrides, Scheduler pause/enable, and secret access. `enable` is the IAM permission used to resume a paused Scheduler job.
+The service account needs job execution, per-execution environment overrides, Scheduler state reads, Scheduler pause/enable, and secret access. `enable` is the IAM permission used to resume a paused Scheduler job.
 
 ```bash
 gcloud iam roles update wallcloudRadarControl \
   --project="$PROJECT_ID" \
   --title="Wall Cloud radar control" \
-  --permissions="cloudscheduler.jobs.pause,cloudscheduler.jobs.enable,run.jobs.run,run.jobs.runWithOverrides" \
+  --permissions="cloudscheduler.jobs.get,cloudscheduler.jobs.pause,cloudscheduler.jobs.enable,run.jobs.run,run.jobs.runWithOverrides" \
   --stage=GA
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -133,7 +133,7 @@ gcloud scheduler jobs pause wallcloud-mrms-refresh --location="$REGION"
 
 This job is the managed five-minute path worth keeping: it renders only one selected regional preset, uses zoom levels 4–10, and is paused whenever no focus is active. The owner control stores one region in `control/focus.json`; selecting another region replaces it rather than creating parallel jobs. Each activation lasts 12 hours by default, and the job pauses its own Scheduler when that expiration is reached.
 
-On a new region or after a long gap, the first execution publishes only the newest frame. Later five-minute executions grow the rolling loop incrementally. This keeps the first result fast and prevents a large bootstrap from overlapping the next scheduled execution.
+On a new region or after a long gap, the first execution publishes only the newest frame. Later five-minute executions grow the rolling loop incrementally. This keeps the first result fast and prevents a large bootstrap from overlapping the next scheduled execution. Before publication, the job rechecks the focus object version; an older in-flight execution cannot publish or disable a newer region selection.
 
 ```bash
 gcloud run jobs deploy wallcloud-mrms-focus \

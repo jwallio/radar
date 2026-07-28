@@ -26,6 +26,8 @@ from radar_processing.r2 import (  # noqa: E402
     R2PublishConfig,
     create_r2_client,
     get_json_object,
+    get_json_object_with_etag,
+    is_precondition_failed,
     publish_directory,
     prune_old_frames,
     put_json_object,
@@ -47,27 +49,61 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
         raise ValueError(f"{name} must be an integer") from exc
 
 
-def _scheduler_url() -> str:
+def _scheduler_resource_url() -> str:
     project = os.getenv("GCP_PROJECT_ID", "").strip()
     if not project:
         raise RuntimeError("GCP_PROJECT_ID is required to auto-pause expired storm focus polling")
     region = os.getenv("GCP_REGION", "us-east1").strip()
     job = os.getenv("FOCUS_SCHEDULER_JOB", "wallcloud-focus-refresh").strip()
     name = f"projects/{project}/locations/{region}/jobs/{job}"
-    return f"https://cloudscheduler.googleapis.com/v1/{name}:pause"
+    return f"https://cloudscheduler.googleapis.com/v1/{name}"
 
 
-def _pause_expired_scheduler() -> None:
+def _scheduler_url(action: str) -> str:
+    return f"{_scheduler_resource_url()}:{action}"
+
+
+def _scheduler_request(method: str, url: str) -> dict:
     credentials, _ = google.auth.default(scopes=[GOOGLE_SCOPE])
     credentials.refresh(GoogleAuthRequest())
-    response = requests.post(
-        _scheduler_url(),
+    response = requests.request(
+        method,
+        url,
         headers={"Authorization": f"Bearer {credentials.token}", "Content-Type": "application/json"},
-        json={},
+        json={} if method == "POST" else None,
         timeout=30,
     )
     if not response.ok:
-        raise RuntimeError(f"Unable to pause expired focus Scheduler: HTTP {response.status_code}: {response.text[:500]}")
+        raise RuntimeError(f"Cloud Scheduler returned HTTP {response.status_code}: {response.text[:500]}")
+    return response.json() if response.content else {}
+
+
+def _set_scheduler_enabled(enabled: bool) -> None:
+    state = _scheduler_request("GET", _scheduler_resource_url()).get("state")
+    if state not in {"ENABLED", "PAUSED"}:
+        raise RuntimeError(f"Cloud Scheduler returned an unexpected state: {state or 'missing'}")
+    if enabled and state == "PAUSED":
+        _scheduler_request("POST", _scheduler_url("resume"))
+    elif not enabled and state == "ENABLED":
+        _scheduler_request("POST", _scheduler_url("pause"))
+
+
+def _read_focus_state(
+    client,
+    r2_config: R2PublishConfig,
+    control_key: str,
+) -> tuple[FocusPollingState | None, str | None]:
+    raw_state, etag = get_json_object_with_etag(client, r2_config, control_key)
+    return (parse_focus_polling_state(raw_state) if raw_state is not None else None), etag
+
+
+def _matches_focus_version(
+    current: FocusPollingState | None,
+    current_etag: str | None,
+    expected: FocusPollingState,
+    expected_etag: str,
+) -> bool:
+    return current == expected and current_etag == expected_etag
 
 
 def _disable_expired_focus(
@@ -76,18 +112,41 @@ def _disable_expired_focus(
     state: FocusPollingState,
     *,
     control_key: str,
-) -> None:
-    _pause_expired_scheduler()
-    put_json_object(
-        client,
-        r2_config,
-        control_key,
-        {
-            "enabled": False,
-            "updated_at": _utc_timestamp(),
-            "expired_region_id": state.region_id,
-        },
-    )
+    expected_etag: str,
+) -> bool:
+    current, current_etag = _read_focus_state(client, r2_config, control_key)
+    if not _matches_focus_version(current, current_etag, state, expected_etag) or (
+        current is not None and current.is_active()
+    ):
+        return False
+
+    _set_scheduler_enabled(False)
+    current, current_etag = _read_focus_state(client, r2_config, control_key)
+    if not _matches_focus_version(current, current_etag, state, expected_etag):
+        if current is not None and current.is_active():
+            _set_scheduler_enabled(True)
+        return False
+
+    try:
+        put_json_object(
+            client,
+            r2_config,
+            control_key,
+            {
+                "enabled": False,
+                "updated_at": _utc_timestamp(),
+                "expired_region_id": state.region_id,
+            },
+            if_match=expected_etag,
+        )
+    except Exception as exc:
+        if not is_precondition_failed(exc):
+            raise
+        latest, _latest_etag = _read_focus_state(client, r2_config, control_key)
+        if latest is not None and latest.is_active():
+            _set_scheduler_enabled(True)
+        return False
+    return True
 
 
 def _same_focus(manifest: dict | None, state: FocusPollingState) -> bool:
@@ -118,17 +177,27 @@ def main() -> int:
         r2_config = R2PublishConfig.from_env()
         client = create_r2_client(r2_config)
         control_key = os.getenv("FOCUS_CONTROL_OBJECT_KEY", "control/focus.json").strip()
-        raw_state = get_json_object(client, r2_config, control_key)
-        if raw_state is None:
+        state, state_etag = _read_focus_state(client, r2_config, control_key)
+        if state is None:
             LOGGER.info("Storm focus has never been configured; nothing to refresh")
             return 0
-        state = parse_focus_polling_state(raw_state)
         if not state.enabled:
             LOGGER.info("Storm focus polling is disabled; nothing to refresh")
             return 0
+        if not state_etag:
+            raise RuntimeError("Storm focus control object did not include an ETag")
         if not state.is_active():
-            _disable_expired_focus(client, r2_config, state, control_key=control_key)
-            LOGGER.info("Storm focus %s expired and its Scheduler was paused", state.region_id)
+            disabled = _disable_expired_focus(
+                client,
+                r2_config,
+                state,
+                control_key=control_key,
+                expected_etag=state_etag,
+            )
+            if disabled:
+                LOGGER.info("Storm focus %s expired and its Scheduler was paused", state.region_id)
+            else:
+                LOGGER.info("Storm focus changed while expiry was being handled; leaving the newer state intact")
             return 0
         if state.bounds is None or state.expires_at is None or not state.region_id or not state.region_label:
             raise RuntimeError("Enabled storm focus state is incomplete")
@@ -178,6 +247,20 @@ def main() -> int:
                 "frame_count": len(manifest.get("frames", [])),
             },
         )
+        current, current_etag = _read_focus_state(client, r2_config, control_key)
+        if not _matches_focus_version(current, current_etag, state, state_etag) or (
+            current is not None and not current.is_active()
+        ):
+            if _matches_focus_version(current, current_etag, state, state_etag) and current is not None:
+                _disable_expired_focus(
+                    client,
+                    r2_config,
+                    current,
+                    control_key=control_key,
+                    expected_etag=state_etag,
+                )
+            LOGGER.info("Storm focus changed or expired during processing; skipping stale publication")
+            return 0
         keys = publish_directory(
             client,
             r2_config,

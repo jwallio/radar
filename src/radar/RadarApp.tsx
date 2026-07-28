@@ -60,6 +60,7 @@ maplibregl.addProtocol('pmtiles', PMTILES_PROTOCOL.tile)
 
 const EMPTY_STATE = emptyFeatureCollection()
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
+const MOBILE_GIF_FRAME_LIMIT = 12
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
@@ -933,6 +934,7 @@ function composeShareFrame(
   mapImage: ImageData,
   frame: RadarFrameManifest,
   productId: RadarProductId,
+  regionLabel: string,
   isHistorical: boolean,
   playbackFps: number,
   frameNumber: number,
@@ -964,7 +966,7 @@ function composeShareFrame(
   context.fillText('wall.cloud Radar', 20, 31)
   context.fillStyle = SHARE_BRAND_LIGHT
   context.font = '700 15px Arial, sans-serif'
-  const subtitleParts = ['North Carolina', details.source]
+  const subtitleParts = [regionLabel, details.source]
   if (details.resolution !== 'native') subtitleParts.push(details.resolution)
   subtitleParts.push(details.label)
   context.fillText(subtitleParts.join(' · '), 20, 63)
@@ -1888,6 +1890,11 @@ export function RadarApp() {
   const exportGif = async () => {
     const map = mapRef.current
     if (gifExporting || !map || !frames.length) return
+    const limitMobileFrames = Math.min(window.innerWidth, window.innerHeight) <= 680
+      && frames.length > MOBILE_GIF_FRAME_LIMIT
+    const exportFrames = limitMobileFrames ? frames.slice(-MOBILE_GIF_FRAME_LIMIT) : frames
+    const exportRegionLabel = manifest?.region_label
+      ?? (manifest?.coverage === 'conus' ? 'Continental U.S.' : mapRegion.label)
     const originalIndex = activeIndex
     const originalFrame = activeFrame
     const wasPlaying = playing
@@ -1897,12 +1904,12 @@ export function RadarApp() {
     setGifExportError(null)
     setPlaying(false)
     try {
-      await Promise.all(frames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
+      await Promise.all(exportFrames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
-      const loopPeriod = formatShareLoopPeriod(frames[0]?.valid_time, frames.at(-1)?.valid_time)
+      const loopPeriod = formatShareLoopPeriod(exportFrames[0]?.valid_time, exportFrames.at(-1)?.valid_time)
       const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
-      for (let index = 0; index < frames.length; index += 1) {
-        const frame = frames[index]
+      for (let index = 0; index < exportFrames.length; index += 1) {
+        const frame = exportFrames[index]
         let mapImage: ImageData
         try {
           // Build the export from the source raster and local vector layers. A
@@ -1931,8 +1938,8 @@ export function RadarApp() {
           if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
           mapImage = mapCapture
         }
-        captured.push(composeShareFrame(mapImage, frame, productId, isHistorical, playbackFps, index, frames.length, loopPeriod))
-        setGifExportProgress(Math.round((index + 1) / frames.length * 100))
+        captured.push(composeShareFrame(mapImage, frame, productId, exportRegionLabel, isHistorical, playbackFps, index, exportFrames.length, loopPeriod))
+        setGifExportProgress(Math.round((index + 1) / exportFrames.length * 100))
       }
       const blob = encodeGif(captured, playbackFps)
       const zoom = Math.round(map.getZoom() * 10) / 10
@@ -1946,8 +1953,12 @@ export function RadarApp() {
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2_000)
-      if (usedMapCanvasFallback) setGifExportError('GIF saved with the browser map base because the deterministic export base was temporarily unavailable.')
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000)
+      const notices = [
+        ...(limitMobileFrames ? [`Mobile export used the latest ${MOBILE_GIF_FRAME_LIMIT} frames to stay within iOS memory limits.`] : []),
+        ...(usedMapCanvasFallback ? ['GIF saved with the browser map base because the deterministic export base was temporarily unavailable.'] : []),
+      ]
+      if (notices.length) setGifExportError(notices.join(' '))
     } catch (error: unknown) {
       setGifExportError(error instanceof Error ? error.message : 'GIF export failed')
     } finally {
@@ -2486,7 +2497,7 @@ export function RadarApp() {
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (
-                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the pre-rendered reference-style NC loop">Branded loop</a>
+                <a className="radar-static-download" href={loopDownloadUrl} download={`wall-cloud-${manifest?.dataset_id ?? 'live'}-${productId}-branded.gif`} title="Download the processor-generated branded loop">Branded loop</a>
               ) : null}
             </div>
           </div>

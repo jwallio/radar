@@ -220,7 +220,7 @@ The browser’s **Save GIF** action uses:
 - valid time and loop period
 - a compact product-specific legend
 
-The client uses the preview rasters from each PMTiles frame for deterministic export composition. GIF timing uses centiseconds, so very high FPS values use the nearest representable delay. GIF is palette-limited by design; lossless PMTiles/WebP remain the higher-fidelity interactive source.
+The client uses the preview rasters from each PMTiles frame for deterministic export composition. GIF timing uses centiseconds, so very high FPS values use the nearest representable delay. GIF is palette-limited by design; lossless PMTiles/WebP remain the higher-fidelity interactive source. On phone-sized viewports, browser-generated GIFs use the latest 12 frames to remain within iOS memory limits; the full interactive loop remains available.
 
 ## Data contract
 
@@ -277,11 +277,24 @@ Detailed copy/paste commands are in [cloudrun/README.md](cloudrun/README.md). Th
 
 After changing processor code:
 
-1. Push application code to `main`; Pages deploys the frontend and the national workflow begins using the new processor.
-2. Build and push `Dockerfile.cloudrun` with `cloudbuild.yaml` when history, storm focus, KRAX, or the admin service changed.
-3. Redeploy the shared history job, storm-focus job, optional KRAX job, and admin service as needed.
-4. Redeploy the Cloudflare Worker if its API contract changed.
-5. Manually dispatch `Refresh national MRMS radar` once and verify the R2 manifest before relying on its schedule.
+1. Build and push `Dockerfile.cloudrun` with `cloudbuild.yaml` when history, storm focus, KRAX, or the admin service changed.
+2. Redeploy the shared history job, storm-focus job, optional KRAX job, and admin service as needed.
+3. Apply R2 CORS, connect the R2 custom domain, and redeploy the Cloudflare Worker if its API contract changed.
+4. Set the repository variables and bucket-scoped R2 Actions secrets below.
+5. Push application code to `main`; Pages deploys the frontend and the national workflow begins using the new processor.
+6. Manually dispatch `Refresh national MRMS radar` once and verify the R2 manifest before relying on its schedule.
+
+Apply the checked-in R2 CORS policy and connect the production data hostname with current Wrangler:
+
+```powershell
+Push-Location control_worker
+npx wrangler r2 bucket cors set wallcloud-radar-data --file ../deploy/vps/r2-cors.json --force
+npx wrangler r2 bucket cors list wallcloud-radar-data
+npx wrangler r2 bucket domain add wallcloud-radar-data --domain data.radar.wall.cloud --zone-id ZONE_ID --min-tls 1.2 --force
+Pop-Location
+```
+
+The custom-domain command is one-time; use `npx wrangler r2 bucket domain list wallcloud-radar-data` to verify an existing connection rather than adding it again.
 
 ## GitHub Pages and Actions
 

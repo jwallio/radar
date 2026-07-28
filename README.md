@@ -260,7 +260,7 @@ The default production profile keeps recurring cloud charges near zero without r
 - Live frame objects are retained for one day while the public manifest exposes at most 30 observations selected from the recent 90-minute window, leaving most of R2's free storage allowance available for requested history.
 - Cloud Run stays scale-to-zero and is used only when the owner requests a historical pack, explicitly enables KRAX live polling, or activates one storm-focus region.
 - Storm focus replaces the previous selected region instead of creating another Scheduler, is limited to a 25° × 20° processing box, and expires after 12 hours unless the owner extends it.
-- A new or long-stale national/focus dataset publishes the newest frame first, then grows its rolling loop incrementally so five-minute triggers do not overlap a large bootstrap.
+- A new or long-stale national/focus dataset publishes the newest three frames first, restoring a usable loop in one bounded run before growing the rolling sequence incrementally.
 - The expensive `wallcloud-mrms-refresh` Cloud Scheduler job is not enabled.
 - Historical jobs, KRAX live control, and storm-focus control require the same owner key, preventing anonymous visitors from starting billable compute.
 

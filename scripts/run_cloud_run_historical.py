@@ -26,10 +26,18 @@ def _job_id() -> str:
     return os.getenv("HISTORY_JOB_ID", "history-manual").strip() or "history-manual"
 
 
+def _source() -> str:
+    return os.getenv("HISTORY_SOURCE", "krax").strip().lower()
+
+
+def _history_prefix() -> str:
+    return "radar/history" if _source() == "mrms" else "radar/krax/history"
+
+
 def _status(status: str, message: str, **extra: Any) -> dict[str, Any]:
     return {
         "job_id": _job_id(),
-        "source": os.getenv("HISTORY_SOURCE", "krax").strip().lower(),
+        "source": _source(),
         "status": status,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "message": message,
@@ -38,10 +46,11 @@ def _status(status: str, message: str, **extra: Any) -> dict[str, Any]:
 
 
 def _write_status(payload: dict[str, Any], client: Any = None, config: R2PublishConfig | None = None) -> None:
-    status_path = ROOT / "public" / "data" / "radar" / "krax" / "history" / "jobs" / f"{_job_id()}.json"
+    relative_prefix = Path(_history_prefix())
+    status_path = ROOT / "public" / "data" / relative_prefix / "jobs" / f"{_job_id()}.json"
     write_json_atomic(status_path, payload)
     if client is not None and config is not None:
-        put_json_object(client, config, f"radar/krax/history/jobs/{_job_id()}.json", payload)
+        put_json_object(client, config, f"{_history_prefix()}/jobs/{_job_id()}.json", payload)
 
 
 def main() -> int:
@@ -50,29 +59,43 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
     )
-    source = os.getenv("HISTORY_SOURCE", "krax").strip().lower()
-    if source != "krax":
-        LOGGER.error("Only KRAX historical jobs are enabled in this Cloud Run image")
+    source = _source()
+    if source not in {"krax", "mrms"}:
+        LOGGER.error("Unsupported historical radar source %s", source)
         return 2
     start = parse_timestamp(os.environ["HISTORY_START"])
     end = parse_timestamp(os.environ["HISTORY_END"])
     max_frames = max(1, min(90, int(os.getenv("HISTORY_MAX_FRAMES", "30"))))
-    dataset_id = f"krax-{dataset_id_for_range(start, end)}"
+    region_id = os.getenv("HISTORY_REGION_ID", "view").strip().lower() or "view"
+    dataset_id = (
+        f"krax-{dataset_id_for_range(start, end)}"
+        if source == "krax"
+        else f"mrms-{region_id}-{dataset_id_for_range(start, end)}"
+    )
     config = R2PublishConfig.from_env()
     client = create_r2_client(config)
-    _write_status(_status("running", "KRAX Level II historical job started", dataset_id=dataset_id), client, config)
+    source_label = "National MRMS" if source == "mrms" else "KRAX Level II"
+    _write_status(
+        _status("running", f"{source_label} historical job started", dataset_id=dataset_id),
+        client,
+        config,
+    )
     try:
+        script = "build_historical_krax.py" if source == "krax" else "build_historical_radar.py"
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / script),
+            "--start",
+            os.environ["HISTORY_START"],
+            "--end",
+            os.environ["HISTORY_END"],
+            "--max-frames",
+            str(max_frames),
+        ]
+        if source == "mrms":
+            command.extend(["--region-id", region_id])
         result = subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "scripts" / "build_historical_krax.py"),
-                "--start",
-                os.environ["HISTORY_START"],
-                "--end",
-                os.environ["HISTORY_END"],
-                "--max-frames",
-                str(max_frames),
-            ],
+            command,
             cwd=ROOT,
             check=False,
         )
@@ -83,9 +106,9 @@ def main() -> int:
             client,
             config,
             ROOT / "public" / "data",
-            include_prefixes=("radar/krax/history",),
+            include_prefixes=(_history_prefix(),),
         )
-        manifest_url = f"radar/krax/history/{dataset_id}/manifest.json"
+        manifest_url = f"{_history_prefix()}/{dataset_id}/manifest.json"
         _write_status(
             _status(
                 "complete",

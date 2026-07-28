@@ -23,7 +23,10 @@ export interface RadarFrameManifest {
   id: string
   valid_time: string
   url: string
+  pmtiles_url?: string
   bounds: [number, number, number, number]
+  minzoom?: number
+  maxzoom?: number
   source_valid_time?: string
 }
 
@@ -47,6 +50,9 @@ export interface RadarManifest {
   site?: string
   dataset_id?: string
   label?: string
+  region_id?: string
+  region_label?: string
+  expires_at?: string
   generated_at: string | null
   latest_valid_time: string | null
   start_time?: string | null
@@ -57,6 +63,8 @@ export interface RadarManifest {
   frames: RadarFrameManifest[]
   sources?: Record<string, string>
   errors?: string[]
+  coverage?: 'regional' | 'conus'
+  delivery?: 'image' | 'pmtiles'
   radar?: {
     latitude?: number
     longitude?: number

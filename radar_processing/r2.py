@@ -8,9 +8,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-PUBLISH_LAST_NAMES = frozenset({"manifest.json", "catalog.json", "worker-status.json"})
+PUBLISH_LAST_NAMES = frozenset(
+    {"manifest.json", "catalog.json", "worker-status.json", "mrms-worker-status.json"}
+)
 PRUNE_PREFIXES = (
     "radar/frames/",
+    "radar/national/frames/",
+    "radar/national/previews/",
+    "radar/focus/frames/",
+    "radar/focus/previews/",
     "radar/krax/frames/",
     "radar/loops/",
     "radar/krax/loops/",
@@ -73,6 +79,7 @@ def content_type_for(path: Path) -> str:
         ".gif": "image/gif",
         ".json": "application/json; charset=utf-8",
         ".png": "image/png",
+        ".pmtiles": "application/vnd.pmtiles",
         ".webp": "image/webp",
     }
     return known.get(path.suffix.lower(), mimetypes.guess_type(path.name)[0] or "application/octet-stream")

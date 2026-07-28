@@ -117,12 +117,28 @@ def test_krax_manifest_generation_orders_frames_and_uses_atomic_contract(tmp_pat
             NexradRadarMetadata("reflectivity", 12, 35.665, -78.49, 0.5),
         )
 
+    def fake_product_render(
+        _source: Path,
+        output: Path,
+        region: RegionBounds,
+        *,
+        product_id: str,
+        width: int,
+    ):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (width, 300), (0, 0, 0, 0)).save(output)
+        return (
+            RenderedRaster(region, width, 300),
+            NexradRadarMetadata(product_id, 12, 35.665, -78.49, 0.5),
+        )
+
     def fake_loop(records, _frame_dir, output, **_kwargs):
         Image.new("P", (20, 20)).save(output, format="GIF")
         return len(records)
 
     monkeypatch.setattr("radar_processing.nexrad_pipeline.download_volume", fake_download)
     monkeypatch.setattr("radar_processing.nexrad_pipeline.render_level2_reflectivity", fake_render)
+    monkeypatch.setattr("radar_processing.nexrad_pipeline.render_level2_product", fake_product_render)
     monkeypatch.setattr("radar_processing.nexrad_pipeline.fetch_export_geography", lambda _config: None)
     monkeypatch.setattr("radar_processing.nexrad_pipeline.build_loop_gif", fake_loop)
 

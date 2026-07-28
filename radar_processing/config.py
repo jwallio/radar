@@ -154,6 +154,7 @@ ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
 )
 
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
+NATIONAL_MRMS_REGION = RegionBounds(west=-130.0, east=-60.0, south=20.0, north=55.0)
 # The live raster stays regional so upstream weather remains visible in the
 # viewer. Downloadable branded loops use a tighter Central NC framing instead
 # of forcing the share image to show the full processing domain.

@@ -49,6 +49,7 @@ def test_r2_keys_and_cache_headers() -> None:
     root = Path("public")
     assert object_key(Path("public/data/radar/manifest.json"), root) == "data/radar/manifest.json"
     assert cache_control_for(Path("manifest.json")).startswith("no-store")
+    assert cache_control_for(Path("mrms-worker-status.json")).startswith("no-store")
     assert "immutable" in cache_control_for(Path("frame.png"))
 
 

@@ -2,22 +2,25 @@
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "wallcloud-radar-control",
 	"main": "src/index.ts",
-	"compatibility_date": "2026-07-25",
+	"compatibility_date": "2026-07-28",
+	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": true,
+	"preview_urls": false,
+	"observability": {
+		"enabled": true,
+		"logs": { "enabled": true, "head_sampling_rate": 1 },
+		"traces": { "enabled": true, "head_sampling_rate": 0.01 }
+	},
 	"r2_buckets": [
 		{
 			"binding": "CONTROL_BUCKET",
 			"bucket_name": "wallcloud-radar-data"
-		},
-		{
-			"bucket_name": "wallcloud-radar-data",
-			"binding": "wallcloud_radar_data",
-			"remote": true
 		}
 	],
 	"vars": {
-    "ALLOWED_ORIGIN": "https://radar.wall.cloud",
-    "CONTROL_OBJECT_KEY": "control/polling.json",
-    "ADMIN_SERVICE_URL": "https://wallcloud-radar-admin-o76krwi72a-ue.a.run.app"
+		"ALLOWED_ORIGIN": "https://radar.wall.cloud",
+		"CONTROL_OBJECT_KEY": "control/polling.json",
+		"FOCUS_CONTROL_OBJECT_KEY": "control/focus.json",
+		"ADMIN_SERVICE_URL": "https://wallcloud-radar-admin-o76krwi72a-ue.a.run.app"
 	}
 }

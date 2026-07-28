@@ -35,6 +35,7 @@ dev.err.log
 .radar-raw/
 .nexrad-raw/
 __pycache__/
+.pytest_cache/
 *.py[cod]
 public/data/radar/frames/*
 !public/data/radar/frames/.gitkeep
@@ -44,6 +45,18 @@ public/data/radar/history/*
 !public/data/radar/history/.gitkeep
 !public/data/radar/history/catalog.json
 public/data/radar/worker-status.json
+public/data/radar/national/frames/*
+!public/data/radar/national/frames/.gitkeep
+public/data/radar/national/previews/*
+!public/data/radar/national/previews/.gitkeep
+public/data/radar/mrms-worker-status.json
+public/data/radar/focus/frames/*
+!public/data/radar/focus/frames/.gitkeep
+public/data/radar/focus/previews/*
+!public/data/radar/focus/previews/.gitkeep
+public/data/radar/focus/manifest.json
+public/data/radar/focus/worker-status.json
+public/data/radar/.dev-national/
 public/data/radar/krax/frames/*
 !public/data/radar/krax/frames/.gitkeep
 public/data/radar/krax/loops/*

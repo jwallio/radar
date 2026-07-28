@@ -1,0 +1,63 @@
+name: Refresh national MRMS radar
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Offset from the top of the hour to reduce GitHub scheduler congestion.
+    - cron: '2-57/5 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: national-mrms-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      R2_ENDPOINT_URL: ${{ vars.R2_ENDPOINT_URL }}
+      R2_BUCKET: ${{ vars.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_RETAIN_DAYS: '1'
+      MRMS_MAX_FRAMES: '30'
+      MRMS_RETENTION_MINUTES: '90'
+      MRMS_TILE_MIN_ZOOM: '3'
+      MRMS_TILE_MAX_ZOOM: '8'
+      MRMS_TILE_WORKERS: '2'
+    steps:
+      - name: Check out application source
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing GitHub Actions configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-mrms-live.txt
+
+      - name: Install national MRMS dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-mrms-live.txt
+
+      - name: Check native radar libraries
+        run: python -m eccodes selfcheck && python -c "import boto3, cfgrib, rasterio, rio_pmtiles; print('National MRMS dependencies ready')"
+
+      - name: Build and publish the recent national sequence
+        run: python scripts/run_cloud_run_mrms_live.py

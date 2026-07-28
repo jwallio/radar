@@ -112,11 +112,19 @@
 .radar-polling-control small { color: #8ba5a7; font-size: 9px; line-height: 1.35; }
 .radar-polling-toggle { min-width: 64px; max-width: 170px; padding: 7px 8px; border: 1px solid rgba(129,222,208,.42) !important; border-radius: 5px !important; background: rgba(19, 50, 53, .78) !important; color: #bfe9e2 !important; font-size: 10px !important; font-weight: 750; white-space: normal; }
 .radar-polling-toggle.enabled { border-color: rgba(232,201,128,.58) !important; background: rgba(86, 65, 31, .5) !important; color: #f2d991 !important; }
+.radar-focus-control { grid-template-columns: 1fr; align-items: stretch; }
+.radar-focus-region { display: grid; gap: 4px; color: #9eb6b7; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.radar-focus-region select { min-height: 34px; width: 100%; padding: 6px 26px 6px 8px; border: 1px solid rgba(147,182,190,.28); border-radius: 5px; background: #101f27; color: var(--radar-text); font-size: 11px; text-transform: none; }
+.radar-focus-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px !important; }
+.radar-focus-actions .radar-polling-toggle { width: 100%; max-width: none; }
+.radar-focus-off { border-color: rgba(225,171,145,.35) !important; color: #e1ab91 !important; }
 .radar-history-request { display: grid; gap: 8px; margin-top: 13px; padding-top: 10px; border-top: 1px solid rgba(147,182,190,.14); }
 .radar-history-request .radar-layer-section-heading { margin: 0; padding: 0; border-top: 0; }
 .radar-history-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .radar-history-fields label { display: grid; gap: 4px; color: #9eb6b7; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .radar-history-fields input { width: 100%; min-width: 0; padding: 7px 5px; border: 1px solid rgba(147,182,190,.28); border-radius: 5px; background: #101f27; color: var(--radar-text); font-size: 10px; }
+.radar-history-region { display: grid; gap: 4px; color: #9eb6b7; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.radar-history-region select { min-height: 34px; width: 100%; padding: 6px 26px 6px 8px; border: 1px solid rgba(147,182,190,.28); border-radius: 5px; background: #101f27; color: var(--radar-text); font-size: 11px; text-transform: none; }
 .radar-history-request-button { padding: 8px 9px; border: 1px solid rgba(129,222,208,.4) !important; border-radius: 5px !important; background: rgba(46,108,104,.45) !important; color: #dffaf5 !important; font-size: 10px !important; font-weight: 700; }
 .radar-history-request-button:hover { border-color: var(--radar-border-strong) !important; }
 .radar-layer-list { display: grid; gap: 2px; margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(147,182,190,.14); }
@@ -219,6 +227,7 @@
   .radar-polling-toggle { width: 100%; max-width: none; min-height: 40px; }
   .radar-polling-control strong { font-size: 12px; }
   .radar-polling-control small { font-size: 10px; }
+  .radar-focus-actions { grid-template-columns: 1fr; }
   .radar-history-fields { gap: 8px; }
   .radar-history-fields input { min-height: 38px; padding: 8px 6px; font-size: 11px; }
   .radar-history-request-button { min-height: 40px; font-size: 11px !important; }
@@ -245,7 +254,18 @@
 
 @media (max-width: 390px) {
   .radar-product-name { font-size: 12px; }
-  .radar-header-status { display: none; }
+  .radar-region-name { display: none; }
+  .radar-header-status {
+    position: absolute;
+    bottom: 6px;
+    left: 48px;
+    display: flex;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+  }
+  .radar-freshness { font-size: 8px; }
+  .radar-valid-time { font-size: 9px; }
   .radar-brand-lockup { flex: 1; }
   .radar-transport-control > button { padding-inline: 4px; }
   .radar-speed-control button { min-width: 25px; }

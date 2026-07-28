@@ -1,7 +1,21 @@
 import type { RadarAnalysisProductId, RadarProductId, RadarSourceId } from './types'
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
-export const MAP_CENTER: [number, number] = [-78.6382, 35.7796]
+export const NATIONAL_BOUNDS: [number, number, number, number] = [-130, 20, -60, 55]
+export const MAP_CENTER: [number, number] = [-97.5, 38.5]
+
+export const MAP_REGIONS = [
+  { id: 'conus', label: 'Continental U.S.', bounds: NATIONAL_BOUNDS },
+  { id: 'northeast', label: 'Northeast', bounds: [-82.5, 36.5, -66, 47.8] },
+  { id: 'mid-atlantic', label: 'Mid-Atlantic', bounds: [-84.5, 33, -72.5, 42.5] },
+  { id: 'southeast', label: 'Southeast', bounds: [-91.5, 24, -74, 37.8] },
+  { id: 'great-lakes', label: 'Great Lakes', bounds: [-93.5, 39, -75, 49.2] },
+  { id: 'central-plains', label: 'Central Plains', bounds: [-106, 34, -90, 49] },
+  { id: 'southern-plains', label: 'Southern Plains', bounds: [-107, 25, -91, 38] },
+  { id: 'northwest', label: 'Northwest', bounds: [-125, 40, -109, 49.5] },
+  { id: 'southwest', label: 'Southwest', bounds: [-125, 30, -102, 42] },
+  { id: 'north-carolina', label: 'North Carolina', bounds: REGIONAL_BOUNDS },
+] as const
 
 // Keep the raster base label-free so the app's priority city/highway layers
 // are the single source of truth for map text and cannot be duplicated.
@@ -218,6 +232,31 @@ export const CITIES: CityDefinition[] = [
   { id: 'richmond', label: 'Richmond', lon: -77.4360, lat: 37.5407 },
   { id: 'knoxville', label: 'Knoxville', lon: -83.9207, lat: 35.9606 },
   { id: 'columbia', label: 'Columbia', lon: -81.0348, lat: 34.0007 },
+  { id: 'atlanta', label: 'Atlanta', lon: -84.3880, lat: 33.7490, primary: true },
+  { id: 'boston', label: 'Boston', lon: -71.0589, lat: 42.3601, primary: true },
+  { id: 'new-york', label: 'New York', lon: -74.0060, lat: 40.7128, primary: true },
+  { id: 'philadelphia', label: 'Philadelphia', lon: -75.1652, lat: 39.9526 },
+  { id: 'washington', label: 'Washington', lon: -77.0369, lat: 38.9072, primary: true },
+  { id: 'miami', label: 'Miami', lon: -80.1918, lat: 25.7617, primary: true },
+  { id: 'tampa', label: 'Tampa', lon: -82.4572, lat: 27.9506 },
+  { id: 'nashville', label: 'Nashville', lon: -86.7816, lat: 36.1627, primary: true },
+  { id: 'birmingham', label: 'Birmingham', lon: -86.8025, lat: 33.5207 },
+  { id: 'new-orleans', label: 'New Orleans', lon: -90.0715, lat: 29.9511, primary: true },
+  { id: 'chicago', label: 'Chicago', lon: -87.6298, lat: 41.8781, primary: true },
+  { id: 'detroit', label: 'Detroit', lon: -83.0458, lat: 42.3314 },
+  { id: 'minneapolis', label: 'Minneapolis', lon: -93.2650, lat: 44.9778, primary: true },
+  { id: 'st-louis', label: 'St. Louis', lon: -90.1994, lat: 38.6270 },
+  { id: 'kansas-city', label: 'Kansas City', lon: -94.5786, lat: 39.0997, primary: true },
+  { id: 'oklahoma-city', label: 'Oklahoma City', lon: -97.5164, lat: 35.4676 },
+  { id: 'dallas', label: 'Dallas', lon: -96.7970, lat: 32.7767, primary: true },
+  { id: 'houston', label: 'Houston', lon: -95.3698, lat: 29.7604, primary: true },
+  { id: 'denver', label: 'Denver', lon: -104.9903, lat: 39.7392, primary: true },
+  { id: 'phoenix', label: 'Phoenix', lon: -112.0740, lat: 33.4484, primary: true },
+  { id: 'salt-lake-city', label: 'Salt Lake City', lon: -111.8910, lat: 40.7608 },
+  { id: 'los-angeles', label: 'Los Angeles', lon: -118.2437, lat: 34.0522, primary: true },
+  { id: 'san-francisco', label: 'San Francisco', lon: -122.4194, lat: 37.7749 },
+  { id: 'portland', label: 'Portland', lon: -122.6765, lat: 45.5231 },
+  { id: 'seattle', label: 'Seattle', lon: -122.3321, lat: 47.6062, primary: true },
 ]
 
 export const CITIES_GEOJSON: GeoJSON.FeatureCollection = {
@@ -231,17 +270,17 @@ export const CITIES_GEOJSON: GeoJSON.FeatureCollection = {
 }
 
 const gridFeatures: GeoJSON.Feature[] = []
-for (let longitude = -86; longitude <= -74; longitude += 1) {
+for (let longitude = -125; longitude <= -65; longitude += 5) {
   gridFeatures.push({
     type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [[longitude, REGIONAL_BOUNDS[1]], [longitude, REGIONAL_BOUNDS[3]]] },
+    geometry: { type: 'LineString', coordinates: [[longitude, NATIONAL_BOUNDS[1]], [longitude, NATIONAL_BOUNDS[3]]] },
     properties: { axis: 'longitude', value: longitude },
   })
 }
-for (let latitude = 33; latitude <= 39; latitude += 1) {
+for (let latitude = 25; latitude <= 50; latitude += 5) {
   gridFeatures.push({
     type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [[REGIONAL_BOUNDS[0], latitude], [REGIONAL_BOUNDS[2], latitude]] },
+    geometry: { type: 'LineString', coordinates: [[NATIONAL_BOUNDS[0], latitude], [NATIONAL_BOUNDS[2], latitude]] },
     properties: { axis: 'latitude', value: latitude },
   })
 }

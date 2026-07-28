@@ -330,9 +330,19 @@ def _save_rgba(rgba: np.ndarray, output_path: Path) -> None:
 
 
 def render_reflectivity(input_path: Path, output_path: Path, region: RegionBounds) -> RenderedRaster:
+    rgba, rendered = load_reflectivity_rgba(input_path, region)
+    _save_rgba(rgba, output_path)
+    return rendered
+
+
+def load_reflectivity_rgba(input_path: Path, region: RegionBounds) -> tuple[np.ndarray, RenderedRaster]:
+    """Decode and colorize a georeferenced MRMS reflectivity grid once."""
+
     values, actual_bounds = _crop_dataset(input_path, region)
-    _save_rgba(reflectivity_rgba(values), output_path)
-    return RenderedRaster(actual_bounds, values.shape[1], values.shape[0])
+    return (
+        reflectivity_rgba(values),
+        RenderedRaster(actual_bounds, values.shape[1], values.shape[0]),
+    )
 
 
 def render_precip_type(

@@ -1,2 +1,2 @@
--r requirements-nexrad.txt
+-r requirements-cloudrun.txt
 pytest>=8.0

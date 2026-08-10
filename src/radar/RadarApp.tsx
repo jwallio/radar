@@ -698,6 +698,9 @@ function imageCoordinates(bounds: [number, number, number, number]): [[number, n
 function loadBrowserImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image()
+    // Radar frames are hosted on the data subdomain. Request them in CORS
+    // mode so deterministic GIF exports can safely read the canvas pixels.
+    image.crossOrigin = 'anonymous'
     image.decoding = 'async'
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error(`Unable to load radar frame ${url}`))
@@ -2111,7 +2114,6 @@ export function RadarApp() {
     setGifExportError(null)
     setPlaying(false)
     try {
-      await Promise.all(exportFrames.map((frame) => loadBrowserImage(frameUrl(frame, manifestPath))))
       const captured: ImageData[] = []
       const loopPeriod = formatShareLoopPeriod(exportFrames[0]?.valid_time, exportFrames.at(-1)?.valid_time)
       const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE

@@ -122,15 +122,22 @@ function supportsCountyDetail(regionId: string, bounds: readonly [number, number
 function assetUrl(path: string, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
   const resolved = new URL(path, manifestUrl)
-  // Older archive manifests routed immutable R2 images through the control
-  // Worker. Prefer the public data domain now that it has production CORS.
-  if (ARCHIVE_DATA_PROXY_ORIGINS.has(resolved.origin) && resolved.pathname.startsWith(ARCHIVE_DATA_PROXY_PATH)) {
-    const direct = new URL(resolved.pathname.slice('/data/'.length), RADAR_DATA_BASE_URL)
-    direct.search = resolved.search
-    direct.hash = resolved.hash
-    return direct.toString()
-  }
-  return resolved.toString()
+  // Historical PNGs are fetched by MapLibre as cross-origin image requests.
+  // Keep them on the control-worker proxy so the browser always receives a
+  // consistent CORS response, even when a regenerated manifest uses direct
+  // R2-relative URLs. Other archive assets (GIFs and PMTiles) stay direct.
+  const isArchiveFrame = resolved.pathname.startsWith('/radar/history/') && resolved.pathname.endsWith('.png')
+  const isArchiveProxyUrl = ARCHIVE_DATA_PROXY_ORIGINS.has(resolved.origin)
+    && resolved.pathname.startsWith(ARCHIVE_DATA_PROXY_PATH)
+  if (isArchiveProxyUrl || !isArchiveFrame || !RADAR_CONTROL_API_URL) return resolved.toString()
+
+  const dataOrigin = new URL(RADAR_DATA_BASE_URL, window.location.href).origin
+  if (resolved.origin !== dataOrigin) return resolved.toString()
+
+  const proxied = new URL(`${RADAR_CONTROL_API_URL}${resolved.pathname.replace(/^\//, '/data/')}`)
+  proxied.search = resolved.search
+  proxied.hash = resolved.hash
+  return proxied.toString()
 }
 
 function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {

@@ -34,6 +34,12 @@ const BUOY_DATA_PATH = `${RADAR_DATA_BASE_URL}observations/buoys.json`
 // Override this with VITE_RADAR_CONTROL_API_URL when a custom Worker domain is ready.
 const DEFAULT_RADAR_CONTROL_API_URL = 'https://wallcloud-radar-control.jlwall33.workers.dev'
 const RADAR_CONTROL_API_URL = (import.meta.env.VITE_RADAR_CONTROL_API_URL || (import.meta.env.DEV ? '' : DEFAULT_RADAR_CONTROL_API_URL)).trim().replace(/\/+$/, '')
+const ARCHIVE_DATA_PROXY_PATH = '/data/radar/history/'
+const ARCHIVE_DATA_PROXY_ORIGINS = new Set(
+  [DEFAULT_RADAR_CONTROL_API_URL, RADAR_CONTROL_API_URL]
+    .filter(Boolean)
+    .map((value) => new URL(value).origin),
+)
 const CONTROL_TOKEN_SESSION_KEY = 'wallcloud-radar-control-token'
 const RADAR_SOURCE_ID = 'wallcloud-radar-image'
 const RADAR_LAYER_ID = 'wallcloud-radar-layer'
@@ -115,18 +121,25 @@ function supportsCountyDetail(regionId: string, bounds: readonly [number, number
 
 function assetUrl(path: string, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
-  return new URL(path, manifestUrl).toString()
+  const resolved = new URL(path, manifestUrl)
+  // Older archive manifests routed immutable R2 images through the control
+  // Worker. Prefer the public data domain now that it has production CORS.
+  if (ARCHIVE_DATA_PROXY_ORIGINS.has(resolved.origin) && resolved.pathname.startsWith(ARCHIVE_DATA_PROXY_PATH)) {
+    const direct = new URL(resolved.pathname.slice('/data/'.length), RADAR_DATA_BASE_URL)
+    direct.search = resolved.search
+    direct.hash = resolved.hash
+    return direct.toString()
+  }
+  return resolved.toString()
 }
 
 function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {
-  const manifestUrl = new URL(manifestPath, window.location.href)
-  return new URL(frame.url, manifestUrl).toString()
+  return assetUrl(frame.url, manifestPath)
 }
 
 function framePmtilesUrl(frame: RadarFrameManifest, manifestPath: string): string | null {
   if (!frame.pmtiles_url) return null
-  const manifestUrl = new URL(manifestPath, window.location.href)
-  return new URL(frame.pmtiles_url, manifestUrl).toString()
+  return assetUrl(frame.pmtiles_url, manifestPath)
 }
 
 function longitudeToTileX(longitude: number, zoom: number): number {

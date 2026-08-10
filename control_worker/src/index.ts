@@ -33,6 +33,7 @@ const FOCUS_MAX_LONGITUDE_SPAN = 25
 const FOCUS_MAX_LATITUDE_SPAN = 20
 const FOCUS_MAX_HOURS = 24
 const ADMIN_FETCH_TIMEOUT_MS = 45_000
+const ARCHIVE_DATA_ROUTE = '/data/radar/history/'
 
 function allowedOrigin(request: Request, env: WorkerEnv): string | null {
   const origin = request.headers.get('Origin')
@@ -236,16 +237,35 @@ async function parseRequestBody(request: Request): Promise<JsonObject> {
   return payload
 }
 
+async function serveArchiveData(request: Request, env: WorkerEnv, url: URL): Promise<Response> {
+  if (request.headers.get('Origin') && !allowedOrigin(request, env)) {
+    return jsonResponse(request, env, { error: 'Origin not allowed' }, 403)
+  }
+  const key = decodeURIComponent(url.pathname.slice('/data/'.length))
+  if (!key.startsWith('radar/history/') || key.includes('..') || !key.endsWith('.png')) {
+    return jsonResponse(request, env, { error: 'Archive object not allowed' }, 404)
+  }
+  const object = await env.CONTROL_BUCKET.get(key)
+  if (!object) return jsonResponse(request, env, { error: 'Archive object not found' }, 404)
+
+  const headers = corsHeaders(request, env)
+  headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png')
+  headers.set('Cache-Control', object.httpMetadata?.cacheControl || 'public, max-age=31536000, immutable')
+  headers.set('ETag', object.httpEtag)
+  return new Response(object.body, { headers })
+}
+
 async function handleRequest(request: Request, env: WorkerEnv): Promise<Response> {
   const url = new URL(request.url)
   const isHistoryCollection = url.pathname === '/history/jobs'
   const isHistoryItem = url.pathname.startsWith('/history/jobs/')
+  const isArchiveData = url.pathname.startsWith(ARCHIVE_DATA_ROUTE)
   const knownPath = [
     '/control/status',
     '/control/polling',
     '/focus/status',
     '/focus/polling',
-  ].includes(url.pathname) || isHistoryCollection || isHistoryItem
+  ].includes(url.pathname) || isHistoryCollection || isHistoryItem || isArchiveData
   if (!knownPath) return jsonResponse(request, env, { error: 'Not found' }, 404)
 
   if (request.method === 'OPTIONS') {
@@ -259,6 +279,9 @@ async function handleRequest(request: Request, env: WorkerEnv): Promise<Response
   }
   if (request.method === 'GET' && url.pathname === '/focus/status') {
     return jsonResponse(request, env, await readFocusState(env))
+  }
+  if (request.method === 'GET' && isArchiveData) {
+    return serveArchiveData(request, env, url)
   }
   if (request.method === 'GET' && isHistoryItem) {
     const proxied = await proxyAdmin(env, url.pathname, 'GET')

@@ -65,6 +65,9 @@ maplibregl.addProtocol('pmtiles', PMTILES_PROTOCOL.tile)
 const EMPTY_STATE = emptyFeatureCollection()
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
 const MOBILE_GIF_FRAME_LIMIT = 12
+const LOW_MEMORY_VIEWPORT_MAX_WIDTH = 820
+const MAX_COUNTY_DETAIL_LONGITUDE_SPAN = 24
+const MAX_COUNTY_DETAIL_LATITUDE_SPAN = 20
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
@@ -97,6 +100,17 @@ function initialMapZoom(): number {
   if (window.innerWidth <= 680) return 4.45
   if (window.innerWidth <= 1024) return 4.9
   return 5.25
+}
+
+function shouldUseLowMemoryMapMode(): boolean {
+  return window.innerWidth <= LOW_MEMORY_VIEWPORT_MAX_WIDTH
+    || window.matchMedia('(pointer: coarse)').matches
+}
+
+function supportsCountyDetail(regionId: string, bounds: readonly [number, number, number, number]): boolean {
+  return regionId !== 'conus'
+    && bounds[2] - bounds[0] <= MAX_COUNTY_DETAIL_LONGITUDE_SPAN
+    && bounds[3] - bounds[1] <= MAX_COUNTY_DETAIL_LATITUDE_SPAN
 }
 
 function assetUrl(path: string, manifestPath: string): string {
@@ -1401,7 +1415,7 @@ export function RadarApp() {
   const [layers, setLayers] = useState({
     radar: true,
     warnings: false,
-    counties: true,
+    counties: !shouldUseLowMemoryMapMode(),
     cities: true,
     highways: false,
     rainfall: false,
@@ -1453,6 +1467,7 @@ export function RadarApp() {
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const mapRegion = MAP_REGIONS.find((region) => region.id === mapRegionId) ?? MAP_REGIONS[0]
+  const countyDetailAvailable = supportsCountyDetail(mapRegion.id, mapRegion.bounds)
   const historyCoverageEntry = useMemo(() => {
     if (!historyStart || !historyEnd) return null
     try {
@@ -1732,7 +1747,8 @@ export function RadarApp() {
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    fetchRegionalGeography(controller.signal, mapRegion.id === 'conus' ? null : mapRegion.bounds)
+    const countyBounds = layers.counties && countyDetailAvailable ? mapRegion.bounds : null
+    fetchRegionalGeography(controller.signal, countyBounds)
       .then((result) => {
         if (cancelled) return
         setStates(result.states)
@@ -1746,7 +1762,7 @@ export function RadarApp() {
       cancelled = true
       controller.abort()
     }
-  }, [mapRegion.bounds, mapRegion.id])
+  }, [countyDetailAvailable, layers.counties, mapRegion.bounds])
 
   useEffect(() => {
     if (!layers.highways || mapRegion.id === 'conus') return
@@ -1832,7 +1848,7 @@ export function RadarApp() {
       },
       center: MAP_CENTER,
       zoom: initialMapZoom(),
-      canvasContextAttributes: { preserveDrawingBuffer: true },
+      canvasContextAttributes: { preserveDrawingBuffer: !shouldUseLowMemoryMapMode() },
       minZoom: 2.2,
       maxZoom: 14,
         maxBounds: [[MAP_VIEW_BOUNDS[0] - 4, MAP_VIEW_BOUNDS[1] - 4], [MAP_VIEW_BOUNDS[2] + 4, MAP_VIEW_BOUNDS[3] + 4]],
@@ -1956,10 +1972,16 @@ export function RadarApp() {
     const map = mapRef.current
     if (!map || !mapReady) return
     ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
-      const frame = productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
-      if (!frame) return
       const sourceId = analysisSourceId(definition.productId)
       const layerId = analysisLayerId(definition.productId)
+      const frame = layers[definition.key] && analysisPlaybackAvailable
+        ? productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
+        : null
+      if (!frame) {
+        if (map.getLayer(layerId)) map.removeLayer(layerId)
+        if (map.getSource(sourceId)) map.removeSource(sourceId)
+        return
+      }
       const coordinates = imageCoordinates(frame.bounds)
       const source = map.getSource(sourceId) as maplibregl.ImageSource | undefined
       if (!source) {
@@ -1978,25 +2000,29 @@ export function RadarApp() {
         source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
       }
     })
-  }, [activeFrame?.valid_time, manifest, manifestPath, mapReady])
+  }, [activeFrame?.valid_time, analysisPlaybackAvailable, layers, manifest, manifestPath, mapReady])
 
   useEffect(() => {
-    if (!activeFrame) return
-    const preload = playbackFps >= 20
-      ? frames
-      : frames.slice(Math.max(0, activeIndex - 2), Math.min(frames.length, activeIndex + 3))
-    preload.forEach((frame) => {
+    if (!activeFrame || frames.length < 2 || shouldUseLowMemoryMapMode()) return
+    const preload = [1, 2]
+      .map((offset) => frames[(activeIndex + offset) % frames.length])
+      .filter((frame, index, candidates) => candidates.indexOf(frame) === index)
+    const imagePreloads = preload.filter((frame) => !frame.pmtiles_url).map((frame) => {
       const image = new Image()
       image.decoding = 'async'
       image.src = frameUrl(frame, manifestPath)
+      return image
     })
     const map = mapRef.current
     if (map) {
-      frames
-        .slice(activeIndex, Math.min(frames.length, activeIndex + 4))
+      preload
+        .filter((frame) => Boolean(frame.pmtiles_url))
         .forEach((frame) => { void preloadPmtilesFrame(frame, manifestPath, map).catch(() => undefined) })
     }
-  }, [activeFrame, activeIndex, frames, manifestPath, playbackFps])
+    return () => {
+      imagePreloads.forEach((image) => image.removeAttribute('src'))
+    }
+  }, [activeFrame, activeIndex, frames, manifestPath])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2007,7 +2033,7 @@ export function RadarApp() {
       if (map.getLayer(layerId)) map.setPaintProperty(layerId, 'raster-opacity', radarOpacity)
     })
     setLayerVisibility(map, [RADAR_LAYER_ID], layers.radar && Boolean(activeFrame))
-    setLayerVisibility(map, ['wallcloud-county-line'], layers.counties)
+    setLayerVisibility(map, ['wallcloud-county-line'], layers.counties && countyDetailAvailable)
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
     setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways && mapRegion.id !== 'conus')
     setLayerVisibility(map, [WARNING_FILL_ID, WARNING_CASING_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
@@ -2017,7 +2043,7 @@ export function RadarApp() {
       const frame = productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
       setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && analysisPlaybackAvailable && Boolean(frame))
     })
-  }, [activeFrame, analysisPlaybackAvailable, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
+  }, [activeFrame, analysisPlaybackAvailable, countyDetailAvailable, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2590,12 +2616,17 @@ export function RadarApp() {
             <div className="radar-layer-section-heading">Map overlays</div>
             {([
               ['radar', 'Archive layer'],
-              ['counties', 'Counties'],
+              ['counties', countyDetailAvailable ? 'Counties' : 'Counties (closer regions)'],
               ['cities', 'Cities'],
               ['highways', highwaysLoading ? 'Highways (loading…)' : 'Highways'],
             ] as Array<[keyof typeof layers, string]>).map(([key, label]) => (
               <label key={key} className="radar-layer-row">
-                <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} disabled={key === 'warnings' && isHistorical} />
+                <input
+                  type="checkbox"
+                  checked={key === 'counties' && !countyDetailAvailable ? false : layers[key]}
+                  onChange={() => toggleLayer(key)}
+                  disabled={key === 'counties' && !countyDetailAvailable}
+                />
                 <span className="radar-checkbox" aria-hidden="true" />
                 <span><strong>{label}</strong></span>
               </label>

@@ -119,6 +119,16 @@ function supportsCountyDetail(regionId: string, bounds: readonly [number, number
     && bounds[3] - bounds[1] <= MAX_COUNTY_DETAIL_LATITUDE_SPAN
 }
 
+function localArchiveDataUrl(resolved: URL): string {
+  const archivePath = resolved.pathname.startsWith('/data/')
+    ? resolved.pathname.slice('/data'.length)
+    : resolved.pathname
+  const local = new URL(`/radar-data${archivePath}`, window.location.href)
+  local.search = resolved.search
+  local.hash = resolved.hash
+  return local.toString()
+}
+
 function assetUrl(path: string, manifestPath: string): string {
   const manifestUrl = new URL(manifestPath, window.location.href)
   const resolved = new URL(path, manifestUrl)
@@ -129,7 +139,10 @@ function assetUrl(path: string, manifestPath: string): string {
   const isArchiveFrame = resolved.pathname.startsWith('/radar/history/') && resolved.pathname.endsWith('.png')
   const isArchiveProxyUrl = ARCHIVE_DATA_PROXY_ORIGINS.has(resolved.origin)
     && resolved.pathname.startsWith(ARCHIVE_DATA_PROXY_PATH)
-  if (isArchiveProxyUrl || !isArchiveFrame || !RADAR_CONTROL_API_URL) return resolved.toString()
+  if (isArchiveProxyUrl) return import.meta.env.DEV ? localArchiveDataUrl(resolved) : resolved.toString()
+  if (!isArchiveFrame) return resolved.toString()
+  if (import.meta.env.DEV && resolved.origin !== window.location.origin) return localArchiveDataUrl(resolved)
+  if (!RADAR_CONTROL_API_URL) return resolved.toString()
 
   const dataOrigin = new URL(RADAR_DATA_BASE_URL, window.location.href).origin
   if (resolved.origin !== dataOrigin) return resolved.toString()

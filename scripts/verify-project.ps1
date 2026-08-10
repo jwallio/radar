@@ -22,6 +22,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Control-worker generated-type check failed with exit code $LASTEXITCODE." }
         & $npm.Source --prefix control_worker run typecheck
         if ($LASTEXITCODE -ne 0) { throw "Control-worker typecheck failed with exit code $LASTEXITCODE." }
+        & $npm.Source --prefix control_worker test
+        if ($LASTEXITCODE -ne 0) { throw "Control-worker tests failed with exit code $LASTEXITCODE." }
     }
 } finally {
     Pop-Location

@@ -11,7 +11,7 @@ The browser never downloads or decodes GRIB2 or Level II files.
 - Atlantic & Caribbean map framing for tropical systems and East Coast storms, with North Carolina, Southeast, and Northeast presets retained.
 - Archive-frame animation, timeline scrubbing, previous/next, and 2/4/8/20/30 FPS playback.
 - Adjacent PMTiles preloading to reduce frame-change flashing.
-- Administrator-triggered regional archive jobs using Eastern Time date controls.
+- Public bounded MRMS and ERA5 archive jobs, plus administrator-only KRAX jobs, using Eastern Time date controls.
 - ERA5 hourly precipitation reconstructions from the official Copernicus CDS API, explicitly labelled as reanalysis-based, spatially interpolated for display, and not observed radar.
 - Branded current-view GIF downloads.
 - Static state boundaries, zoom-dependent counties, major cities, and on-demand highways.
@@ -40,7 +40,7 @@ Official NOAA/NCEP and Copernicus archive sources
 Historical selection in browser
                   |
                   v
-   Cloudflare Worker (archive-authorized)
+   Cloudflare Worker (source-aware proxy)
                   |
                   v
     scale-to-zero Cloud Run admin service
@@ -59,7 +59,7 @@ Responsibilities are intentionally split:
 - Archive jobs download and decode requested historical datasets; GitHub Pages publishes only static application code.
 - Cloud Run handles bounded archive generation and scales to zero after the pack is complete.
 - R2 stores generated browser assets and atomic manifests.
-- The Worker hides the Cloud Run service token and requires the administrator key before starting billable work.
+- The Worker hides the Cloud Run service token, accepts public bounded MRMS/ERA5 requests, and requires the administrator key for KRAX and live-control changes.
 - MapLibre renders the basemap, boundaries, labels, archive overlays, and playback frames.
 
 This keeps the public viewer decoupled from source ingestion and prevents a Pages deployment from replacing archive manifests or retained assets.
@@ -201,7 +201,9 @@ The website’s **Archive pack builder** sends:
 - maximum frame count
 - a named regional preset or current map bounds
 
-The browser sends the owner key to the Cloudflare Worker, which verifies it before proxying the request. The Cloud Run admin service then validates the bounded parameters, starts the archive job with environment overrides, and writes status to R2. The key is kept only in browser session storage and is not needed to browse already-published packs.
+The browser sends MRMS and ERA5 requests to the Cloudflare Worker without a visitor credential. KRAX generation remains administrator-only and prompts for the owner key, which is kept only in browser session storage. The Worker keeps the Cloud Run service token private, and the Cloud Run admin service validates the bounded parameters again before starting the archive job and writing status to R2.
+
+Because MRMS and ERA5 generation is public, an anonymous visitor can start bounded billable work. Frame, duration, and geographic limits still apply; ERA5 is also cache-first and limited to one active request. These safeguards reduce cost but are not a substitute for per-user rate limiting.
 
 ERA5 requests are whole-hour UTC windows after Eastern Time conversion, limited to seven days/168 frames, bounded inside the ERA5 processing domain (`[-130, 10, -55, 55]`), and rejected if they include future hours. The Atlantic & Caribbean preset requests `[-100, 12, -55, 52]`. A single active ERA5 job is allowed. Complete deterministic datasets are reused from `radar/history/era5/{dataset_id}/manifest.json` before another CDS request is made.
 
@@ -313,12 +315,12 @@ The default production profile keeps recurring cloud charges near zero while the
 
 - GitHub Pages serves the static archive viewer; the browser does not poll live radar, active warnings, or control status.
 - The Cloudflare Worker and R2 serve published catalogs and immutable historical packs without a recurring national refresh loop.
-- Cloud Run stays scale-to-zero and is used only when the owner requests a bounded historical pack.
-- ERA5 requests are owner-authenticated, one-at-a-time, bounded, and cache-first; repeated requests for the same source/time/region/version reuse the complete R2 dataset.
+- Cloud Run stays scale-to-zero and is used when a visitor requests a bounded MRMS/ERA5 pack or the owner requests a KRAX pack.
+- ERA5 requests are public, one-at-a-time, bounded, and cache-first; repeated requests for the same source/time/region/version reuse the complete R2 dataset.
 - Legacy live publishers and their control endpoints remain paused and are not selected by the public archive UI.
-- Historical jobs require the owner key, preventing anonymous visitors from starting billable compute.
+- KRAX history and all legacy live-control mutations still require the owner key.
 
-This targets a recurring baseline of approximately $0. Occasional owner-requested Cloud Run history work and unusually high R2/Worker traffic remain variable.
+This targets a recurring idle baseline of approximately $0. Public MRMS/ERA5 generation and unusually high R2/Worker traffic remain variable and can create charges when visitors request uncached packs.
 
 ## Cloud Run and R2 deployment
 
@@ -327,8 +329,8 @@ Detailed copy/paste commands are in [cloudrun/README.md](cloudrun/README.md). Th
 - `wallcloud-mrms-refresh`: legacy, paused
 - `wallcloud-focus-refresh`: legacy, paused
 - `wallcloud-live-refresh`: legacy, paused
-- `wallcloud-radar-history`: scale-to-zero and started only with the owner key
-- `CDSAPI_KEY`: Secret Manager-only credential for owner-requested ERA5 history
+- `wallcloud-radar-history`: scale-to-zero; public MRMS/ERA5 requests and administrator-only KRAX requests start it through the Worker
+- `CDSAPI_KEY`: Secret Manager-only server credential for ERA5 history; it is never sent to the browser
 
 After changing processor code:
 

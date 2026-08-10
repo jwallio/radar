@@ -1,6 +1,6 @@
 # Cloud Run production radar
 
-Cloud Run Jobs process owner-requested MRMS/KRAX history and bounded ERA5 hourly reanalysis history, then publish browser-ready assets to Cloudflare R2. MRMS history begins on 2014-11-24; packs beginning on 2020-10-14 request the full configured product suite. The near-zero default uses GitHub Pages for the Vite archive application.
+Cloud Run Jobs process public-requested MRMS/ERA5 history and owner-requested KRAX history, then publish browser-ready assets to Cloudflare R2. MRMS history begins on 2014-11-24; packs beginning on 2020-10-14 request the full configured product suite. The near-zero idle default uses GitHub Pages for the Vite archive application.
 
 ## Production components
 
@@ -9,11 +9,11 @@ Cloud Run Jobs process owner-requested MRMS/KRAX history and bounded ERA5 hourly
 - `wallcloud-mrms-refresh` — optional five-minute Scheduler trigger; absent or paused in the near-zero profile.
 - `wallcloud-mrms-focus` — higher-detail regional MRMS job for the one region selected by the owner.
 - `wallcloud-focus-refresh` — five-minute focus trigger; paused unless storm focus is active and automatically paused at expiry.
-- `wallcloud-radar-history` — on-demand regional MRMS, KRAX, or ERA5 historical processing; MRMS declares a core/full product tier by start date, while ERA5 is owner-authenticated, cache-first, and serialized to one active request.
+- `wallcloud-radar-history` — on-demand regional MRMS, KRAX, or ERA5 historical processing; MRMS declares a core/full product tier by start date, while public ERA5 is cache-first and serialized to one active request.
 - `wallcloud-radar-live` — KRAX Level II refresh; enabled only during severe weather.
 - `wallcloud-live-refresh` — five-minute KRAX trigger; paused by default.
 - `wallcloud-radar-admin` — scale-to-zero service that starts history jobs and controls the focus and KRAX Schedulers.
-- Cloudflare Worker — browser-facing proxy. Starting history or changing either live polling mode requires the owner key.
+- Cloudflare Worker — browser-facing proxy. MRMS/ERA5 history is public; KRAX history and either live polling mode require the owner key. The Worker-to-Cloud-Run service token remains private and required.
 
 National and storm-focus reflectivity are stored as one PMTiles archive per observation. Regional historical requests use cropped image frames and branded GIFs. ERA5 requests use the official CDS `precipitation_type` and `total_precipitation` variables at exact hourly intervals, with no dBZ conversion or five-minute interpolation. Raw GRIB2 and Level II files remain temporary.
 
@@ -272,4 +272,4 @@ radar/krax/manifest.json
 radar/krax/history/catalog.json
 ```
 
-Use the website’s owner key to start a historical job. Legacy focus and live controls remain documented for migration compatibility. Cloud Run enforces a 24-hour MRMS historical range, rejects MRMS starts before 2014-11-24, requests the full MRMS suite only from 2020-10-14 onward, and allows at most 90 historical frames. MRMS observed crops stay inside the CONUS grid; the broader Caribbean/Atlantic map context is supported by ERA5, which is capped at seven days/168 hourly frames and one active request.
+MRMS and ERA5 historical jobs can be started publicly from the website; KRAX still requires the owner key. Legacy focus and live controls remain documented for migration compatibility. Cloud Run enforces a 24-hour MRMS historical range, rejects MRMS starts before 2014-11-24, requests the full MRMS suite only from 2020-10-14 onward, and allows at most 90 historical frames. MRMS observed crops stay inside the CONUS grid; the broader Caribbean/Atlantic map context is supported by ERA5, which is capped at seven days/168 hourly frames and one active request. Public uncached requests can produce variable Cloud Run, CDS, Worker, and R2 usage charges.

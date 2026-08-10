@@ -14,7 +14,7 @@ Default mode runs the frontend TypeScript check and Python tests. It does not bu
 .\scripts\verify-project.ps1 -Full
 ```
 
-Full mode adds the Vite production build and control-worker type checks. It remains local and never deploys.
+Full mode adds the Vite production build, control-worker type checks, and control-worker authorization tests. It remains local and never deploys.
 
 ## Focused checks
 
@@ -24,6 +24,7 @@ npm run build
 python -m pytest -q
 npm --prefix control_worker run types:check
 npm --prefix control_worker run typecheck
+npm --prefix control_worker test
 ```
 
 ## Browser verification

@@ -27,6 +27,7 @@ const DEFAULT_FOCUS_STATE: FocusPollingState = {
   bounds: null,
 }
 const CONUS_BOUNDS = [-130, 20, -60, 55] as const
+const ERA5_PROCESSING_BOUNDS = [-130, 10, -55, 55] as const
 const ERA5_MAX_LONGITUDE_SPAN = 70
 const ERA5_MAX_LATITUDE_SPAN = 40
 const FOCUS_MAX_LONGITUDE_SPAN = 25
@@ -86,6 +87,8 @@ function parseBounds(
   maxLongitudeSpan = FOCUS_MAX_LONGITUDE_SPAN,
   maxLatitudeSpan = FOCUS_MAX_LATITUDE_SPAN,
   label = 'Storm focus',
+  domainBounds: readonly [number, number, number, number] = CONUS_BOUNDS,
+  domainLabel = 'CONUS',
 ): [number, number, number, number] {
   if (!Array.isArray(value) || value.length !== 4) {
     throw new Error('bounds must be [west, south, east, north]')
@@ -93,14 +96,15 @@ function parseBounds(
   const bounds = value.map(Number)
   if (!bounds.every(Number.isFinite)) throw new Error('bounds values must be numeric')
   const [west, south, east, north] = bounds
+  const [domainWest, domainSouth, domainEast, domainNorth] = domainBounds
   if (west >= east || south >= north) throw new Error('bounds have an invalid geographic order')
   if (
-    west < CONUS_BOUNDS[0]
-    || south < CONUS_BOUNDS[1]
-    || east > CONUS_BOUNDS[2]
-    || north > CONUS_BOUNDS[3]
+    west < domainWest
+    || south < domainSouth
+    || east > domainEast
+    || north > domainNorth
   ) {
-    throw new Error('bounds must remain inside the CONUS processing domain')
+    throw new Error(`bounds must remain inside the ${domainLabel} processing domain`)
   }
   if (east - west > maxLongitudeSpan || north - south > maxLatitudeSpan) {
     throw new Error(
@@ -111,10 +115,21 @@ function parseBounds(
 }
 
 // Historical ERA5 requests are validated again by the Cloud Run admin
-// service. The Worker keeps the same owner-token boundary while rejecting
-// obviously global payloads before they can start a billable job.
+// service. The Worker rejects obviously global payloads before they can
+// start a billable job.
 function parseEra5Bounds(value: unknown): [number, number, number, number] {
-  return parseBounds(value, ERA5_MAX_LONGITUDE_SPAN, ERA5_MAX_LATITUDE_SPAN, 'ERA5 history')
+  return parseBounds(
+    value,
+    ERA5_MAX_LONGITUDE_SPAN,
+    ERA5_MAX_LATITUDE_SPAN,
+    'ERA5 history',
+    ERA5_PROCESSING_BOUNDS,
+    'ERA5',
+  )
+}
+
+function isPublicHistoryRequest(payload: JsonObject): boolean {
+  return payload.source === 'mrms' || payload.source === 'era5'
 }
 
 function normalizeRegionId(value: unknown): string {
@@ -294,7 +309,9 @@ async function handleRequest(request: Request, env: WorkerEnv): Promise<Response
   if (request.headers.get('Origin') && !allowedOrigin(request, env)) {
     return jsonResponse(request, env, { error: 'Origin not allowed' }, 403)
   }
-  if (!await hasValidToken(request, env)) return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
+  if (!isHistoryCollection && !await hasValidToken(request, env)) {
+    return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
+  }
 
   let payload: JsonObject
   try {
@@ -306,6 +323,9 @@ async function handleRequest(request: Request, env: WorkerEnv): Promise<Response
       { error: error instanceof Error ? error.message : 'Request body must be JSON' },
       400,
     )
+  }
+  if (isHistoryCollection && !isPublicHistoryRequest(payload) && !await hasValidToken(request, env)) {
+    return jsonResponse(request, env, { error: 'Unauthorized' }, 401)
   }
   if (isHistoryCollection) {
     if (payload.source === 'era5') {

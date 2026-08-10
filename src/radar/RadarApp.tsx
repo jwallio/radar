@@ -1375,6 +1375,7 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
 export function RadarApp() {
   const mapContainer = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
+  const activeMapAssetUrlsRef = useRef<Map<string, string>>(new Map())
   const warningsRef = useRef<Map<string, RadarWarning>>(new Map())
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -1837,6 +1838,7 @@ export function RadarApp() {
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
+    const activeMapAssetUrls = activeMapAssetUrlsRef.current
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: {
@@ -1910,7 +1912,14 @@ export function RadarApp() {
     map.on('mouseenter', BUOY_DOT_ID, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', BUOY_DOT_ID, () => { map.getCanvas().style.cursor = '' })
     map.on('error', (event) => {
-      if (event.error?.message && !event.error.message.toLowerCase().includes('tile')) setMapError(event.error.message)
+      const message = event.error?.message
+      if (!message || message.toLowerCase().includes('tile')) return
+      if (message.includes('Failed to fetch (0)')) {
+        const belongsToActiveSource = Array.from(activeMapAssetUrls.values())
+          .some((url) => message.includes(url))
+        if (!belongsToActiveSource) return
+      }
+      setMapError(message)
     })
     const resizeObserver = new ResizeObserver(() => map.resize())
     resizeObserver.observe(mapContainer.current)
@@ -1920,6 +1929,7 @@ export function RadarApp() {
       mapElement.removeEventListener('pointerdown', collapseAttributionOnInteraction, true)
       mapElement.removeEventListener('wheel', collapseAttribution)
       map.remove()
+      activeMapAssetUrls.clear()
       mapRef.current = null
     }
   }, [])
@@ -1928,6 +1938,10 @@ export function RadarApp() {
     const map = mapRef.current
     if (!map || !mapReady) return
     const tilesUrl = activeFrame ? framePmtilesUrl(activeFrame, manifestPath) : null
+    const activeAssetUrl = activeFrame ? tilesUrl ?? frameUrl(activeFrame, manifestPath) : null
+    if (activeAssetUrl) activeMapAssetUrlsRef.current.set(RADAR_SOURCE_ID, activeAssetUrl)
+    else activeMapAssetUrlsRef.current.delete(RADAR_SOURCE_ID)
+    setMapError(null)
     const displayResampling = isEra5 ? 'linear' : 'nearest'
     let source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | maplibregl.RasterTileSource | undefined
     const desiredType = tilesUrl ? 'raster' : 'image'
@@ -1978,16 +1992,19 @@ export function RadarApp() {
         ? productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
         : null
       if (!frame) {
+        activeMapAssetUrlsRef.current.delete(sourceId)
         if (map.getLayer(layerId)) map.removeLayer(layerId)
         if (map.getSource(sourceId)) map.removeSource(sourceId)
         return
       }
+      const resolvedFrameUrl = frameUrl(frame, manifestPath)
+      activeMapAssetUrlsRef.current.set(sourceId, resolvedFrameUrl)
       const coordinates = imageCoordinates(frame.bounds)
       const source = map.getSource(sourceId) as maplibregl.ImageSource | undefined
       if (!source) {
         map.addSource(sourceId, {
           type: 'image',
-          url: frameUrl(frame, manifestPath),
+          url: resolvedFrameUrl,
           coordinates,
         })
         map.addLayer({
@@ -1997,7 +2014,7 @@ export function RadarApp() {
           paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
         }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
       } else {
-        source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
+        source.updateImage({ url: resolvedFrameUrl, coordinates })
       }
     })
   }, [activeFrame?.valid_time, analysisPlaybackAvailable, layers, manifest, manifestPath, mapReady])

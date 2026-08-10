@@ -79,31 +79,60 @@ function frameDelayMilliseconds(fps: number): number {
   return Math.max(10, Math.round(1_000 / Math.max(0.5, fps)))
 }
 
-export function encodeGif(frames: ImageData[], fps: number, latestHoldMs = LATEST_FRAME_HOLD_MS): Blob {
-  if (!frames.length) throw new Error('No map frames were captured for GIF export')
-  const width = frames[0].width
-  const height = frames[0].height
-  if (!width || !height || frames.some((frame) => frame.width !== width || frame.height !== height)) {
-    throw new Error('Captured map frames do not share one size')
-  }
+export interface GifFrameEncoder {
+  writeFrame(frame: ImageData, latest?: boolean): void
+  finish(): Blob
+}
 
-  const palette = quantize(paletteSamples(frames), 256, { format: 'rgb565' })
+export function createGifFrameEncoder(
+  paletteFrame: ImageData,
+  fps: number,
+  latestHoldMs = LATEST_FRAME_HOLD_MS,
+): GifFrameEncoder {
+  const width = paletteFrame.width
+  const height = paletteFrame.height
+  if (!width || !height) throw new Error('Captured map frame has no size')
+
+  const palette = quantize(paletteSamples([paletteFrame]), 256, { format: 'rgb565' })
   const gif = GIFEncoder()
   const standardDelay = frameDelayMilliseconds(fps)
+  let frameCount = 0
+  let finished = false
+
+  return {
+    writeFrame(frame, latest = false) {
+      if (finished) throw new Error('GIF export is already complete')
+      if (frame.width !== width || frame.height !== height) {
+        throw new Error('Captured map frames do not share one size')
+      }
+      const indexed = applyPalette(frame.data, palette, 'rgb565')
+      gif.writeFrame(indexed, width, height, {
+        palette: frameCount === 0 ? palette : undefined,
+        delay: standardDelay + (latest ? latestHoldMs : 0),
+        repeat: 0,
+      })
+      frameCount += 1
+    },
+    finish() {
+      if (finished) throw new Error('GIF export is already complete')
+      if (!frameCount) throw new Error('No map frames were captured for GIF export')
+      finished = true
+      gif.finish()
+      const encoded = gif.bytes()
+      const output = new Uint8Array(encoded.length)
+      output.set(encoded)
+      return new Blob([output.buffer], { type: 'image/gif' })
+    },
+  }
+}
+
+export function encodeGif(frames: ImageData[], fps: number, latestHoldMs = LATEST_FRAME_HOLD_MS): Blob {
+  if (!frames.length) throw new Error('No map frames were captured for GIF export')
+  const encoder = createGifFrameEncoder(frames[0], fps, latestHoldMs)
   frames.forEach((frame, index) => {
-    const delay = index === frames.length - 1 ? standardDelay + latestHoldMs : standardDelay
-    const indexed = applyPalette(frame.data, palette, 'rgb565')
-    gif.writeFrame(indexed, width, height, {
-      palette: index === 0 ? palette : undefined,
-      delay,
-      repeat: 0,
-    })
+    encoder.writeFrame(frame, index === frames.length - 1)
   })
-  gif.finish()
-  const encoded = gif.bytes()
-  const output = new Uint8Array(encoded.length)
-  output.set(encoded)
-  return new Blob([output.buffer], { type: 'image/gif' })
+  return encoder.finish()
 }
 
 export { GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT }

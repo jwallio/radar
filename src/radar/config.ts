@@ -2,13 +2,36 @@ import type { RadarAnalysisProductId, RadarProductId, RadarSourceId } from './ty
 
 export const REGIONAL_BOUNDS: [number, number, number, number] = [-86.5, 32.5, -73.5, 39.5]
 export const NATIONAL_BOUNDS: [number, number, number, number] = [-130, 20, -60, 55]
-export const MAP_CENTER: [number, number] = [-97.5, 38.5]
+export const ATLANTIC_CARIBBEAN_BOUNDS = [-100, 12, -55, 52] as const
+export const MRMS_ARCHIVE_BOUNDS = [-100, 20, -60, 52] as const
+export const ERA5_PROCESSING_BOUNDS = [-130, 10, -55, 55] as const
+export const MAP_VIEW_BOUNDS = [-104, 8, -51, 56] as const
+export const DEFAULT_ARCHIVE_REGION_ID = 'atlantic-caribbean'
+export const MRMS_ARCHIVE_START_INPUT = '2014-11-24T00:00'
+export const MRMS_FULL_SUITE_START_INPUT = '2020-10-14T00:00'
+export const MAP_CENTER: [number, number] = [-77.5, 32]
 
-export const MAP_REGIONS = [
+export type MapRegion = {
+  id: string
+  label: string
+  bounds: readonly [number, number, number, number]
+  archiveBounds?: Partial<Record<RadarSourceId, readonly [number, number, number, number]>>
+}
+
+export const MAP_REGIONS: readonly MapRegion[] = [
   { id: 'conus', label: 'Continental U.S.', bounds: NATIONAL_BOUNDS },
   { id: 'northeast', label: 'Northeast', bounds: [-82.5, 36.5, -66, 47.8] },
   { id: 'mid-atlantic', label: 'Mid-Atlantic', bounds: [-84.5, 33, -72.5, 42.5] },
   { id: 'southeast', label: 'Southeast', bounds: [-91.5, 24, -74, 37.8] },
+  {
+    id: 'atlantic-caribbean',
+    label: 'Atlantic & Caribbean',
+    bounds: ATLANTIC_CARIBBEAN_BOUNDS,
+    archiveBounds: {
+      mrms: MRMS_ARCHIVE_BOUNDS,
+      era5: ATLANTIC_CARIBBEAN_BOUNDS,
+    },
+  },
   { id: 'great-lakes', label: 'Great Lakes', bounds: [-93.5, 39, -75, 49.2] },
   { id: 'central-plains', label: 'Central Plains', bounds: [-106, 34, -90, 49] },
   { id: 'southern-plains', label: 'Southern Plains', bounds: [-107, 25, -91, 38] },
@@ -23,7 +46,7 @@ export const CARTO_LIGHT_TILES = 'https://a.basemaps.cartocdn.com/light_nolabels
 
 export const CENSUS_GEOGRAPHY_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer'
 export const CENSUS_TRANSPORTATION_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer'
-export const CENSUS_QUERY_GEOMETRY = REGIONAL_BOUNDS.join(',')
+export const CENSUS_QUERY_GEOMETRY = ATLANTIC_CARIBBEAN_BOUNDS.join(',')
 
 export const NWS_ALERT_AREAS = ['NC', 'VA', 'TN', 'SC'] as const
 export const NWS_MARINE_EVENT = 'Special Marine Warning'
@@ -41,6 +64,8 @@ export const PRODUCT_OPTIONS: Array<{ id: RadarProductId; label: string; source:
   { id: 'NEXRADLevel2BaseReflectivity', label: 'Base Reflectivity', source: 'krax' },
   { id: 'NEXRADLevel2Velocity', label: 'Radial Velocity', source: 'krax' },
   { id: 'NEXRADLevel2CorrelationCoefficient', label: 'Correlation Coefficient (ρhv)', source: 'krax' },
+  { id: 'ERA5PrecipitationType', label: 'Precipitation phase', source: 'era5' },
+  { id: 'ERA5TotalPrecipitation', label: 'Total precipitation', source: 'era5' },
 ]
 
 export const VELOCITY_LEGEND = [
@@ -88,6 +113,23 @@ export const RAINFALL_LEGEND = [
   { label: '10', color: '#ff971f' },
   { label: '5', color: '#ffdd31' },
   { label: '1', color: '#16b1e7' },
+]
+
+export const ERA5_PHASE_LEGEND = [
+  { label: 'Rain', color: '#f5de2d' },
+  { label: 'Snow', color: '#379de9' },
+  { label: 'Freezing rain', color: '#eb36af' },
+  { label: 'Mixed', color: '#9c52cd' },
+  { label: 'Ice pellets', color: '#b7912c' },
+]
+
+export const ERA5_TOTAL_PRECIPITATION_LEGEND = [
+  { label: '25+', color: '#e12b36' },
+  { label: '10', color: '#ff891f' },
+  { label: '5', color: '#f6e036' },
+  { label: '1', color: '#2bbe5c' },
+  { label: '0.1', color: '#25d3bf' },
+  { label: '0.01', color: '#4ab7e8' },
 ]
 
 export type AnalysisLayerKey =
@@ -238,6 +280,12 @@ export const CITIES: CityDefinition[] = [
   { id: 'philadelphia', label: 'Philadelphia', lon: -75.1652, lat: 39.9526 },
   { id: 'washington', label: 'Washington', lon: -77.0369, lat: 38.9072, primary: true },
   { id: 'miami', label: 'Miami', lon: -80.1918, lat: 25.7617, primary: true },
+  { id: 'havana', label: 'Havana', lon: -82.3666, lat: 23.1136, primary: true },
+  { id: 'nassau', label: 'Nassau', lon: -77.3554, lat: 25.0443, primary: true },
+  { id: 'kingston', label: 'Kingston', lon: -76.7936, lat: 17.9712 },
+  { id: 'santo-domingo', label: 'Santo Domingo', lon: -69.9312, lat: 18.4861, primary: true },
+  { id: 'port-au-prince', label: 'Port-au-Prince', lon: -72.3074, lat: 18.5944 },
+  { id: 'san-juan', label: 'San Juan', lon: -66.1057, lat: 18.4655, primary: true },
   { id: 'tampa', label: 'Tampa', lon: -82.4572, lat: 27.9506 },
   { id: 'nashville', label: 'Nashville', lon: -86.7816, lat: 36.1627, primary: true },
   { id: 'birmingham', label: 'Birmingham', lon: -86.8025, lat: 33.5207 },
@@ -270,17 +318,17 @@ export const CITIES_GEOJSON: GeoJSON.FeatureCollection = {
 }
 
 const gridFeatures: GeoJSON.Feature[] = []
-for (let longitude = -125; longitude <= -65; longitude += 5) {
+for (let longitude = -100; longitude <= -55; longitude += 5) {
   gridFeatures.push({
     type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [[longitude, NATIONAL_BOUNDS[1]], [longitude, NATIONAL_BOUNDS[3]]] },
+    geometry: { type: 'LineString', coordinates: [[longitude, MAP_VIEW_BOUNDS[1]], [longitude, MAP_VIEW_BOUNDS[3]]] },
     properties: { axis: 'longitude', value: longitude },
   })
 }
-for (let latitude = 25; latitude <= 50; latitude += 5) {
+for (let latitude = 10; latitude <= 55; latitude += 5) {
   gridFeatures.push({
     type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [[NATIONAL_BOUNDS[0], latitude], [NATIONAL_BOUNDS[2], latitude]] },
+    geometry: { type: 'LineString', coordinates: [[MAP_VIEW_BOUNDS[0], latitude], [MAP_VIEW_BOUNDS[2], latitude]] },
     properties: { axis: 'latitude', value: latitude },
   })
 }

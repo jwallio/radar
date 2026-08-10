@@ -27,6 +27,8 @@ const DEFAULT_FOCUS_STATE: FocusPollingState = {
   bounds: null,
 }
 const CONUS_BOUNDS = [-130, 20, -60, 55] as const
+const ERA5_MAX_LONGITUDE_SPAN = 70
+const ERA5_MAX_LATITUDE_SPAN = 40
 const FOCUS_MAX_LONGITUDE_SPAN = 25
 const FOCUS_MAX_LATITUDE_SPAN = 20
 const FOCUS_MAX_HOURS = 24
@@ -78,7 +80,12 @@ function optionalTimestamp(value: unknown, field: string): string | null {
   return value
 }
 
-function parseBounds(value: unknown): [number, number, number, number] {
+function parseBounds(
+  value: unknown,
+  maxLongitudeSpan = FOCUS_MAX_LONGITUDE_SPAN,
+  maxLatitudeSpan = FOCUS_MAX_LATITUDE_SPAN,
+  label = 'Storm focus',
+): [number, number, number, number] {
   if (!Array.isArray(value) || value.length !== 4) {
     throw new Error('bounds must be [west, south, east, north]')
   }
@@ -94,12 +101,19 @@ function parseBounds(value: unknown): [number, number, number, number] {
   ) {
     throw new Error('bounds must remain inside the CONUS processing domain')
   }
-  if (east - west > FOCUS_MAX_LONGITUDE_SPAN || north - south > FOCUS_MAX_LATITUDE_SPAN) {
+  if (east - west > maxLongitudeSpan || north - south > maxLatitudeSpan) {
     throw new Error(
-      `Storm focus is limited to ${FOCUS_MAX_LONGITUDE_SPAN}° longitude by ${FOCUS_MAX_LATITUDE_SPAN}° latitude`,
+      `${label} is limited to ${maxLongitudeSpan}° longitude by ${maxLatitudeSpan}° latitude`,
     )
   }
   return [west, south, east, north]
+}
+
+// Historical ERA5 requests are validated again by the Cloud Run admin
+// service. The Worker keeps the same owner-token boundary while rejecting
+// obviously global payloads before they can start a billable job.
+function parseEra5Bounds(value: unknown): [number, number, number, number] {
+  return parseBounds(value, ERA5_MAX_LONGITUDE_SPAN, ERA5_MAX_LATITUDE_SPAN, 'ERA5 history')
 }
 
 function normalizeRegionId(value: unknown): string {
@@ -271,6 +285,13 @@ async function handleRequest(request: Request, env: WorkerEnv): Promise<Response
     )
   }
   if (isHistoryCollection) {
+    if (payload.source === 'era5') {
+      try {
+        payload.bounds = parseEra5Bounds(payload.bounds)
+      } catch (error) {
+        return jsonResponse(request, env, { error: error instanceof Error ? error.message : 'Invalid ERA5 bounds' }, 400)
+      }
+    }
     const proxied = await proxyAdmin(env, '/history/jobs', 'POST', payload)
     return jsonResponse(request, env, proxied.body, proxied.status)
   }

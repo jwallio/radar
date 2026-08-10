@@ -83,11 +83,7 @@ def main() -> int:
         start_time=start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         end_time=end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
-    catalog = update_history_catalog(
-        config.history_dir / "catalog.json",
-        catalog_entry(manifest),
-        max_entries=24,
-    )
+    catalog = update_history_catalog(config.history_dir / "catalog.json", catalog_entry(manifest))
     LOGGER.info("KRAX historical pack %s is ready; catalog contains %d pack(s)", dataset_id, len(catalog["datasets"]))
     return 0
 

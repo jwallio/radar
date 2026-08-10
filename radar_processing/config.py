@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -153,7 +154,25 @@ ANALYSIS_PRODUCT_IDS: tuple[str, ...] = (
     "NLDN_CG_005min_AvgDensity",
 )
 
+MRMS_ARCHIVE_START = datetime(2014, 11, 24, tzinfo=timezone.utc)
+MRMS_FULL_SUITE_START = datetime(2020, 10, 14, tzinfo=timezone.utc)
+
+
+def mrms_product_tier(start: datetime) -> str:
+    """Return the product tier supported by an MRMS archive start time."""
+
+    if start.tzinfo is None:
+        raise ValueError("MRMS archive timestamps must include a timezone")
+    start_utc = start.astimezone(timezone.utc)
+    if start_utc < MRMS_ARCHIVE_START:
+        raise ValueError("MRMS history is available from 2014-11-24 UTC")
+    return "full" if start_utc >= MRMS_FULL_SUITE_START else "core"
+
 DEFAULT_REGION = RegionBounds(west=-86.5, east=-73.5, south=32.5, north=39.5)
+# The viewer can frame the broader Atlantic/Caribbean storm corridor, while
+# observed MRMS archive rasters remain bounded by the CONUS product grid.
+ATLANTIC_CARIBBEAN_REGION = RegionBounds(west=-100.0, east=-55.0, south=12.0, north=52.0)
+MRMS_ARCHIVE_REGION = RegionBounds(west=-100.0, east=-60.0, south=20.0, north=52.0)
 NATIONAL_MRMS_REGION = RegionBounds(west=-130.0, east=-60.0, south=20.0, north=55.0)
 # The live raster stays regional so upstream weather remains visible in the
 # viewer. Downloadable branded loops use a tighter Central NC framing instead
@@ -194,18 +213,24 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def load_config(root: Path, *, keep_raw: bool | None = None) -> ProcessingConfig:
+def load_config(
+    root: Path,
+    *,
+    keep_raw: bool | None = None,
+    default_region: RegionBounds | None = None,
+) -> ProcessingConfig:
     """Load processing settings from environment variables with safe defaults."""
 
     output_dir = root / "public" / "data" / "radar"
     frame_dir = output_dir / "frames"
     temp_dir = root / ".radar-tmp"
     raw_dir = root / ".radar-raw" if (keep_raw or _env_bool("MRMS_KEEP_RAW", False)) else None
+    region_default = default_region or DEFAULT_REGION
     region = RegionBounds(
-        west=_env_float("MRMS_REGION_WEST", DEFAULT_REGION.west),
-        east=_env_float("MRMS_REGION_EAST", DEFAULT_REGION.east),
-        south=_env_float("MRMS_REGION_SOUTH", DEFAULT_REGION.south),
-        north=_env_float("MRMS_REGION_NORTH", DEFAULT_REGION.north),
+        west=_env_float("MRMS_REGION_WEST", region_default.west),
+        east=_env_float("MRMS_REGION_EAST", region_default.east),
+        south=_env_float("MRMS_REGION_SOUTH", region_default.south),
+        north=_env_float("MRMS_REGION_NORTH", region_default.north),
     )
     if region.west >= region.east or region.south >= region.north:
         raise ValueError(f"Invalid MRMS region bounds: {region}")

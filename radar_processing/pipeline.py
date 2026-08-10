@@ -119,9 +119,12 @@ def build_radar_dataset(
     dataset_id: str,
     label: str,
     sources: dict[str, str],
+    region_label: str = "North Carolina",
     auxiliary_frames: dict[str, RemoteFrame] | None = None,
+    auxiliary_candidates: dict[str, list[RemoteFrame]] | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render one live or historical dataset, its GIFs, and an atomic manifest."""
 
@@ -198,9 +201,42 @@ def build_radar_dataset(
                 errors.append(message)
                 LOGGER.warning(message)
 
-        # Analysis products are deliberately latest-only for the live MVP. A
-        # full animation of every derived product would multiply GRIB2
-        # downloads and processing time without improving the primary loop.
+        # Live refreshes keep analysis products latest-only. Historical full-suite
+        # packs align each derived product to the selected reflectivity timeline.
+        for product_id, candidates in (auxiliary_candidates or {}).items():
+            if product_id not in ANALYSIS_PRODUCT_IDS:
+                LOGGER.warning("Ignoring unconfigured auxiliary MRMS product %s", product_id)
+                continue
+            for target_frame in reflectivity_frames:
+                auxiliary_frame = match_closest_frame(target_frame.valid_time, candidates)
+                if auxiliary_frame is None:
+                    LOGGER.warning("No nearby %s frame for %s", product_id, target_frame.timestamp_iso)
+                    continue
+                filename = f"analysis-{_safe_product_stem(product_id)}-{_safe_stem(target_frame)}.png"
+                output_path = frame_dir / filename
+                try:
+                    grib_path = _download_and_decompress(
+                        auxiliary_frame,
+                        product_id=product_id,
+                        raw_dir=raw_dir,
+                        config=config,
+                    )
+                    rendered = render_analysis(product_id, grib_path, output_path, config.region)
+                    products[product_id]["frames"].append(
+                        _frame_payload(
+                            target_frame,
+                            filename,
+                            rendered.manifest_bounds(),
+                            frame_id_prefix=f"analysis-{_safe_product_stem(product_id)}",
+                            source_valid_time=auxiliary_frame.timestamp_iso,
+                        )
+                    )
+                    LOGGER.info("Rendered %s analysis %s", product_id, target_frame.timestamp_iso)
+                except Exception as exc:  # noqa: BLE001 - one layer must not discard the radar loop
+                    message = f"{product_id} {auxiliary_frame.filename}: {exc}"
+                    errors.append(message)
+                    LOGGER.warning(message)
+
         for product_id, frame in (auxiliary_frames or {}).items():
             if product_id not in ANALYSIS_PRODUCT_IDS:
                 LOGGER.warning("Ignoring unconfigured auxiliary MRMS product %s", product_id)
@@ -276,6 +312,7 @@ def build_radar_dataset(
                     source_bounds=config.region,
                     product_id=product_id,
                     product_label=str(product["label"]),
+                    region_label=region_label,
                     geography=geography,
                     mode_label="ARCHIVE" if mode == "historical" else "OBSERVED",
                 )
@@ -298,6 +335,7 @@ def build_radar_dataset(
             label=label,
             start_time=start_time,
             end_time=end_time,
+            metadata=metadata,
         )
         write_json_atomic(output_dir / "manifest.json", manifest)
         LOGGER.info(

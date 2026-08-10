@@ -63,4 +63,4 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest -q
-      - run: python -m py_compile radar_processing/r2.py radar_processing/control.py radar_processing/national_tiles.py scripts/build_national_mrms.py scripts/run_cloud_run_mrms_live.py scripts/run_cloud_run_mrms_focus.py scripts/run_cloud_run_live.py scripts/run_cloud_run_historical.py cloudrun/admin_service.py
+      - run: python -m py_compile radar_processing/r2.py radar_processing/control.py radar_processing/national_tiles.py radar_processing/era5.py radar_processing/era5_rendering.py scripts/build_national_mrms.py scripts/build_historical_era5.py scripts/run_cloud_run_mrms_live.py scripts/run_cloud_run_mrms_focus.py scripts/run_cloud_run_live.py scripts/run_cloud_run_historical.py cloudrun/admin_service.py

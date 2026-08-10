@@ -148,6 +148,7 @@ def put_json_object(
     payload: dict[str, Any],
     *,
     if_match: str | None = None,
+    if_none_match: str | None = None,
 ) -> None:
     """Write a small control/status JSON object with no local temporary file."""
     import json
@@ -162,6 +163,8 @@ def put_json_object(
     }
     if if_match:
         request["IfMatch"] = if_match
+    if if_none_match:
+        request["IfNoneMatch"] = if_none_match
     client.put_object(**request)
 
 

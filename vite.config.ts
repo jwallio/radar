@@ -15,6 +15,15 @@ const configuredBasePath = normalizeBasePath(process.env.VITE_BASE_PATH ?? proce
 export default defineConfig({
   base: configuredBasePath,
   plugins: [react()],
+  server: {
+    proxy: {
+      '/radar-data': {
+        target: 'https://data.radar.wall.cloud',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/radar-data/, ''),
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

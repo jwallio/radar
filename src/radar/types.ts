@@ -1,4 +1,4 @@
-export type RadarSourceId = 'mrms' | 'krax'
+export type RadarSourceId = 'mrms' | 'krax' | 'era5'
 
 export type RadarProductId =
   | 'MergedReflectivityQCComposite'
@@ -7,6 +7,8 @@ export type RadarProductId =
   | 'NEXRADLevel2BaseReflectivity'
   | 'NEXRADLevel2Velocity'
   | 'NEXRADLevel2CorrelationCoefficient'
+  | 'ERA5PrecipitationType'
+  | 'ERA5TotalPrecipitation'
 
 export type RadarAnalysisProductId =
   | 'MultiSensor_QPE_01H_Pass1'
@@ -46,7 +48,9 @@ export interface RadarManifest {
   schema_version: number
   status: 'ready' | 'unavailable'
   mode?: 'live' | 'historical'
-  source?: 'nexrad-level2' | 'mrms'
+  source?: 'nexrad-level2' | 'mrms' | 'era5'
+  source_type?: 'observed' | 'reanalysis'
+  observed?: boolean
   site?: string
   dataset_id?: string
   label?: string
@@ -58,13 +62,27 @@ export interface RadarManifest {
   start_time?: string | null
   end_time?: string | null
   region: { west: number; south: number; east: number; north: number }
+  bounds?: [number, number, number, number]
   product: RadarProductId
+  product_type?: string
   products: Partial<Record<RadarManifestProductId, RadarProductManifest>>
   frames: RadarFrameManifest[]
   sources?: Record<string, string>
   errors?: string[]
   coverage?: 'regional' | 'conus'
   delivery?: 'image' | 'pmtiles'
+  variables?: string[]
+  temporal_resolution?: string
+  temporal_interpolation?: string
+  native_resolution?: string
+  rendered_resolution?: string
+  provenance?: string
+  methodology?: string
+  era5_reconstruction_version?: number
+  mrms_product_tier?: 'core' | 'full'
+  mrms_archive_start?: string
+  mrms_full_suite_start?: string
+  mrms_full_suite?: boolean
   radar?: {
     latitude?: number
     longitude?: number
@@ -80,9 +98,20 @@ export interface RadarHistoryEntry {
   start_time: string
   end_time: string
   frame_count: number
-  products: RadarProductId[]
+  products: RadarManifestProductId[]
   manifest_url: string
-  source?: 'nexrad-level2' | 'mrms'
+  source?: 'nexrad-level2' | 'mrms' | 'era5'
+  source_type?: 'observed' | 'reanalysis'
+  observed?: boolean
+  temporal_resolution?: string
+  native_resolution?: string
+  era5_reconstruction_version?: number
+  mrms_product_tier?: 'core' | 'full'
+  mrms_archive_start?: string
+  mrms_full_suite_start?: string
+  mrms_full_suite?: boolean
+  region_id?: string
+  bounds?: [number, number, number, number]
   site?: string
 }
 

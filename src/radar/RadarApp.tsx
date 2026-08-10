@@ -3,10 +3,10 @@ import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, DEFAULT_ARCHIVE_REGION_ID, ERA5_PHASE_LEGEND, ERA5_PROCESSING_BOUNDS, ERA5_TOTAL_PRECIPITATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, MAP_VIEW_BOUNDS, MRMS_ARCHIVE_START_INPUT, MRMS_FULL_SUITE_START_INPUT, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
 import { encodeGif, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
-import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
+import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarHistoryEntry, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
 import './radar.css'
 
 function normalizeDataBaseUrl(value: string): string {
@@ -21,11 +21,13 @@ const RADAR_DATA_BASE_URL = normalizeDataBaseUrl(
 const LIVE_MANIFEST_PATHS: Record<RadarSourceId, string> = {
   mrms: `${RADAR_DATA_BASE_URL}radar/manifest.json`,
   krax: `${RADAR_DATA_BASE_URL}radar/krax/manifest.json`,
+  era5: '',
 }
 const FOCUS_MANIFEST_PATH = `${RADAR_DATA_BASE_URL}radar/focus/manifest.json`
 const HISTORY_CATALOG_PATHS: Record<RadarSourceId, string> = {
   mrms: `${RADAR_DATA_BASE_URL}radar/history/catalog.json`,
   krax: `${RADAR_DATA_BASE_URL}radar/krax/history/catalog.json`,
+  era5: `${RADAR_DATA_BASE_URL}radar/history/era5/catalog.json`,
 }
 const BUOY_DATA_PATH = `${RADAR_DATA_BASE_URL}observations/buoys.json`
 // Public endpoint only; the activation token is never bundled into the app.
@@ -53,6 +55,8 @@ const BUOY_DOT_ID = 'wallcloud-buoy-dot'
 const BUOY_LABEL_ID = 'wallcloud-buoy-label'
 const BUILD_SHA = import.meta.env.VITE_BUILD_SHA || 'local'
 const RADAR_POLL_INTERVAL_MS = 5 * 60 * 1000
+const ARCHIVE_ONLY = true
+const ARCHIVE_DATASET_PLACEHOLDER = 'archive'
 const DEFAULT_RADAR_SOURCE: RadarSourceId = 'mrms'
 const DEFAULT_RADAR_PRODUCT: RadarProductId = 'MergedReflectivityQCComposite'
 const PMTILES_PROTOCOL = new Protocol()
@@ -81,6 +85,7 @@ type MrmsLiveCoverage = 'national' | 'focus'
 type HistoryJobStatus = {
   job_id: string
   status: 'pending' | 'running' | 'complete' | 'failed'
+  stage?: string
   source?: string
   dataset_id?: string
   manifest_url?: string
@@ -89,9 +94,9 @@ type HistoryJobStatus = {
 }
 
 function initialMapZoom(): number {
-  if (window.innerWidth <= 680) return 2.55
-  if (window.innerWidth <= 1024) return 2.8
-  return 3.25
+  if (window.innerWidth <= 680) return 4.45
+  if (window.innerWidth <= 1024) return 4.9
+  return 5.25
 }
 
 function assetUrl(path: string, manifestPath: string): string {
@@ -265,6 +270,20 @@ function easternInputValue(date: Date): string {
   return `${value('year')}-${value('month')}-${value('day')}T${hour}:${value('minute')}`
 }
 
+function easternHourInputValue(date: Date): string {
+  const value = easternInputValue(date)
+  return value.replace(/:\d{2}$/, ':00')
+}
+
+function defaultHistoryInputValues(source: RadarSourceId): { start: string; end: string } {
+  const end = new Date(Date.now() - (source === 'era5' ? 5 * 24 * 60 * 60 * 1000 : 0))
+  const format = source === 'era5' ? easternHourInputValue : easternInputValue
+  return {
+    start: format(new Date(end.getTime() - 2 * 60 * 60 * 1000)),
+    end: format(end),
+  }
+}
+
 function easternInputToIso(value: string): string {
   const [datePart, timePart] = value.split('T')
   const [year, month, day] = datePart.split('-').map(Number)
@@ -340,11 +359,78 @@ function formatEasternDateTime(value: string | null | undefined): string {
   }).format(date) + ' ET'
 }
 
-function ageMinutes(value: string | null | undefined): number | null {
-  if (!value) return null
-  const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return null
-  return Math.max(0, Math.floor((Date.now() - timestamp) / 60_000))
+function historyEntryLabel(entry: RadarHistoryEntry): string {
+  const start = new Date(entry.start_time)
+  const end = new Date(entry.end_time)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return entry.label
+  const region = MAP_REGIONS.find((candidate) => (
+    candidate.id === entry.region_id || entry.id.includes(`-${candidate.id}-`)
+  ))
+  const scope = entry.site?.toUpperCase() || region?.label
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const timeFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  const startDate = dateFormatter.format(start)
+  const endDate = dateFormatter.format(end)
+  const range = startDate === endDate
+    ? `${startDate} · ${timeFormatter.format(start)}–${timeFormatter.format(end)} ET`
+    : `${startDate}, ${timeFormatter.format(start)}–${endDate}, ${timeFormatter.format(end)} ET`
+  return scope ? `${scope} · ${range}` : range
+}
+
+function boundsMatch(
+  first: readonly [number, number, number, number],
+  second: readonly [number, number, number, number],
+): boolean {
+  return first.every((value, index) => Math.abs(value - second[index]) < 0.001)
+}
+
+function historyEntryMatchesScope(
+  entry: RadarHistoryEntry,
+  source: RadarSourceId,
+  regionId: string,
+  bounds?: readonly [number, number, number, number],
+): boolean {
+  if (source === 'krax') return true
+  if (regionId === 'current-view') {
+    return Boolean(bounds && entry.bounds && boundsMatch(bounds, entry.bounds))
+  }
+  const regionMatches = entry.region_id
+    ? entry.region_id === regionId
+    : entry.id.includes(`-${regionId}-`)
+  if (!regionMatches) return false
+  return !bounds || !entry.bounds || boundsMatch(bounds, entry.bounds)
+}
+
+function coveringHistoryEntry(
+  catalog: RadarHistoryCatalog | null,
+  source: RadarSourceId,
+  startIso: string,
+  endIso: string,
+  regionId: string,
+  bounds?: readonly [number, number, number, number],
+): RadarHistoryEntry | null {
+  const start = Date.parse(startIso)
+  const end = Date.parse(endIso)
+  if (!catalog || !Number.isFinite(start) || !Number.isFinite(end) || start >= end) return null
+  return catalog.datasets.find((entry) => {
+    const entryStart = Date.parse(entry.start_time)
+    const entryEnd = Date.parse(entry.end_time)
+    return Number.isFinite(entryStart)
+      && Number.isFinite(entryEnd)
+      && start >= entryStart
+      && end <= entryEnd
+      && historyEntryMatchesScope(entry, source, regionId, bounds)
+  }) ?? null
 }
 
 function createMapSources(map: maplibregl.Map): void {
@@ -562,6 +648,18 @@ function setLayerVisibility(map: maplibregl.Map, ids: string[], visible: boolean
 
 function productFrames(manifest: RadarManifest | null, productId: RadarManifestProductId): RadarFrameManifest[] {
   return manifest?.products[productId]?.frames ?? (productId === manifest?.product ? manifest.frames ?? [] : [])
+}
+
+function productFrameForTime(frames: RadarFrameManifest[], validTime: string | null | undefined): RadarFrameManifest | null {
+  if (!frames.length) return null
+  if (!validTime) return frames[frames.length - 1]
+  const target = Date.parse(validTime)
+  if (Number.isNaN(target)) return frames[frames.length - 1]
+  return frames.reduce((closest, frame) => (
+    Math.abs(Date.parse(frame.valid_time) - target) < Math.abs(Date.parse(closest.valid_time) - target)
+      ? frame
+      : closest
+  ))
 }
 
 function hasUsableFrames(manifest: RadarManifest, productId: RadarManifestProductId): boolean {
@@ -854,6 +952,8 @@ function shareProductDetails(productId: RadarProductId): { label: string; source
   if (productId === 'NEXRADLevel2BaseReflectivity') return { label: 'Base Reflectivity', source: 'KRAX Level II', resolution: 'native', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
   if (productId === 'NEXRADLevel2Velocity') return { label: 'Radial Velocity', source: 'KRAX Level II', resolution: 'native', unit: 'm/s', legend: VELOCITY_LEGEND }
   if (productId === 'NEXRADLevel2CorrelationCoefficient') return { label: 'Correlation Coefficient (ρhv)', source: 'KRAX Level II', resolution: 'native', unit: 'ρhv', legend: CORRELATION_LEGEND }
+  if (productId === 'ERA5PrecipitationType') return { label: 'Precipitation phase & intensity', source: 'ERA5 reanalysis · interpolated display', resolution: '0.25° native · hourly', unit: 'PHASE / RATE', legend: ERA5_PHASE_LEGEND }
+  if (productId === 'ERA5TotalPrecipitation') return { label: 'Total precipitation', source: 'ERA5 reanalysis · interpolated display', resolution: '0.25° native · hourly', unit: 'mm/h', legend: ERA5_TOTAL_PRECIPITATION_LEGEND }
   return { label: 'Composite Reflectivity', source: 'MRMS', resolution: '1 km', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
 }
 
@@ -1003,7 +1103,10 @@ function composeShareFrame(
   context.fillStyle = SHARE_BRAND_LIGHT
   context.font = '800 14px Arial, sans-serif'
   const archivePrefix = isHistorical ? 'ARCHIVE · ' : ''
-  context.fillText(`${archivePrefix}OBSERVED LOOP · ${loopPeriod} · FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 31)
+  const loopLabel = productId.startsWith('ERA5')
+    ? 'REANALYSIS-BASED RECONSTRUCTION · NOT OBSERVED RADAR'
+    : 'OBSERVED LOOP'
+  context.fillText(`${archivePrefix}${loopLabel} · ${loopPeriod} · FRAME ${frameNumber + 1}/${frameCount} · ${playbackFps} FPS`, 20, footerY + 31)
   context.textAlign = 'right'
   context.fillStyle = SHARE_BRAND_TEAL
   context.font = '800 13px Arial, sans-serif'
@@ -1098,22 +1201,22 @@ function formatWind(value: number | null | undefined, unit: 'kmh' | 'mps'): stri
 function RadarAnalysisLegends({
   layers,
   manifest,
-  isHistorical,
+  analysisPlaybackAvailable,
   sourceId,
 }: {
   layers: Record<AnalysisLayerKey, boolean>
   manifest: RadarManifest | null
-  isHistorical: boolean
+  analysisPlaybackAvailable: boolean
   sourceId: RadarSourceId
 }) {
   if (sourceId !== 'mrms') return null
   const active = ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').filter((definition) => {
     const product = manifest?.products[definition.productId]
-    return !isHistorical && layers[definition.key] && Boolean(product?.frames.length)
+    return analysisPlaybackAvailable && layers[definition.key] && Boolean(product?.frames.length)
   })
   if (!active.length) return null
   return (
-    <div className="radar-analysis-legends" aria-label="Active storm analysis legends">
+    <div className="radar-analysis-legends" aria-label="Active MRMS analysis legends">
       {active.map((definition) => (
         <div className="radar-analysis-legend" key={definition.key}>
           <div className="radar-analysis-legend-title">{definition.label} <span>{definition.unit}</span></div>
@@ -1204,7 +1307,11 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
       : productId === 'NEXRADLevel2Velocity'
         ? VELOCITY_LEGEND
         : productId === 'NEXRADLevel2CorrelationCoefficient'
-          ? CORRELATION_LEGEND
+        ? CORRELATION_LEGEND
+          : productId === 'ERA5PrecipitationType'
+            ? ERA5_PHASE_LEGEND
+            : productId === 'ERA5TotalPrecipitation'
+              ? ERA5_TOTAL_PRECIPITATION_LEGEND
           : REFLECTIVITY_LEGEND
   const heading = productId === 'PrecipFlag'
     ? 'TYPE'
@@ -1213,7 +1320,11 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
       : productId === 'NEXRADLevel2Velocity'
         ? 'm/s'
         : productId === 'NEXRADLevel2CorrelationCoefficient'
-          ? 'ρhv'
+        ? 'ρhv'
+          : productId === 'ERA5PrecipitationType'
+            ? 'PHASE / RATE'
+            : productId === 'ERA5TotalPrecipitation'
+              ? 'mm/h'
           : 'dBZ'
   const label = productId === 'PrecipFlag'
     ? 'Precipitation type'
@@ -1222,7 +1333,11 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
       : productId === 'NEXRADLevel2Velocity'
         ? 'Radial velocity'
         : productId === 'NEXRADLevel2CorrelationCoefficient'
-          ? 'Correlation coefficient'
+        ? 'Correlation coefficient'
+          : productId === 'ERA5PrecipitationType'
+            ? 'ERA5 precipitation phase'
+            : productId === 'ERA5TotalPrecipitation'
+              ? 'ERA5 total precipitation'
           : 'Reflectivity'
   return (
     <aside className="radar-legend" aria-label={`${label} legend`}>
@@ -1233,6 +1348,9 @@ function RadarLegend({ productId }: { productId: RadarProductId }) {
       <div className="radar-legend-labels">
         {entries.map((entry) => <span key={entry.label}>{entry.label}</span>)}
       </div>
+      {productId === 'ERA5PrecipitationType' && (
+        <div className="radar-legend-intensity">intensity mm/h<br /><span>0.01 · 0.1 · 1<br />5 · 10 · 25+</span></div>
+      )}
     </aside>
   )
 }
@@ -1248,14 +1366,14 @@ export function RadarApp() {
   const [manifestError, setManifestError] = useState<string | null>(null)
   const [sourceId, setSourceId] = useState<RadarSourceId>(DEFAULT_RADAR_SOURCE)
   const [mrmsLiveCoverage, setMrmsLiveCoverage] = useState<MrmsLiveCoverage>('national')
-  const [manifestPath, setManifestPath] = useState(LIVE_MANIFEST_PATHS[DEFAULT_RADAR_SOURCE])
+  const [manifestPath, setManifestPath] = useState(HISTORY_CATALOG_PATHS[DEFAULT_RADAR_SOURCE])
   const [sourceFallbackNotice, setSourceFallbackNotice] = useState<string | null>(null)
-  const [historyCatalogs, setHistoryCatalogs] = useState<Record<RadarSourceId, RadarHistoryCatalog | null>>({ mrms: null, krax: null })
-  const [historyErrors, setHistoryErrors] = useState<Record<RadarSourceId, string | null>>({ mrms: null, krax: null })
+  const [historyCatalogs, setHistoryCatalogs] = useState<Record<RadarSourceId, RadarHistoryCatalog | null>>({ mrms: null, krax: null, era5: null })
+  const [historyErrors, setHistoryErrors] = useState<Record<RadarSourceId, string | null>>({ mrms: null, krax: null, era5: null })
   const [historyRefreshNonce, setHistoryRefreshNonce] = useState(0)
-  const [historyStart, setHistoryStart] = useState(() => easternInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)))
-  const [historyEnd, setHistoryEnd] = useState(() => easternInputValue(new Date()))
-  const [mapRegionId, setMapRegionId] = useState('conus')
+  const [historyStart, setHistoryStart] = useState(() => defaultHistoryInputValues(DEFAULT_RADAR_SOURCE).start)
+  const [historyEnd, setHistoryEnd] = useState(() => defaultHistoryInputValues(DEFAULT_RADAR_SOURCE).end)
+  const [mapRegionId, setMapRegionId] = useState(DEFAULT_ARCHIVE_REGION_ID)
   const [historyRegionId, setHistoryRegionId] = useState('current-view')
   const [historyJobStatus, setHistoryJobStatus] = useState<HistoryJobStatus | null>(null)
   const [historyRequestBusy, setHistoryRequestBusy] = useState(false)
@@ -1267,7 +1385,7 @@ export function RadarApp() {
   const [focusControlError, setFocusControlError] = useState<string | null>(null)
   const [focusControlBusy, setFocusControlBusy] = useState(false)
   const [focusRegionId, setFocusRegionId] = useState('north-carolina')
-  const [datasetId, setDatasetId] = useState('live')
+  const [datasetId, setDatasetId] = useState(ARCHIVE_DATASET_PLACEHOLDER)
   const [productId, setProductId] = useState<RadarProductId>(DEFAULT_RADAR_PRODUCT)
   const [frameIndex, setFrameIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -1279,7 +1397,7 @@ export function RadarApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [layers, setLayers] = useState({
     radar: true,
-    warnings: true,
+    warnings: false,
     counties: true,
     cities: true,
     highways: false,
@@ -1294,7 +1412,6 @@ export function RadarApp() {
     buoys: false,
   })
   const [warnings, setWarnings] = useState<RadarWarning[]>([])
-  const [warningStatus, setWarningStatus] = useState<'loading' | 'ready' | 'degraded'>('loading')
   const [warningErrors, setWarningErrors] = useState<string[]>([])
   const [selectedWarningId, setSelectedWarningId] = useState<string | null>(null)
   const [states, setStates] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
@@ -1304,7 +1421,6 @@ export function RadarApp() {
   const [highwaysLoading, setHighwaysLoading] = useState(false)
   const [highwaysError, setHighwaysError] = useState<string | null>(null)
   const [surfaceObservations, setSurfaceObservations] = useState<SurfaceObservation[]>([])
-  const [surfaceLoading, setSurfaceLoading] = useState(false)
   const [surfaceError, setSurfaceError] = useState<string | null>(null)
   const [buoys, setBuoys] = useState<BuoyObservation[]>([])
   const [buoyError, setBuoyError] = useState<string | null>(null)
@@ -1314,9 +1430,17 @@ export function RadarApp() {
   const historyCatalog = historyCatalogs[sourceId]
   const historyError = historyErrors[sourceId]
   const isKrax = sourceId === 'krax'
-  const isFocusCoverage = sourceId === 'mrms' && datasetId === 'live' && mrmsLiveCoverage === 'focus'
-  const sourceLabel = isKrax ? 'Level II' : isFocusCoverage ? 'MRMS storm focus' : 'MRMS mosaic'
-  const stormAnalysisAvailable = sourceId === 'mrms'
+  const isEra5 = sourceId === 'era5'
+  const defaultHistoryDataset = historyCatalog?.datasets.find((dataset) => dataset.id.includes(`-${mapRegionId}-`))
+  const activeDatasetId = datasetId === ARCHIVE_DATASET_PLACEHOLDER && historyCatalog?.datasets.length
+    ? defaultHistoryDataset?.id ?? historyCatalog.datasets[0].id
+    : datasetId
+  const historyEntry = historyCatalog?.datasets.find((dataset) => dataset.id === activeDatasetId)
+  const isFocusCoverage = sourceId === 'mrms' && activeDatasetId === 'live' && mrmsLiveCoverage === 'focus'
+  const sourceLabel = isEra5 ? 'ERA5 reconstruction' : isKrax ? 'NEXRAD Level II archive' : isFocusCoverage ? 'MRMS storm focus archive' : 'MRMS archive'
+  const archiveSourceLabel = isEra5
+    ? 'ERA5 reconstruction archive · interpolated display'
+    : sourceLabel.endsWith('archive') ? sourceLabel : `${sourceLabel} archive`
 
   const frames = useMemo(() => productFrames(manifest, productId), [manifest, productId])
   const activeIndex = frames.length ? Math.min(Math.max(frameIndex, 0), frames.length - 1) : 0
@@ -1326,31 +1450,41 @@ export function RadarApp() {
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const mapRegion = MAP_REGIONS.find((region) => region.id === mapRegionId) ?? MAP_REGIONS[0]
+  const historyCoverageEntry = useMemo(() => {
+    if (!historyStart || !historyEnd) return null
+    try {
+      const selectedRegion = MAP_REGIONS.find((region) => region.id === historyRegionId)
+      const selectedBounds = selectedRegion?.archiveBounds?.[sourceId] ?? selectedRegion?.bounds
+      return coveringHistoryEntry(
+        historyCatalog,
+        sourceId,
+        easternInputToIso(historyStart),
+        easternInputToIso(historyEnd),
+        sourceId === 'krax' ? 'krax' : selectedRegion?.id ?? 'current-view',
+        selectedBounds,
+      )
+    } catch {
+      return null
+    }
+  }, [historyCatalog, historyEnd, historyRegionId, historyStart, sourceId])
   const focusRegion = MAP_REGIONS.find((region) => region.id === focusRegionId && region.id !== 'conus')
     ?? MAP_REGIONS.find((region) => region.id === 'north-carolina')
     ?? MAP_REGIONS[1]
-  const isHistorical = manifest?.mode === 'historical' || datasetId !== 'live'
+  const isHistorical = ARCHIVE_ONLY || isEra5 || manifest?.mode === 'historical' || activeDatasetId !== 'live'
+  const mrmsFullSuiteAvailable = sourceId === 'mrms' && (
+    historyEntry?.mrms_product_tier === 'full'
+    || manifest?.mrms_product_tier === 'full'
+    || manifest?.mrms_full_suite === true
+  )
+  const analysisPlaybackAvailable = sourceId === 'mrms' && (!isHistorical || mrmsFullSuiteAvailable)
   const livePollingConfigured = Boolean(RADAR_CONTROL_API_URL)
-  const latestAge = ageMinutes(manifest?.latest_valid_time)
-  const activeAge = ageMinutes(activeFrame?.valid_time)
-  const isLatest = Boolean(activeFrame && latestFrame && activeFrame.id === latestFrame.id)
   const freshnessLabel = !activeFrame
     ? manifestLoading ? 'LOADING' : 'DATA UNAVAILABLE'
-    : isHistorical
-      ? 'HISTORICAL'
-    : isFocusCoverage && livePollingConfigured && focusControl?.enabled === false
-      ? 'ARCHIVE MODE'
-    : isKrax && livePollingConfigured && pollingControl?.enabled === false
-      ? 'ARCHIVE MODE'
-    : !isLatest
-      ? 'PLAYBACK'
-      : latestAge === null || latestAge <= 8
-        ? 'LIVE'
-        : `${latestAge} MIN OLD`
+    : 'ARCHIVE'
 
   useEffect(() => {
     let cancelled = false
-    ;(['mrms', 'krax'] as RadarSourceId[]).forEach((source) => {
+    ;(['mrms', 'krax', 'era5'] as RadarSourceId[]).forEach((source) => {
       fetchHistoryCatalog(HISTORY_CATALOG_PATHS[source])
         .then((catalog) => {
           if (!cancelled) {
@@ -1381,7 +1515,7 @@ export function RadarApp() {
         if (next.status === 'complete') {
           setHistoryRefreshNonce((value) => value + 1)
           if (next.dataset_id) {
-            setSourceId(next.source === 'mrms' ? 'mrms' : 'krax')
+            setSourceId(next.source === 'mrms' ? 'mrms' : next.source === 'era5' ? 'era5' : 'krax')
             setDatasetId(next.dataset_id)
           }
         }
@@ -1398,7 +1532,7 @@ export function RadarApp() {
   }, [historyJobStatus])
 
   useEffect(() => {
-    if (!RADAR_CONTROL_API_URL) return
+    if (ARCHIVE_ONLY || !RADAR_CONTROL_API_URL) return
     let cancelled = false
     const loadLevel2 = async () => {
       try {
@@ -1459,11 +1593,11 @@ export function RadarApp() {
 
   useEffect(() => {
     let cancelled = false
-    const historyEntry = historyCatalog?.datasets.find((dataset) => dataset.id === datasetId)
+    const historyEntry = historyCatalog?.datasets.find((dataset) => dataset.id === activeDatasetId)
     const liveManifestPath = sourceId === 'mrms' && mrmsLiveCoverage === 'focus'
       ? FOCUS_MANIFEST_PATH
       : LIVE_MANIFEST_PATHS[sourceId]
-    const nextManifestPath = datasetId === 'live'
+    const nextManifestPath = activeDatasetId === 'live' && !isEra5
       ? liveManifestPath
       : historyEntry
         ? historicalManifestUrl(historyEntry.manifest_url, sourceId)
@@ -1471,8 +1605,15 @@ export function RadarApp() {
     const load = async () => {
       if (!nextManifestPath) {
         if (!cancelled) {
-          setManifestError('The selected historical loop is no longer in the catalog')
-          setManifestLoading(false)
+          if (!historyCatalog && !historyError) {
+            setManifestError(null)
+            setManifestLoading(true)
+          } else {
+            setManifest(null)
+            setManifestPath(HISTORY_CATALOG_PATHS[sourceId])
+            setManifestError(historyError ? `Historical catalog unavailable: ${historyError}` : null)
+            setManifestLoading(false)
+          }
         }
         return
       }
@@ -1502,13 +1643,13 @@ export function RadarApp() {
       try {
         const next = await fetchRadarManifest(nextManifestPath)
         const hasFrames = hasUsableFrames(next, productId)
-        if (datasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus') && !hasFrames) {
+        if (activeDatasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus') && !hasFrames) {
           await loadMrmsFallback(sourceId === 'krax' ? 'no usable Level II frames' : 'no usable regional frames')
         } else {
           applyManifest(next, nextManifestPath, productId)
         }
       } catch (error) {
-        if (datasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus')) {
+        if (activeDatasetId === 'live' && (sourceId === 'krax' || mrmsLiveCoverage === 'focus')) {
           try {
             await loadMrmsFallback('source request failed')
           } catch (fallbackError) {
@@ -1526,7 +1667,7 @@ export function RadarApp() {
       }
     }
     void load()
-    const shouldPollLiveManifest = datasetId === 'live' && (
+    const shouldPollLiveManifest = activeDatasetId === 'live' && !isEra5 && (
       (sourceId === 'mrms' && mrmsLiveCoverage === 'national')
       || (sourceId === 'mrms' && mrmsLiveCoverage === 'focus' && focusControl?.enabled === true)
       || !livePollingConfigured
@@ -1538,9 +1679,11 @@ export function RadarApp() {
       if (refresh !== null) window.clearInterval(refresh)
     }
   }, [
-    datasetId,
+    activeDatasetId,
     focusControl?.enabled,
     historyCatalog,
+    historyError,
+    isEra5,
     livePollingConfigured,
     mrmsLiveCoverage,
     pollingControl?.enabled,
@@ -1558,6 +1701,7 @@ export function RadarApp() {
   }, [activeIndex, frames.length, playbackFps, playing])
 
   useEffect(() => {
+    if (ARCHIVE_ONLY) return
     let cancelled = false
     const load = async () => {
       try {
@@ -1568,11 +1712,9 @@ export function RadarApp() {
           warningsRef.current = new Map(result.warnings.map((warning) => [warning.id, warning]))
         }
         setWarningErrors(result.errors)
-        setWarningStatus(result.errors.length ? 'degraded' : 'ready')
       } catch (error) {
         if (!cancelled) {
           setWarningErrors([error instanceof Error ? error.message : 'NWS request failed'])
-          setWarningStatus('degraded')
         }
       }
     }
@@ -1633,7 +1775,6 @@ export function RadarApp() {
     let cancelled = false
     const controller = new AbortController()
     const load = async () => {
-      setSurfaceLoading(true)
       try {
         const result = await fetchRegionalSurfaceObservations(controller.signal)
         if (cancelled) return
@@ -1641,8 +1782,6 @@ export function RadarApp() {
         setSurfaceError(result.errors.length ? result.errors[0] : null)
       } catch (error: unknown) {
         if (!cancelled && error instanceof Error && error.name !== 'AbortError') setSurfaceError(error.message)
-      } finally {
-        if (!cancelled) setSurfaceLoading(false)
       }
     }
     void load()
@@ -1692,8 +1831,8 @@ export function RadarApp() {
       zoom: initialMapZoom(),
       canvasContextAttributes: { preserveDrawingBuffer: true },
       minZoom: 2.2,
-      maxZoom: 12,
-      maxBounds: [[NATIONAL_BOUNDS[0] - 4, NATIONAL_BOUNDS[1] - 4], [NATIONAL_BOUNDS[2] + 4, NATIONAL_BOUNDS[3] + 4]],
+      maxZoom: 14,
+        maxBounds: [[MAP_VIEW_BOUNDS[0] - 4, MAP_VIEW_BOUNDS[1] - 4], [MAP_VIEW_BOUNDS[2] + 4, MAP_VIEW_BOUNDS[3] + 4]],
       attributionControl: false,
       dragRotate: false,
       touchPitch: false,
@@ -1770,6 +1909,7 @@ export function RadarApp() {
     const map = mapRef.current
     if (!map || !mapReady) return
     const tilesUrl = activeFrame ? framePmtilesUrl(activeFrame, manifestPath) : null
+    const displayResampling = isEra5 ? 'linear' : 'nearest'
     let source = map.getSource(RADAR_SOURCE_ID) as maplibregl.ImageSource | maplibregl.RasterTileSource | undefined
     const desiredType = tilesUrl ? 'raster' : 'image'
     if (source && source.type !== desiredType) {
@@ -1785,7 +1925,7 @@ export function RadarApp() {
           tileSize: 512,
           minzoom: activeFrame.minzoom ?? 3,
           maxzoom: activeFrame.maxzoom ?? 8,
-          attribution: 'NOAA/NCEP MRMS',
+          attribution: isEra5 ? 'ERA5 • Copernicus Climate Change Service / ECMWF' : isKrax ? 'NOAA NEXRAD Level II' : 'NOAA/NCEP MRMS',
         })
       } else {
         const bounds = activeFrame.bounds
@@ -1799,18 +1939,21 @@ export function RadarApp() {
         id: RADAR_LAYER_ID,
         type: 'raster',
         source: RADAR_SOURCE_ID,
-        paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' },
+        paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': displayResampling },
       }, map.getLayer('wallcloud-state-fill') ? 'wallcloud-state-fill' : undefined)
     } else if (source && activeFrame) {
       updateRadarMapImage(map, activeFrame, manifestPath)
     }
-  }, [activeFrame, manifestPath, mapReady])
+    if (map.getLayer(RADAR_LAYER_ID)) {
+      map.setPaintProperty(RADAR_LAYER_ID, 'raster-resampling', displayResampling)
+    }
+  }, [activeFrame, isEra5, isKrax, manifestPath, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
     ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
-      const frame = productFrames(manifest, definition.productId).at(-1)
+      const frame = productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
       if (!frame) return
       const sourceId = analysisSourceId(definition.productId)
       const layerId = analysisLayerId(definition.productId)
@@ -1832,7 +1975,7 @@ export function RadarApp() {
         source.updateImage({ url: frameUrl(frame, manifestPath), coordinates })
       }
     })
-  }, [manifest, manifestPath, mapReady])
+  }, [activeFrame?.valid_time, manifest, manifestPath, mapReady])
 
   useEffect(() => {
     if (!activeFrame) return
@@ -1868,10 +2011,10 @@ export function RadarApp() {
     setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
     setLayerVisibility(map, [BUOY_DOT_ID, BUOY_LABEL_ID], layers.buoys && !isHistorical)
     ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
-      const frame = productFrames(manifest, definition.productId).at(-1)
-      setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && !isHistorical && Boolean(frame))
+      const frame = productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
+      setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && analysisPlaybackAvailable && Boolean(frame))
     })
-  }, [activeFrame, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
+  }, [activeFrame, analysisPlaybackAvailable, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1903,7 +2046,6 @@ export function RadarApp() {
 
   const selectedProduct = manifest?.products[productId]
   const dataUnavailable = !manifestLoading && (!manifest || manifest.status !== 'ready' || !activeFrame)
-  const dataStale = !isHistorical && latestAge !== null && latestAge > 15
   const loopDownloadUrl = selectedProduct?.loop_url ? assetUrl(selectedProduct.loop_url, manifestPath) : null
 
   const exportGif = async () => {
@@ -2047,32 +2189,51 @@ export function RadarApp() {
 
   const requestHistoricalLoop = async () => {
     if (!RADAR_CONTROL_API_URL || historyRequestBusy) return
-    const token = promptForControlToken()
-    if (!token) return
-    setHistoryRequestBusy(true)
     setHistoryRequestError(null)
+    setHistoryJobStatus(null)
     try {
+      const start = easternInputToIso(historyStart)
+      const end = easternInputToIso(historyEnd)
+      if (Date.parse(start) >= Date.parse(end)) {
+        setHistoryRequestError('Start must be before end.')
+        return
+      }
       const selectedHistoryRegion = MAP_REGIONS.find((region) => region.id === historyRegionId)
       const viewBounds = mapRef.current?.getBounds()
-      const bounds: [number, number, number, number] | undefined = sourceId === 'mrms'
-        ? selectedHistoryRegion
-          ? [...selectedHistoryRegion.bounds]
+      const historyDomain = sourceId === 'era5' ? ERA5_PROCESSING_BOUNDS : NATIONAL_BOUNDS
+      const selectedRegionBounds = selectedHistoryRegion?.archiveBounds?.[sourceId] ?? selectedHistoryRegion?.bounds
+      const bounds: [number, number, number, number] | undefined = sourceId !== 'krax'
+        ? selectedRegionBounds
+          ? [...selectedRegionBounds] as [number, number, number, number]
           : viewBounds
             ? [
-                Math.max(NATIONAL_BOUNDS[0], viewBounds.getWest()),
-                Math.max(NATIONAL_BOUNDS[1], viewBounds.getSouth()),
-                Math.min(NATIONAL_BOUNDS[2], viewBounds.getEast()),
-                Math.min(NATIONAL_BOUNDS[3], viewBounds.getNorth()),
+                Math.max(historyDomain[0], viewBounds.getWest()),
+                Math.max(historyDomain[1], viewBounds.getSouth()),
+                Math.min(historyDomain[2], viewBounds.getEast()),
+                Math.min(historyDomain[3], viewBounds.getNorth()),
               ]
             : [...REGIONAL_BOUNDS]
         : undefined
+      const regionId = sourceId !== 'krax' ? selectedHistoryRegion?.id ?? 'current-view' : 'krax'
+      const existing = coveringHistoryEntry(historyCatalog, sourceId, start, end, regionId, bounds)
+      if (existing) {
+        setDatasetId(existing.id)
+        setManifestLoading(true)
+        setSourceFallbackNotice(null)
+        setFrameIndex(0)
+        setPlaying(false)
+        return
+      }
+      const token = promptForControlToken()
+      if (!token) return
+      setHistoryRequestBusy(true)
       const next = await requestHistoryJob({
         source: sourceId,
-        start: easternInputToIso(historyStart),
-        end: easternInputToIso(historyEnd),
-        max_frames: 30,
+        start,
+        end,
+        max_frames: isEra5 ? 168 : 30,
         bounds,
-        region_id: sourceId === 'mrms' ? selectedHistoryRegion?.id ?? 'current-view' : undefined,
+        region_id: sourceId !== 'krax' ? regionId : undefined,
       }, token)
       setHistoryJobStatus(next)
     } catch (error: unknown) {
@@ -2092,11 +2253,11 @@ export function RadarApp() {
           <span className="radar-mark" aria-hidden="true"><i /><i /><i /></span>
           <div>
             <div className="radar-product-name">wall.cloud Radar</div>
-            <div className="radar-region-name">United States <span>/ {isHistorical ? `${sourceLabel} archive` : isKrax ? 'Level II radar' : isFocusCoverage ? 'storm focus' : 'national mosaic'}</span></div>
+            <div className="radar-region-name">{mapRegion.label} <span>/ {sourceLabel}</span></div>
           </div>
         </div>
         <div className="radar-header-status">
-          <div className={`radar-freshness ${freshnessLabel === 'LIVE' ? 'live' : freshnessLabel === 'HISTORICAL' ? 'historical' : freshnessLabel === 'DATA UNAVAILABLE' ? 'unavailable' : ''}`}>
+          <div className={`radar-freshness ${freshnessLabel === 'ARCHIVE' ? 'historical' : freshnessLabel === 'DATA UNAVAILABLE' ? 'unavailable' : ''}`}>
             <span className="radar-status-dot" /> {freshnessLabel}
           </div>
           <div className="radar-valid-time">{formatEasternTime(activeFrame?.valid_time)} ET</div>
@@ -2106,7 +2267,7 @@ export function RadarApp() {
             <strong>Dedicated to Jack Roney</strong>
             <span>7.29.86–7.5.26</span>
           </span>
-          <span className="radar-warning-count">{isHistorical ? manifest?.label ?? 'Historical loop' : `${warnings.length} active warning${warnings.length === 1 ? '' : 's'}`}</span>
+          <span className="radar-warning-count">{manifest?.label ?? 'Archive browser'}</span>
           <button type="button" className="radar-settings-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen} aria-controls="radar-settings">
             <span className="radar-sliders-icon" aria-hidden="true">☷</span> Layers
           </button>
@@ -2114,18 +2275,12 @@ export function RadarApp() {
       </header>
 
       <main className="radar-map-area">
-        <div ref={mapContainer} className="radar-map" aria-label="Interactive United States radar map" />
+        <div ref={mapContainer} className="radar-map" aria-label={`Interactive ${mapRegion.label} historical radar map`} />
 
         <div className="radar-map-badge">
-          <span>{sourceLabel} {
-            isHistorical
-            || (isKrax && livePollingConfigured && pollingControl?.enabled === false)
-            || (isFocusCoverage && livePollingConfigured && focusControl?.enabled === false)
-              ? 'archive mode'
-              : 'live'
-          }</span>
+            <span>{archiveSourceLabel}</span>
           <span className="radar-badge-divider" />
-          <span>{selectedProduct?.label ?? 'Composite Reflectivity'}</span>
+          <span>{selectedProduct?.label ?? shareProductDetails(productId).label}</span>
         </div>
 
         {(manifestError || sourceFallbackNotice || mapError) && (
@@ -2135,18 +2290,11 @@ export function RadarApp() {
           </div>
         )}
 
-        {dataStale && !manifestError && !mapError && (
-          <div className="radar-data-strip stale" role="status">
-            <strong>Stale radar</strong>
-            <span>Latest generated observation is {latestAge} min old.</span>
-          </div>
-        )}
-
         {dataUnavailable && (
           <div className="radar-unavailable" role="status">
             <div className="radar-unavailable-icon">◎</div>
-            <strong>Radar imagery unavailable</strong>
-            <span>{isHistorical ? 'That historical pack has no usable radar frames.' : `The map is ready. Run the ${isKrax ? 'KRAX Level II' : 'MRMS'} processor or wait for the next generated data artifact.`}</span>
+            <strong>Archive imagery unavailable</strong>
+            <span>{historyCatalog?.datasets.length ? (isEra5 ? 'That ERA5 reconstruction has no usable hourly frames.' : 'That historical pack has no usable radar frames.') : `No ${archiveSourceLabel} packs are indexed for this region yet.`}</span>
             {manifest?.errors?.[0] && <small>{manifest.errors[0]}</small>}
           </div>
         )}
@@ -2157,15 +2305,15 @@ export function RadarApp() {
         <RadarAnalysisLegends
           layers={layers}
           manifest={manifest}
-          isHistorical={isHistorical}
+          analysisPlaybackAvailable={analysisPlaybackAvailable}
           sourceId={sourceId}
         />
 
         <aside id="radar-settings" className={`radar-settings ${settingsOpen ? 'open' : ''}`} aria-label="Radar controls and layers">
           <div className="radar-settings-head">
             <div>
-              <span className="radar-panel-kicker">Display</span>
-              <h2>Layers & product</h2>
+              <span className="radar-panel-kicker">Archive</span>
+              <h2>Layers</h2>
             </div>
             <button type="button" className="radar-icon-button radar-mobile-close" onClick={() => setSettingsOpen(false)} aria-label="Close layers panel">×</button>
           </div>
@@ -2181,16 +2329,21 @@ export function RadarApp() {
                 setSourceId(nextSource)
                 setMrmsLiveCoverage('national')
                 setManifestLoading(true)
-                setMapRegionId(nextSource === 'krax' ? 'north-carolina' : 'conus')
+                setMapRegionId(DEFAULT_ARCHIVE_REGION_ID)
+                const historyDefaults = defaultHistoryInputValues(nextSource)
+                setHistoryStart(historyDefaults.start)
+                setHistoryEnd(historyDefaults.end)
                 setSourceFallbackNotice(null)
-                setDatasetId('live')
-                setProductId(nextSource === 'krax' ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
+                setDatasetId(ARCHIVE_DATASET_PLACEHOLDER)
+                setProductId(nextSource === 'krax'
+                  ? 'NEXRADLevel2BaseReflectivity'
+                  : nextSource === 'era5' ? 'ERA5PrecipitationType' : 'MergedReflectivityQCComposite')
                 setFrameIndex(0)
                 setPlaying(false)
                 setSelectedWarningId(null)
                 setLayers((current) => ({
                   ...current,
-                  warnings: true,
+                  warnings: false,
                   rainfall: false,
                   shearLow: false,
                   shearMid: false,
@@ -2201,12 +2354,13 @@ export function RadarApp() {
                 }))
               }}
             >
-              <option value="mrms">MRMS national mosaic</option>
-              <option value="krax">Level II radar · admin live feed</option>
+              <option value="mrms">MRMS</option>
+              <option value="krax">NEXRAD Level II</option>
+              <option value="era5">ERA5 gap fill (interpolated)</option>
             </select>
           </div>
 
-          {!isKrax && datasetId === 'live' && (
+          {!ARCHIVE_ONLY && sourceId === 'mrms' && datasetId === 'live' && (
             <>
               <label className="radar-field-label" htmlFor="radar-live-coverage">Live MRMS coverage</label>
               <div className="radar-select-wrap">
@@ -2247,35 +2401,39 @@ export function RadarApp() {
             </select>
           </div>
 
-          <label className="radar-field-label" htmlFor="radar-dataset">Loop source</label>
+          <label className="radar-field-label" htmlFor="radar-dataset">Archive</label>
           <div className="radar-select-wrap">
             <select
               id="radar-dataset"
               className="radar-select"
-              value={datasetId}
+              value={activeDatasetId}
               onChange={(event) => {
                 const nextDatasetId = event.target.value
                 setDatasetId(nextDatasetId)
                 setManifestLoading(true)
                 setSourceFallbackNotice(null)
-                setLayers((current) => ({ ...current, warnings: nextDatasetId === 'live' }))
+                 setLayers((current) => ({ ...current, warnings: false }))
                 setSelectedWarningId(null)
-                setProductId(isKrax ? 'NEXRADLevel2BaseReflectivity' : 'MergedReflectivityQCComposite')
+                setProductId(isKrax
+                  ? 'NEXRADLevel2BaseReflectivity'
+                  : isEra5 ? 'ERA5PrecipitationType' : 'MergedReflectivityQCComposite')
                 setPlaying(false)
               }}
             >
-              <option value="live">Live / recent {sourceLabel}</option>
+              {activeDatasetId === ARCHIVE_DATASET_PLACEHOLDER && <option value={ARCHIVE_DATASET_PLACEHOLDER}>Select an archived pack…</option>}
               {(historyCatalog?.datasets.length ?? 0) > 0 && (
-                <optgroup label="Historical loops">
+                <optgroup label="Available">
                   {historyCatalog?.datasets.map((dataset) => (
-                    <option key={dataset.id} value={dataset.id}>{dataset.label}</option>
+                    <option key={dataset.id} value={dataset.id}>{historyEntryLabel(dataset)}</option>
                   ))}
                 </optgroup>
               )}
             </select>
           </div>
-          {!historyCatalog?.datasets.length && <p className="radar-field-note">No {sourceLabel} historical packs are generated yet. Generate one below or use the Cloud Run command documented in the README.</p>}
-          {historyError && <p className="radar-field-note error">Historical catalog unavailable: {historyError}</p>}
+          {!historyCatalog?.datasets.length && <p className="radar-field-note">No packs yet.</p>}
+          {historyError && <p className="radar-field-note error">Archive unavailable: {historyError}</p>}
+          {sourceId === 'mrms' && mapRegion.id === 'atlantic-caribbean' && <p className="radar-field-note">MRMS ends at the CONUS grid; use ERA5 beyond it.</p>}
+          {isEra5 && <p className="radar-field-note">Hourly 0.25° reanalysis gap fill, smoothed for display.</p>}
 
           <label className="radar-field-label" htmlFor="radar-product">Product</label>
           <div className="radar-select-wrap">
@@ -2293,16 +2451,12 @@ export function RadarApp() {
               {PRODUCT_OPTIONS.filter((option) => option.source === sourceId).map((option) => {
                 const status = manifest?.products[option.id]?.status
                 const ready = option.id === 'MergedReflectivityQCComposite' || status === 'ready' || status === 'partial'
-                return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · processor needed'}</option>
+                return <option key={option.id} value={option.id} disabled={!ready}>{option.label}{ready ? '' : ' · unavailable'}</option>
               })}
             </select>
           </div>
-          {productId === 'PrecipFlag' && <p className="radar-field-note">MRMS flag classes are shown only where the official PrecipFlag product decodes successfully.</p>}
-          {productId === 'MultiSensor_QPE_01H_Pass1' && <p className="radar-field-note">MRMS one-hour quantitative precipitation estimate in millimeters.</p>}
-          {productId === 'NEXRADLevel2BaseReflectivity' && <p className="radar-field-note">Level II reflectivity from the lowest available elevation sweep. Coverage and beam height vary with range from the radar.</p>}
-          {productId === 'NEXRADLevel2Velocity' && <p className="radar-field-note">Radial velocity in meters per second from the lowest sweep. Positive and negative motion are shown with a diverging palette.</p>}
-          {productId === 'NEXRADLevel2CorrelationCoefficient' && <p className="radar-field-note">Correlation coefficient (ρhv) from the lowest sweep. Lower values can help identify non-meteorological echoes.</p>}
 
+          {!ARCHIVE_ONLY && !isEra5 && <>
           <section className="radar-polling-control radar-focus-control" aria-label="Storm focus radar control">
             <div>
               <span className="radar-layer-section-heading">MRMS storm focus</span>
@@ -2379,17 +2533,19 @@ export function RadarApp() {
             </button>
           </section>
           {pollingControlError && <p className="radar-field-note error">Live feed control: {pollingControlError}</p>}
+          </>}
 
-          <section className="radar-history-request" aria-label={`Historical ${sourceLabel} radar request`}>
-            <div className="radar-layer-section-heading">Historical GIF maker <small>{isKrax ? 'Level II' : 'MRMS regional'} · Eastern Time · owner key required</small></div>
+          <section className="radar-history-request" aria-label={`Archive ${sourceLabel} pack request`}>
+            <div className="radar-layer-section-heading">Generate archive <small>Eastern Time · admin key</small></div>
             <div className="radar-history-fields">
-              <label>Start<input type="datetime-local" value={historyStart} onChange={(event) => setHistoryStart(event.target.value)} /></label>
-              <label>End<input type="datetime-local" value={historyEnd} onChange={(event) => setHistoryEnd(event.target.value)} /></label>
+              <label>Start<input type="datetime-local" min={sourceId === 'mrms' ? MRMS_ARCHIVE_START_INPUT : undefined} step={isEra5 ? 3600 : 60} value={historyStart} onChange={(event) => { setHistoryStart(event.target.value); setHistoryRequestError(null) }} /></label>
+              <label>End<input type="datetime-local" min={sourceId === 'mrms' ? MRMS_ARCHIVE_START_INPUT : undefined} step={isEra5 ? 3600 : 60} value={historyEnd} onChange={(event) => { setHistoryEnd(event.target.value); setHistoryRequestError(null) }} /></label>
             </div>
+            {isEra5 && <p className="radar-field-note">Whole hours only · available from 1940.</p>}
             {!isKrax && (
               <label className="radar-history-region">
-                Export region
-                <select value={historyRegionId} onChange={(event) => setHistoryRegionId(event.target.value)}>
+                Region
+                <select value={historyRegionId} onChange={(event) => { setHistoryRegionId(event.target.value); setHistoryRequestError(null) }}>
                   <option value="current-view">Current map view</option>
                   {MAP_REGIONS.map((region) => (
                     <option key={region.id} value={region.id}>{region.label}</option>
@@ -2400,71 +2556,56 @@ export function RadarApp() {
             <button
               type="button"
               className="radar-history-request-button"
-              disabled={!livePollingConfigured || historyRequestBusy || !historyStart || !historyEnd}
+              disabled={!livePollingConfigured || historyRequestBusy || !historyStart || !historyEnd || Boolean(historyCoverageEntry)}
               onClick={() => { void requestHistoricalLoop() }}
             >
-              {historyRequestBusy ? 'Starting job…' : 'Generate historical loop'}
+              {historyRequestBusy ? 'Starting…' : historyCoverageEntry ? 'Already generated' : 'Generate pack'}
             </button>
-            {!livePollingConfigured && <p className="radar-field-note">The Cloud Run historical service is not configured in this build.</p>}
-            {historyJobStatus && <p className={`radar-field-note ${historyJobStatus.status === 'failed' ? 'error' : ''}`} role="status">History job {historyJobStatus.status}{historyJobStatus.message ? ` · ${historyJobStatus.message}` : ''}</p>}
-            {historyRequestError && <p className="radar-field-note error">Historical job: {historyRequestError}</p>}
+            {historyCoverageEntry && <p className="radar-field-note" role="status">Already available: {historyEntryLabel(historyCoverageEntry)}. Select it above or extend the range.</p>}
+            {!livePollingConfigured && <p className="radar-field-note">Generator unavailable in this build.</p>}
+            {historyJobStatus && <p className={`radar-field-note ${historyJobStatus.status === 'failed' ? 'error' : ''}`} role="status">Job {historyJobStatus.status}{historyJobStatus.stage ? ` · ${historyJobStatus.stage}` : historyJobStatus.message ? ` · ${historyJobStatus.message}` : ''}</p>}
+            {historyRequestError && <p className="radar-field-note error">{historyRequestError}</p>}
           </section>
 
-          <div className="radar-layer-list">
-            <div className="radar-layer-section-heading">Storm analysis <small>{stormAnalysisAvailable ? 'latest generated analysis' : 'MRMS mosaic only'}</small></div>
-            {!stormAnalysisAvailable && <p className="radar-field-note">Storm Analysis unavailable with Level II — select the MRMS national mosaic.</p>}
-            {stormAnalysisAvailable && ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
+          {analysisPlaybackAvailable && <div className="radar-layer-list">
+            <div className="radar-layer-section-heading">MRMS products</div>
+            {ANALYSIS_LAYER_DEFINITIONS.filter((definition) => definition.key !== 'rainfall').map((definition) => {
               const product = manifest?.products[definition.productId]
               const ready = product?.status === 'ready' || product?.status === 'partial'
-              const note = isHistorical
-                ? 'Unavailable during historical playback'
-                : ready
-                  ? definition.note
-                  : product?.notes ?? 'Processor needed'
+              const note = ready ? definition.note : product?.notes ?? 'Not included in this archive pack'
               return (
                 <label key={definition.key} className="radar-layer-row">
-                  <input type="checkbox" checked={layers[definition.key]} onChange={() => toggleLayer(definition.key)} disabled={isHistorical || !ready} />
+                  <input type="checkbox" checked={layers[definition.key]} onChange={() => toggleLayer(definition.key)} disabled={!ready} />
                   <span className="radar-checkbox" aria-hidden="true" />
                   <span><strong>{definition.label}</strong><small>{note}</small></span>
                 </label>
               )
             })}
+          </div>}
 
-            <div className="radar-layer-section-heading">Observations <small>click a marker for details</small></div>
-            <label className="radar-layer-row">
-              <input type="checkbox" checked={layers.surface} onChange={() => toggleLayer('surface')} disabled={isHistorical} />
-              <span className="radar-checkbox" aria-hidden="true" />
-              <span><strong>Surface observations</strong><small>{isHistorical ? 'Unavailable during historical playback' : surfaceLoading ? 'Loading NWS stations…' : surfaceError ? 'NWS refresh degraded' : `${surfaceObservations.length || 'No'} stations · refreshes independently`}</small></span>
-            </label>
-            <label className="radar-layer-row">
-              <input type="checkbox" checked={layers.buoys} onChange={() => toggleLayer('buoys')} disabled={isHistorical} />
-              <span className="radar-checkbox" aria-hidden="true" />
-              <span><strong>Buoys</strong><small>{isHistorical ? 'Unavailable during historical playback' : buoyError ?? `${buoys.length || 'No'} NOAA NDBC stations`}</small></span>
-            </label>
-
+          <div className="radar-layer-list">
             <div className="radar-layer-section-heading">Map overlays</div>
             {([
-              ['radar', 'Radar', `${sourceLabel} observed raster frame`],
-              ['warnings', 'Warnings', isHistorical ? 'Unavailable for historical playback' : warningStatus === 'degraded' ? 'NWS refresh degraded' : 'NWS active polygons'],
-              ['counties', 'Counties', 'Census boundary overlay'],
-              ['cities', 'Cities', 'Priority U.S. cities'],
-              ['highways', 'Highways', highwaysLoading ? 'Loading on demand…' : 'Census interstate overlay'],
-            ] as Array<[keyof typeof layers, string, string]>).map(([key, label, note]) => (
+              ['radar', 'Archive layer'],
+              ['counties', 'Counties'],
+              ['cities', 'Cities'],
+              ['highways', highwaysLoading ? 'Highways (loading…)' : 'Highways'],
+            ] as Array<[keyof typeof layers, string]>).map(([key, label]) => (
               <label key={key} className="radar-layer-row">
                 <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} disabled={key === 'warnings' && isHistorical} />
                 <span className="radar-checkbox" aria-hidden="true" />
-                <span><strong>{label}</strong><small>{note}</small></span>
+                <span><strong>{label}</strong></span>
               </label>
             ))}
           </div>
 
-          <label className="radar-field-label" htmlFor="radar-opacity">Radar & storm opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
+          <label className="radar-field-label" htmlFor="radar-opacity">Archive layer opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}
           {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}
           {surfaceError && <p className="radar-field-note error">Surface observations: {surfaceError}</p>}
           {buoyError && <p className="radar-field-note error">Buoys: {buoyError}</p>}
-          <p className="radar-source-note">Radar: {isKrax ? 'NOAA NEXRAD Level II via the Unidata public archive' : 'NOAA/NCEP MRMS'} · alerts: National Weather Service · boundaries: U.S. Census TIGERweb</p>
+          <p className="radar-source-note">{isEra5 ? 'ERA5 / ECMWF · hourly 0.25° reanalysis · interpolated display · not radar' : isKrax ? 'NOAA NEXRAD Level II · KRAX' : `NOAA MRMS · ${MRMS_ARCHIVE_START_INPUT.slice(0, 10)}+ · full suite ${MRMS_FULL_SUITE_START_INPUT.slice(0, 10)}+`}</p>
         </aside>
 
         {freshWarningPanel(selectedWarning, () => setSelectedWarningId(null))}
@@ -2500,14 +2641,14 @@ export function RadarApp() {
             aria-label="Radar frame timeline"
           />
           <div className="radar-timeline-endpoints"><span>{formatEasternTime(frames[0]?.valid_time)} ET</span><span>{latestFrame ? `${formatEasternTime(latestFrame.valid_time)} ET · ${isHistorical ? 'end' : 'latest'}` : 'Latest unavailable'}</span></div>
-          <div className="radar-control-row" data-playback-mode="observed" data-playback-fps={playbackFps}>
+          <div className="radar-control-row" data-playback-mode={isEra5 ? 'reanalysis' : 'observed'} data-playback-fps={playbackFps}>
             <div className="radar-transport-control">
               <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.max(0, index - 1)) }} disabled={!frames.length || activeIndex === 0}>‹ <span>Previous</span></button>
               <button type="button" className="radar-play-button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2} title={frames.length < 2 ? 'Waiting for at least two radar frames' : undefined}>{playing ? '❚❚ Pause' : '▶ Play'}</button>
               <button type="button" onClick={() => { setPlaying(false); setFrameIndex((index) => Math.min(frames.length - 1, index + 1)) }} disabled={!frames.length || activeIndex === frames.length - 1}><span>Next</span> ›</button>
             </div>
             <div className="radar-playback-options">
-              <span className="radar-observed-badge" title={`Playback displays exact observed ${sourceLabel} frames`}>Observed</span>
+              <span className={`radar-observed-badge ${isEra5 ? 'reanalysis' : ''}`} title={isEra5 ? 'Hourly ERA5 reanalysis reconstruction — linearly interpolated display, not observed radar' : `Playback displays exact observed ${sourceLabel} frames`}>{isEra5 ? 'Interpolated reanalysis' : 'Observed'}</span>
               <span className="radar-fps-label">FPS</span>
               <div className="radar-speed-control" role="group" aria-label="Playback rate in frames per second">
                 {PLAYBACK_FPS_OPTIONS.map((value) => <button key={value} type="button" className={playbackFps === value ? 'active' : ''} aria-pressed={playbackFps === value} aria-label={`${value} frames per second`} disabled={frames.length < 2} onClick={() => setPlaybackFps(value)}>{value}</button>)}
@@ -2530,9 +2671,9 @@ export function RadarApp() {
               ) : null}
             </div>
           </div>
-          {(gifExportError || (activeAge !== null && !isLatest && !isHistorical)) && (
+          {gifExportError && (
             <div className="radar-playback-note" aria-live="polite">
-              {gifExportError ?? `Playback frame · latest observation is ${Math.max(0, latestAge ?? 0)} min old`}
+              {gifExportError}
             </div>
           )}
         </section>

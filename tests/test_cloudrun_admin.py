@@ -23,6 +23,18 @@ def test_mrms_bounds_are_normalized_and_limited_to_conus() -> None:
         admin_service._mrms_bounds({"bounds": [-140, 20, -60, 55]})
 
 
+def test_era5_bounds_allow_the_atlantic_caribbean_archive_view() -> None:
+    bounds, region_id = admin_service._era5_bounds(
+        {
+            "bounds": [-100.0, 12.0, -55.0, 52.0],
+            "region_id": "Atlantic & Caribbean",
+        }
+    )
+
+    assert bounds == [-100.0, 12.0, -55.0, 52.0]
+    assert region_id == "atlantic-caribbean"
+
+
 def test_history_job_requires_worker_service_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
     response = admin_service.app.test_client().post(
@@ -35,6 +47,181 @@ def test_history_job_requires_worker_service_token(monkeypatch: pytest.MonkeyPat
     )
 
     assert response.status_code == 401
+
+
+def test_mrms_history_job_rejects_dates_before_archive_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    response = admin_service.app.test_client().post(
+        "/history/jobs",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "source": "mrms",
+            "start": "2014-11-23T18:00:00-05:00",
+            "end": "2014-11-23T19:00:00-05:00",
+            "bounds": [-84.5, 33.5, -75.0, 37.5],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "2014-11-24" in response.get_json()["error"]
+
+
+def test_era5_history_job_passes_hourly_bounded_overrides_and_owner_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setenv("GCP_PROJECT_ID", "wall-cloud-radar")
+    monkeypatch.setenv("GCP_REGION", "us-east1")
+    monkeypatch.setenv("HISTORY_JOB_NAME", "wallcloud-radar-history")
+    writes: list[tuple[str, dict[str, Any]]] = []
+    requests: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(admin_service, "_r2_client", lambda: (object(), object()))
+    monkeypatch.setattr(admin_service, "_claim_era5_job", lambda _client, _config, _job_id: None)
+    monkeypatch.setattr(
+        admin_service,
+        "put_json_object",
+        lambda _client, _config, key, payload, **_kwargs: writes.append((key, payload)),
+    )
+    monkeypatch.setattr(
+        admin_service,
+        "_google_post",
+        lambda url, payload=None: requests.append((url, payload or {})) or {"name": "executions/era5"},
+    )
+    response = admin_service.app.test_client().post(
+        "/history/jobs",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "source": "era5",
+            "start": "2026-08-07T09:00:00-04:00",
+            "end": "2026-08-07T12:00:00-04:00",
+            "max_frames": 168,
+            "bounds": [-84.5, 33.5, -75.0, 37.5],
+            "region_id": "Mid Atlantic",
+        },
+    )
+
+    assert response.status_code == 202
+    assert writes[0][0].startswith("radar/history/era5/jobs/history-")
+    environment = {
+        item["name"]: item["value"]
+        for item in requests[0][1]["overrides"]["containerOverrides"][0]["env"]
+    }
+    assert environment["HISTORY_SOURCE"] == "era5"
+    assert environment["HISTORY_MAX_FRAMES"] == "168"
+    assert environment["HISTORY_REGION_ID"] == "mid-atlantic"
+    assert environment["ERA5_REGION_WEST"] == "-84.5"
+    assert environment["ERA5_REGION_NORTH"] == "37.5"
+    assert "MRMS_REGION_WEST" not in environment
+    assert "MRMS_INCLUDE_PRECIP_TYPE" not in environment
+
+
+def test_era5_history_job_rejects_a_second_active_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setattr(admin_service, "_r2_client", lambda: (object(), object()))
+    monkeypatch.setattr(
+        admin_service,
+        "get_json_object_with_etag",
+        lambda _client, _config, _key: (
+            {
+                "job_id": "history-existing",
+                "status": "running",
+                "updated_at": "2099-01-01T00:00:00Z",
+            },
+            '"etag"',
+        ),
+    )
+    response = admin_service.app.test_client().post(
+        "/history/jobs",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "source": "era5",
+            "start": "2026-08-07T09:00:00Z",
+            "end": "2026-08-07T10:00:00Z",
+            "bounds": [-84.5, 33.5, -75.0, 37.5],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "already active" in response.get_json()["error"]
+
+
+def test_history_job_reuses_a_covering_catalog_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setattr(admin_service, "_r2_client", lambda: (object(), object()))
+    monkeypatch.setattr(
+        admin_service,
+        "get_json_object",
+        lambda _client, _config, key: {
+            "datasets": [
+                {
+                    "id": "mrms-north-carolina-existing",
+                    "start_time": "2024-09-27T00:00:00Z",
+                    "end_time": "2024-09-27T03:00:00Z",
+                    "region_id": "north-carolina",
+                    "bounds": [-86.5, 32.5, -73.5, 39.5],
+                    "manifest_url": "./mrms-north-carolina-existing/manifest.json",
+                }
+            ]
+        } if key == "radar/history/catalog.json" else None,
+    )
+    monkeypatch.setattr(
+        admin_service,
+        "_google_post",
+        lambda *_args, **_kwargs: pytest.fail("a covered range must not launch Cloud Run"),
+    )
+
+    response = admin_service.app.test_client().post(
+        "/history/jobs",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "source": "mrms",
+            "start": "2024-09-27T01:00:00Z",
+            "end": "2024-09-27T02:00:00Z",
+            "bounds": [-86.5, 32.5, -73.5, 39.5],
+            "region_id": "north-carolina",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["dataset_id"] == "mrms-north-carolina-existing"
+
+
+def test_history_job_allows_a_range_that_extends_existing_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_SERVICE_TOKEN", "service-token")
+    monkeypatch.setenv("GCP_PROJECT_ID", "wall-cloud-radar")
+    monkeypatch.setenv("MRMS_HISTORY_JOB_NAME", "wallcloud-radar-history")
+    monkeypatch.setattr(admin_service, "_r2_client", lambda: (object(), object()))
+    monkeypatch.setattr(
+        admin_service,
+        "get_json_object",
+        lambda *_args: {
+            "datasets": [
+                {
+                    "id": "mrms-north-carolina-existing",
+                    "start_time": "2024-09-27T01:00:00Z",
+                    "end_time": "2024-09-27T02:00:00Z",
+                    "region_id": "north-carolina",
+                    "bounds": [-86.5, 32.5, -73.5, 39.5],
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(admin_service, "put_json_object", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(admin_service, "_google_post", lambda *_args, **_kwargs: {"name": "executions/new"})
+
+    response = admin_service.app.test_client().post(
+        "/history/jobs",
+        headers={"Authorization": "Bearer service-token"},
+        json={
+            "source": "mrms",
+            "start": "2024-09-27T00:00:00Z",
+            "end": "2024-09-27T02:00:00Z",
+            "bounds": [-86.5, 32.5, -73.5, 39.5],
+            "region_id": "north-carolina",
+        },
+    )
+
+    assert response.status_code == 202
 
 
 def test_mrms_history_job_passes_bounded_execution_overrides(

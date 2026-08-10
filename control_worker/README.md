@@ -33,6 +33,8 @@ The deploy prints a `workers.dev` URL. Use that URL while testing, or attach a c
 
 The Worker must be deployed by an account that can access the existing R2 bucket. Do not put `POLLING_CONTROL_TOKEN` in the repository, GitHub Pages build variables, or any `VITE_*` value.
 
+ERA5 history requests pass through the same owner-token boundary. The Worker rejects future/global-looking requests early and allows at most a 70° longitude by 40° latitude CONUS crop; Cloud Run performs the authoritative whole-hour, seven-day, and dataset validation again.
+
 ## Connect the Cloud Run admin service
 
 After deploying `wallcloud-radar-admin`, set the Worker variable and secret:

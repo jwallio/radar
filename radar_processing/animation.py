@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .config import ProcessingConfig, RegionBounds
+from .era5_rendering import ERA5_PHASE_COLORS, ERA5_PRECIPITATION_STOPS, ERA5_TOTAL_PRECIPITATION_COLORS
 from .mrms import request_bytes
 from .rendering import (
     ANALYSIS_PALETTES,
@@ -55,6 +56,13 @@ CITIES = (
     ("Richmond", -77.4360, 37.5407, False),
     ("Knoxville", -83.9207, 35.9606, False),
     ("Columbia", -81.0348, 34.0007, False),
+    ("Miami", -80.1918, 25.7617, True),
+    ("Havana", -82.3666, 23.1136, True),
+    ("Nassau", -77.3554, 25.0443, True),
+    ("Kingston", -76.7936, 17.9712, False),
+    ("Santo Domingo", -69.9312, 18.4861, True),
+    ("Port-au-Prince", -72.3074, 18.5944, False),
+    ("San Juan", -66.1057, 18.4655, True),
 )
 
 
@@ -287,6 +295,31 @@ def _reflectivity_legend_entries() -> list[tuple[str, tuple[int, int, int, int]]
 def _vertical_legend_entries(
     product_id: str,
 ) -> tuple[str, list[tuple[str, tuple[int, int, int, int]]], bool]:
+    if product_id == "ERA5PrecipitationType":
+        return (
+            "PHASE / RATE",
+            [
+                ("Rain", tuple(int(channel) for channel in ERA5_PHASE_COLORS["rain"][2][:3]) + (255,)),
+                ("Snow", tuple(int(channel) for channel in ERA5_PHASE_COLORS["snow"][2][:3]) + (255,)),
+                ("Freezing rain", tuple(int(channel) for channel in ERA5_PHASE_COLORS["freezing-rain"][2][:3]) + (255,)),
+                ("Mixed", tuple(int(channel) for channel in ERA5_PHASE_COLORS["mixed-rain-snow"][2][:3]) + (255,)),
+                ("Ice pellets", tuple(int(channel) for channel in ERA5_PHASE_COLORS["ice-pellets"][2][:3]) + (255,)),
+            ],
+            True,
+        )
+    if product_id == "ERA5TotalPrecipitation":
+        values = ERA5_PRECIPITATION_STOPS
+        return (
+            "mm/h",
+            [
+                (
+                    f"{float(value):g}" if index < len(values) - 1 else "25+",
+                    tuple(int(channel) for channel in ERA5_TOTAL_PRECIPITATION_COLORS[index][:3]) + (255,),
+                )
+                for index, value in reversed(list(enumerate(values)))
+            ],
+            False,
+        )
     if product_id == "PrecipFlag":
         return (
             "TYPE",
@@ -392,8 +425,14 @@ def _draw_vertical_legend(
         )
 
 
-def _product_subtitle(source_label: str, resolution_label: str, product_label: str) -> str:
-    parts = ["North Carolina", source_label]
+def _product_subtitle(
+    source_label: str,
+    resolution_label: str,
+    product_label: str,
+    region_label: str = "North Carolina",
+) -> str:
+    parts = [] if source_label.startswith("ERA5") else [region_label]
+    parts.append(source_label)
     if resolution_label and resolution_label.strip().lower() != "native":
         parts.append(resolution_label)
     parts.append(product_label)
@@ -412,6 +451,7 @@ def _export_frame(
     width: int,
     source_label: str,
     resolution_label: str,
+    region_label: str,
     unit_label: str,
     frame_number: int,
     frame_count: int,
@@ -471,7 +511,7 @@ def _export_frame(
     )
     draw.text(
         (horizontal_padding, round(35 * layout_scale)),
-        _product_subtitle(source_label, resolution_label, product_label),
+        _product_subtitle(source_label, resolution_label, product_label, region_label),
         font=_font(round(12 * layout_scale), bold=True),
         fill=BRAND_LIGHT,
     )
@@ -486,10 +526,16 @@ def _export_frame(
     )
     footer_y = header_height + map_height
     draw.rectangle((0, footer_y, width, footer_y + footer_height), fill=BRAND_NAVY)
-    archive_prefix = "ARCHIVE · " if mode_label.upper() == "ARCHIVE" else ""
+    mode = mode_label.upper()
+    archive_prefix = "ARCHIVE · " if mode == "ARCHIVE" else ""
+    loop_label = (
+        "REANALYSIS-BASED RECONSTRUCTION · NOT OBSERVED RADAR"
+        if mode == "REANALYSIS"
+        else "OBSERVED LOOP"
+    )
     draw.text(
         (horizontal_padding, footer_y + round(10 * layout_scale)),
-        f"{archive_prefix}OBSERVED LOOP · {loop_period} · FRAME {frame_number}/{frame_count} · {playback_fps} FPS",
+        f"{archive_prefix}{loop_label} · {loop_period} · FRAME {frame_number}/{frame_count} · {playback_fps} FPS",
         font=_font(round(11 * layout_scale), bold=True),
         fill=BRAND_LIGHT,
     )
@@ -528,6 +574,7 @@ def build_loop_gif(
     latest_pause_ms: int = 1000,
     source_label: str = "MRMS",
     resolution_label: str = "1 km",
+    region_label: str = "North Carolina",
     unit_label: str | None = None,
     mode_label: str = "OBSERVED",
 ) -> int:
@@ -572,11 +619,16 @@ def build_loop_gif(
                 width=width,
                 source_label=source_label,
                 resolution_label=resolution_label,
+                region_label=region_label,
                 unit_label=unit_label or (
                     "TYPE"
                     if product_id == "PrecipFlag"
                     else "mm"
                     if product_id == "MultiSensor_QPE_01H_Pass1"
+                    else "PHASE / RATE"
+                    if product_id == "ERA5PrecipitationType"
+                    else "mm/h"
+                    if product_id == "ERA5TotalPrecipitation"
                     else "dBZ"
                 ),
                 frame_number=frame_index + 1,

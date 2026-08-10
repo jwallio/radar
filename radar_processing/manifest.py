@@ -69,11 +69,12 @@ def build_manifest(
     label: str = "Live / recent radar",
     start_time: str | None = None,
     end_time: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reflectivity = products.get("MergedReflectivityQCComposite", {})
     reflectivity_frames = sort_frame_records(reflectivity.get("frames", []))
     latest = reflectivity_frames[-1]["valid_time"] if reflectivity_frames else None
-    return {
+    manifest = {
         "schema_version": 1,
         "status": "ready" if reflectivity_frames else "unavailable",
         "mode": mode,
@@ -95,6 +96,9 @@ def build_manifest(
         "sources": sources,
         "errors": errors or [],
     }
+    if metadata:
+        manifest.update(metadata)
+    return manifest
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:

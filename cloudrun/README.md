@@ -1,6 +1,6 @@
 # Cloud Run production radar
 
-Cloud Run Jobs process owner-requested history, one temporary MRMS storm-focus region, and optional KRAX live data, then publish browser-ready assets to Cloudflare R2. The near-zero default uses public GitHub Actions for recurring national MRMS refreshes and GitHub Pages for the Vite application.
+Cloud Run Jobs process owner-requested MRMS/KRAX history and bounded ERA5 hourly reanalysis history, then publish browser-ready assets to Cloudflare R2. MRMS history begins on 2014-11-24; packs beginning on 2020-10-14 request the full configured product suite. The near-zero default uses GitHub Pages for the Vite archive application.
 
 ## Production components
 
@@ -9,13 +9,13 @@ Cloud Run Jobs process owner-requested history, one temporary MRMS storm-focus r
 - `wallcloud-mrms-refresh` — optional five-minute Scheduler trigger; absent or paused in the near-zero profile.
 - `wallcloud-mrms-focus` — higher-detail regional MRMS job for the one region selected by the owner.
 - `wallcloud-focus-refresh` — five-minute focus trigger; paused unless storm focus is active and automatically paused at expiry.
-- `wallcloud-radar-history` — on-demand regional MRMS or KRAX historical processing.
+- `wallcloud-radar-history` — on-demand regional MRMS, KRAX, or ERA5 historical processing; MRMS declares a core/full product tier by start date, while ERA5 is owner-authenticated, cache-first, and serialized to one active request.
 - `wallcloud-radar-live` — KRAX Level II refresh; enabled only during severe weather.
 - `wallcloud-live-refresh` — five-minute KRAX trigger; paused by default.
 - `wallcloud-radar-admin` — scale-to-zero service that starts history jobs and controls the focus and KRAX Schedulers.
 - Cloudflare Worker — browser-facing proxy. Starting history or changing either live polling mode requires the owner key.
 
-National and storm-focus reflectivity are stored as one PMTiles archive per observation. Regional historical requests use cropped image frames and branded GIFs. Raw GRIB2 and Level II files remain temporary.
+National and storm-focus reflectivity are stored as one PMTiles archive per observation. Regional historical requests use cropped image frames and branded GIFs. ERA5 requests use the official CDS `precipitation_type` and `total_precipitation` variables at exact hourly intervals, with no dBZ conversion or five-minute interpolation. Raw GRIB2 and Level II files remain temporary.
 
 ## Variables used below
 
@@ -78,8 +78,19 @@ Secret Manager must contain:
 - `wallcloud-r2-access-key`
 - `wallcloud-r2-secret-key`
 - `wallcloud-admin-token`
+- `wallcloud-cds-api-key`
 
-The R2 credentials need Object Read & Write for only the radar bucket. Never expose them through a `VITE_*` variable.
+The R2 credentials need Object Read & Write for only the radar bucket. The CDS token is used only by the Cloud Run history job. Never expose any of these secrets through a `VITE_*` variable.
+
+Create or rotate the CDS secret from a local file that is outside the repository (the file contains the personal access token copied from the CDS profile):
+
+```bash
+gcloud secrets describe wallcloud-cds-api-key --project="$PROJECT_ID" >/dev/null 2>&1 || \
+  gcloud secrets create wallcloud-cds-api-key --project="$PROJECT_ID" --replication-policy=automatic
+gcloud secrets versions add wallcloud-cds-api-key --project="$PROJECT_ID" --data-file="$HOME/cds-api-key.txt"
+```
+
+The shared history job receives this secret as `CDSAPI_KEY`. The default `CDSAPI_URL` is the current official `https://cds.climate.copernicus.eu/api`; set a `CDSAPI_URL` environment override only when the official client documentation requires a service-endpoint change.
 
 ## Build the container
 
@@ -91,7 +102,7 @@ gcloud builds submit \
   .
 ```
 
-The image includes ecCodes/cfgrib, Py-ART, rasterio, and rio-pmtiles.
+The image includes ecCodes/cfgrib, Py-ART, rasterio, rio-pmtiles, and the official `cdsapi` client.
 
 ## Optional managed national MRMS fallback
 
@@ -170,11 +181,11 @@ gcloud run jobs deploy wallcloud-radar-history \
   --cpu=2 --memory=4Gi --task-timeout=60m --max-retries=0 \
   --command=python \
   --args=scripts/run_cloud_run_historical.py \
-  --set-env-vars="R2_ENDPOINT_URL=$R2_ENDPOINT_URL,R2_BUCKET=$R2_BUCKET,HISTORY_SOURCE=mrms" \
-  --set-secrets="R2_ACCESS_KEY_ID=wallcloud-r2-access-key:latest,R2_SECRET_ACCESS_KEY=wallcloud-r2-secret-key:latest"
+  --set-env-vars="R2_ENDPOINT_URL=$R2_ENDPOINT_URL,R2_BUCKET=$R2_BUCKET,HISTORY_SOURCE=mrms,ERA5_HISTORY_MAX_HOURS=168,ERA5_ACTIVE_LOCK_KEY=radar/history/era5/active.json" \
+  --set-secrets="R2_ACCESS_KEY_ID=wallcloud-r2-access-key:latest,R2_SECRET_ACCESS_KEY=wallcloud-r2-secret-key:latest,CDSAPI_KEY=wallcloud-cds-api-key:latest"
 ```
 
-The admin service supplies source, Eastern Time range, frame limit, and MRMS crop bounds as execution overrides. The job accepts MRMS requests inside `[-130, 20, -60, 55]` and KRAX requests for the existing single-site domain.
+The admin service supplies source, Eastern Time range, frame limit, and source-specific crop bounds as execution overrides. ERA5 requests must be whole UTC hours, no more than seven days/168 frames, no later than the available CDS data, and inside the ERA5 processing domain `[-130, 10, -55, 55]`; the Atlantic & Caribbean preset uses `[-100, 12, -55, 52]`. The job writes to `radar/history/era5/`, reuses a complete version-matched manifest when possible, and reports `Requesting ERA5`, `Downloading reanalysis`, `Processing precipitation type`, `Rendering frames`, `Uploading`, and `Complete` stages.
 
 ## Deploy the admin-only Level II job
 
@@ -214,7 +225,7 @@ gcloud run deploy wallcloud-radar-admin \
   --cpu=1 --memory=512Mi --min-instances=0 --max-instances=2 --timeout=60s \
   --command=gunicorn \
   --args="--bind=:8080,cloudrun.admin_service:app" \
-  --set-env-vars="GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$REGION,LIVE_SCHEDULER_JOB=wallcloud-live-refresh,FOCUS_SCHEDULER_JOB=wallcloud-focus-refresh,FOCUS_CONTROL_OBJECT_KEY=control/focus.json,FOCUS_MAX_HOURS=24,HISTORY_JOB_NAME=wallcloud-radar-history,MRMS_HISTORY_JOB_NAME=wallcloud-radar-history,HISTORY_MAX_HOURS=6,MRMS_HISTORY_MAX_HOURS=24,R2_ENDPOINT_URL=$R2_ENDPOINT_URL,R2_BUCKET=$R2_BUCKET" \
+  --set-env-vars="GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=$REGION,LIVE_SCHEDULER_JOB=wallcloud-live-refresh,FOCUS_SCHEDULER_JOB=wallcloud-focus-refresh,FOCUS_CONTROL_OBJECT_KEY=control/focus.json,FOCUS_MAX_HOURS=24,HISTORY_JOB_NAME=wallcloud-radar-history,MRMS_HISTORY_JOB_NAME=wallcloud-radar-history,HISTORY_MAX_HOURS=6,MRMS_HISTORY_MAX_HOURS=24,ERA5_HISTORY_MAX_HOURS=168,ERA5_ACTIVE_LOCK_KEY=radar/history/era5/active.json,R2_ENDPOINT_URL=$R2_ENDPOINT_URL,R2_BUCKET=$R2_BUCKET" \
   --set-secrets="ADMIN_SERVICE_TOKEN=wallcloud-admin-token:latest,R2_ACCESS_KEY_ID=wallcloud-r2-access-key:latest,R2_SECRET_ACCESS_KEY=wallcloud-r2-secret-key:latest"
 
 export ADMIN_SERVICE_URL="$(gcloud run services describe wallcloud-radar-admin --region="$REGION" --format='value(status.url)')"
@@ -255,8 +266,10 @@ radar/focus/manifest.json
 radar/focus/frames/*.pmtiles
 radar/focus/previews/*.webp
 radar/history/catalog.json
+radar/history/era5/catalog.json
+radar/history/era5/{dataset_id}/manifest.json
 radar/krax/manifest.json
 radar/krax/history/catalog.json
 ```
 
-Use the website’s owner key to activate or switch the single storm-focus region, resume/pause KRAX, or start a historical job. Focus regions are capped at 25° longitude by 20° latitude and expire after 12 hours unless extended. Cloud Run enforces a 24-hour MRMS historical range, a 6-hour KRAX range, and at most 90 historical frames.
+Use the website’s owner key to start a historical job. Legacy focus and live controls remain documented for migration compatibility. Cloud Run enforces a 24-hour MRMS historical range, rejects MRMS starts before 2014-11-24, requests the full MRMS suite only from 2020-10-14 onward, and allows at most 90 historical frames. MRMS observed crops stay inside the CONUS grid; the broader Caribbean/Atlantic map context is supported by ERA5, which is capped at seven days/168 hourly frames and one active request.

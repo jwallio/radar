@@ -4,10 +4,23 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from radar_processing.animation import _crop_radar_to_bounds, _draw_vertical_legend, _format_loop_period, _product_subtitle, _vertical_legend_entries, build_loop_gif
-from radar_processing.config import ANALYSIS_PRODUCT_IDS, BRANDED_GIF_REGION, DEFAULT_REGION, NATIONAL_MRMS_REGION, PRODUCTS, load_config
+from radar_processing.config import (
+    ANALYSIS_PRODUCT_IDS,
+    ATLANTIC_CARIBBEAN_REGION,
+    BRANDED_GIF_REGION,
+    DEFAULT_REGION,
+    MRMS_ARCHIVE_START,
+    MRMS_ARCHIVE_REGION,
+    MRMS_FULL_SUITE_START,
+    NATIONAL_MRMS_REGION,
+    PRODUCTS,
+    load_config,
+    mrms_product_tier,
+)
 from radar_processing.history import catalog_entry, dataset_id_for_range, update_history_catalog
 from radar_processing.manifest import build_manifest, filter_existing_frames, is_stale, retain_frame_records, sort_frame_records, write_json_atomic
 from radar_processing.mrms import RemoteFrame, _archive_listing, sample_frames
@@ -29,6 +42,13 @@ def frame(timestamp: datetime, filename: str) -> dict[str, object]:
         "url": f"./frames/{filename}.png",
         "bounds": DEFAULT_REGION.as_list(),
     }
+
+
+def test_mrms_archive_tiers_preserve_the_requested_history_boundary() -> None:
+    assert mrms_product_tier(MRMS_ARCHIVE_START) == "core"
+    assert mrms_product_tier(MRMS_FULL_SUITE_START) == "full"
+    with pytest.raises(ValueError, match="2014-11-24"):
+        mrms_product_tier(datetime(2014, 11, 23, 23, tzinfo=timezone.utc))
 
 
 def test_manifest_frames_are_chronological() -> None:
@@ -73,6 +93,14 @@ def test_national_mrms_bounds_cover_conus_and_adjacent_waters() -> None:
     assert NATIONAL_MRMS_REGION.east > -66.9
     assert NATIONAL_MRMS_REGION.south < 24.4
     assert NATIONAL_MRMS_REGION.north > 49.0
+
+
+def test_archive_regions_cover_the_hurricane_corridor_without_overclaiming_mrms() -> None:
+    assert ATLANTIC_CARIBBEAN_REGION.as_list() == [-100.0, 12.0, -55.0, 52.0]
+    assert MRMS_ARCHIVE_REGION.as_list() == [-100.0, 20.0, -60.0, 52.0]
+    assert MRMS_ARCHIVE_REGION.south >= NATIONAL_MRMS_REGION.south
+    assert MRMS_ARCHIVE_REGION.east <= NATIONAL_MRMS_REGION.east
+    assert load_config(Path('.'), default_region=MRMS_ARCHIVE_REGION).region == MRMS_ARCHIVE_REGION
 
 
 def test_national_pmtiles_content_type_and_retention_prefixes() -> None:
@@ -339,12 +367,51 @@ def test_history_catalog_replaces_duplicate_and_sorts(tmp_path: Path) -> None:
         label="June 19 test",
         start_time="2025-06-19T19:00:00Z",
         end_time="2025-06-19T20:00:00Z",
+        metadata={
+            "source": "mrms",
+            "source_type": "observed",
+            "observed": True,
+            "region_id": "north-carolina",
+            "mrms_product_tier": "full",
+            "mrms_full_suite": True,
+        },
     )
     catalog_path = tmp_path / "catalog.json"
     update_history_catalog(catalog_path, catalog_entry(manifest))
     catalog = update_history_catalog(catalog_path, catalog_entry(manifest))
     assert len(catalog["datasets"]) == 1
     assert catalog["datasets"][0]["manifest_url"] == f"./{dataset_id}/manifest.json"
+    assert catalog["datasets"][0]["mrms_product_tier"] == "full"
+    assert catalog["datasets"][0]["mrms_full_suite"] is True
+    assert catalog["datasets"][0]["region_id"] == "north-carolina"
+    assert catalog["datasets"][0]["bounds"] == DEFAULT_REGION.as_list()
+
+
+def test_history_catalog_retains_archive_entries_without_a_default_cap(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    for index in range(13):
+        timestamp = datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(days=index)
+        manifest = build_manifest(
+            region=DEFAULT_REGION.as_list(),
+            products={
+                "MergedReflectivityQCComposite": {
+                    "label": "Composite Reflectivity",
+                    "status": "ready",
+                    "frames": [frame(timestamp, f"archive-{index}")],
+                }
+            },
+            generated_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            sources={"reflectivity": "https://noaa-mrms-pds.s3.amazonaws.com"},
+            mode="historical",
+            dataset_id=f"archive-{index}",
+            label=f"Archive {index}",
+            start_time=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            end_time=(timestamp + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        catalog = update_history_catalog(catalog_path, catalog_entry(manifest))
+
+    assert len(catalog["datasets"]) == 13
+    assert catalog["datasets"][0]["id"] == "archive-12"
 
 
 def test_gif_export_contains_all_frames(tmp_path: Path) -> None:
@@ -401,3 +468,12 @@ def test_krax_gif_subtitle_omits_native_resolution_label() -> None:
         "native",
         "Base Reflectivity",
     ) == "North Carolina · KRAX Level II · Base Reflectivity"
+
+
+def test_gif_subtitle_can_identify_the_broader_archive_region() -> None:
+    assert _product_subtitle(
+        "MRMS",
+        "1 km",
+        "Composite Reflectivity",
+        "Atlantic & Caribbean",
+    ) == "Atlantic & Caribbean · MRMS · 1 km · Composite Reflectivity"

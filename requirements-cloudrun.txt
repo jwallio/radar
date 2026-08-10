@@ -6,3 +6,5 @@ Flask>=3.1,<4
 gunicorn>=23,<24
 google-auth>=2.40,<3
 requests>=2.32,<3
+# Official Copernicus Climate Data Store client for bounded ERA5 history.
+cdsapi>=0.7.7,<1

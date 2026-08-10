@@ -1,5 +1,70 @@
 {
   "schema_version": 1,
-  "generated_at": null,
-  "datasets": []
+  "generated_at": "2026-08-09T16:28:06Z",
+  "datasets": [
+    {
+      "id": "mrms-north-carolina-20240927T0000Z-20240927T0100Z",
+      "label": "Hurricane Helene \u00b7 Sep 27, 2024 \u00b7 00\u201301 UTC",
+      "start_time": "2024-09-27T00:00:00Z",
+      "end_time": "2024-09-27T01:00:00Z",
+      "frame_count": 3,
+      "products": [
+        "MergedReflectivityQCComposite",
+        "PrecipFlag",
+        "MergedAzShear_0-2kmAGL",
+        "MergedAzShear_3-6kmAGL",
+        "RotationTrack30min",
+        "MESH",
+        "POSH",
+        "NLDN_CG_005min_AvgDensity"
+      ],
+      "manifest_url": "./mrms-north-carolina-20240927T0000Z-20240927T0100Z/manifest.json",
+      "region_id": "north-carolina",
+      "bounds": [
+        -86.5,
+        32.5,
+        -73.5,
+        39.5
+      ],
+      "source": "mrms",
+      "source_type": "observed",
+      "observed": true,
+      "mrms_product_tier": "full",
+      "mrms_archive_start": "2014-11-24T00:00:00Z",
+      "mrms_full_suite_start": "2020-10-14T00:00:00Z",
+      "mrms_full_suite": true
+    },
+    {
+      "id": "mrms-atlantic-caribbean-20240927T0000Z-20240927T0100Z",
+      "label": "Hurricane Helene \u00b7 Atlantic & Caribbean \u00b7 Sep 27, 2024 \u00b7 00\u201301 UTC",
+      "start_time": "2024-09-27T00:00:00Z",
+      "end_time": "2024-09-27T01:00:00Z",
+      "frame_count": 3,
+      "products": [
+        "MergedReflectivityQCComposite",
+        "PrecipFlag",
+        "MergedAzShear_0-2kmAGL",
+        "MergedAzShear_3-6kmAGL",
+        "RotationTrack30min",
+        "MESH",
+        "POSH",
+        "NLDN_CG_005min_AvgDensity"
+      ],
+      "manifest_url": "./mrms-atlantic-caribbean-20240927T0000Z-20240927T0100Z/manifest.json",
+      "region_id": "atlantic-caribbean",
+      "bounds": [
+        -100.0,
+        20.0,
+        -60.0,
+        52.0
+      ],
+      "source": "mrms",
+      "source_type": "observed",
+      "observed": true,
+      "mrms_product_tier": "full",
+      "mrms_archive_start": "2014-11-24T00:00:00Z",
+      "mrms_full_suite_start": "2020-10-14T00:00:00Z",
+      "mrms_full_suite": true
+    }
+  ]
 }

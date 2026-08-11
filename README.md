@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{M¨y 'v√Æ∂õ≠# wall.cloud Radar
+# wall.cloud Radar
 
 wall.cloud Radar is an archive-first radar playback tool for [radar.wall.cloud](https://radar.wall.cloud). The public default frames the Atlantic and Caribbean storm corridor, preferring observed NOAA/NCEP radar products while keeping ERA5 historical reanalysis available for coverage and parameter gaps. ERA5 is a reconstruction, not observed radar.
 

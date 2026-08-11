@@ -18,6 +18,7 @@ import type {
 } from './types'
 
 const REQUEST_TIMEOUT_MS = 20_000
+const IEM_WARNING_ARCHIVE_URL = 'https://mesonet.agron.iastate.edu/cgi-bin/request/gis/watchwarn.py'
 
 interface NwsAlertFeature {
   id?: string
@@ -107,6 +108,25 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
 }
 
+async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const relayAbort = () => controller.abort()
+  signal?.addEventListener('abort', relayAbort, { once: true })
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.google-earth.kml+xml, text/xml' },
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    return await response.text()
+  } finally {
+    window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', relayAbort)
+  }
+}
+
 export async function fetchRadarManifest(path: string, signal?: AbortSignal): Promise<RadarManifest> {
   const payload = await fetchJson<RadarManifest>(freshStaticJsonUrl(path), signal)
   if (!payload || typeof payload !== 'object' || !payload.products) {
@@ -182,6 +202,126 @@ export async function fetchRegionalWarnings(signal?: AbortSignal): Promise<Warni
     fetchedAt: new Date().toISOString(),
     errors,
   }
+}
+
+function historicalWarningAtUrl(validAt: string): string {
+  const url = new URL(IEM_WARNING_ARCHIVE_URL)
+  url.searchParams.set('accept', 'kml')
+  url.searchParams.set('at', validAt)
+  url.searchParams.set('timeopt', '2')
+  url.searchParams.set('limit0', '1')
+  return url.toString()
+}
+
+function historicalWarningWindowUrl(start: string, end: string): string {
+  const url = new URL(IEM_WARNING_ARCHIVE_URL)
+  url.searchParams.set('accept', 'kml')
+  url.searchParams.set('sts', start)
+  url.searchParams.set('ets', end)
+  url.searchParams.set('timeopt', '1')
+  url.searchParams.set('limit0', '1')
+  return url.toString()
+}
+
+function kmlElementText(parent: Element, localName: string): string | null {
+  const element = Array.from(parent.getElementsByTagNameNS('*', localName))[0]
+  const value = element?.textContent?.trim()
+  return value || null
+}
+
+function parseKmlRing(value: string): Array<[number, number]> | null {
+  const ring = value.trim().split(/\s+/).flatMap((tuple) => {
+    const [longitude, latitude] = tuple.split(',').map(Number)
+    return Number.isFinite(longitude) && Number.isFinite(latitude)
+      ? [[longitude, latitude] as [number, number]]
+      : []
+  })
+  if (ring.length < 3) return null
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first)
+  return ring.length >= 4 ? ring : null
+}
+
+function parseKmlGeometry(placemark: Element): GeoJSON.Geometry | null {
+  const polygons = Array.from(placemark.getElementsByTagNameNS('*', 'Polygon')).flatMap((polygon) => {
+    const boundary = Array.from(polygon.getElementsByTagNameNS('*', 'outerBoundaryIs'))[0] ?? polygon
+    const coordinates = kmlElementText(boundary, 'coordinates')
+    const ring = coordinates ? parseKmlRing(coordinates) : null
+    return ring ? [ring] : []
+  })
+  if (!polygons.length) return null
+  if (polygons.length === 1) return { type: 'Polygon', coordinates: [polygons[0]] }
+  return { type: 'MultiPolygon', coordinates: polygons.map((ring) => [ring]) }
+}
+
+function parseHistoricalWarnings(kml: string, sourceUrl: string): RadarWarning[] {
+  const document = new DOMParser().parseFromString(kml, 'application/xml')
+  if (document.documentElement?.localName !== 'kml' || document.getElementsByTagNameNS('*', 'parsererror').length) {
+    throw new Error('Historical warning archive returned invalid KML')
+  }
+  return Array.from(document.getElementsByTagNameNS('*', 'Placemark')).flatMap((placemark, index) => {
+    const name = kmlElementText(placemark, 'name') ?? ''
+    const event = WARNING_EVENTS.find((candidate) => name.toLowerCase().includes(candidate.toLowerCase()))
+    const geometry = event ? parseKmlGeometry(placemark) : null
+    if (!event || !geometry) return []
+    const id = name.split(/\s+/)[0] || `${event}-${index}`
+    const issuingOffice = id.split('.')[0] || 'National Weather Service'
+    return [{
+      id,
+      event,
+      issuingOffice,
+      areaDesc: name,
+      effective: kmlElementText(placemark, 'begin'),
+      expires: kmlElementText(placemark, 'end'),
+      headline: name,
+      geometry,
+      sourceUrl,
+    }]
+  })
+}
+
+export async function fetchHistoricalWarningsAt(validAt: string, signal?: AbortSignal): Promise<WarningsResult> {
+  const sourceUrl = historicalWarningAtUrl(validAt)
+  const warnings = parseHistoricalWarnings(await fetchText(sourceUrl, signal), sourceUrl)
+  return { warnings, fetchedAt: new Date().toISOString(), errors: [] }
+}
+
+export async function fetchHistoricalWarningsWindow(start: string, end: string, signal?: AbortSignal): Promise<WarningsResult> {
+  const requests = [
+    { label: 'historical warning window', url: historicalWarningWindowUrl(start, end) },
+    { label: 'historical warnings active at loop start', url: historicalWarningAtUrl(start) },
+  ]
+  const results = await Promise.allSettled(requests.map(async ({ url }) => {
+    const warnings = parseHistoricalWarnings(await fetchText(url, signal), url)
+    return { warnings }
+  }))
+  const warningMap = new Map<string, RadarWarning>()
+  const errors: string[] = []
+  results.forEach((result, index) => {
+    const request = requests[index]
+    if (result.status === 'rejected') {
+      errors.push(`${request.label}: ${result.reason instanceof Error ? result.reason.message : 'request failed'}`)
+      return
+    }
+    result.value.warnings.forEach((warning) => warningMap.set(warning.id, warning))
+  })
+  return {
+    warnings: Array.from(warningMap.values()).sort((a, b) => (a.effective ?? '').localeCompare(b.effective ?? '')),
+    fetchedAt: new Date().toISOString(),
+    errors,
+  }
+}
+
+export function warningsAtTime(warnings: RadarWarning[], validTime: string | null | undefined): RadarWarning[] {
+  if (!validTime) return []
+  const timestamp = Date.parse(validTime)
+  if (!Number.isFinite(timestamp)) return []
+  return warnings.filter((warning) => {
+    const effective = warning.effective ? Date.parse(warning.effective) : Number.NEGATIVE_INFINITY
+    const expires = warning.expires ? Date.parse(warning.expires) : Number.POSITIVE_INFINITY
+    return effective <= timestamp && timestamp < expires
+  })
 }
 
 function censusQueryUrl(

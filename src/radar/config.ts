@@ -278,6 +278,7 @@ export const CITIES: CityDefinition[] = [
   { id: 'boston', label: 'Boston', lon: -71.0589, lat: 42.3601, primary: true },
   { id: 'new-york', label: 'New York', lon: -74.0060, lat: 40.7128, primary: true },
   { id: 'philadelphia', label: 'Philadelphia', lon: -75.1652, lat: 39.9526 },
+  { id: 'baltimore', label: 'Baltimore', lon: -76.6122, lat: 39.2904, primary: true },
   { id: 'washington', label: 'Washington', lon: -77.0369, lat: 38.9072, primary: true },
   { id: 'miami', label: 'Miami', lon: -80.1918, lat: 25.7617, primary: true },
   { id: 'havana', label: 'Havana', lon: -82.3666, lat: 23.1136, primary: true },

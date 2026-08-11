@@ -4,7 +4,7 @@ import maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, DEFAULT_ARCHIVE_REGION_ID, ERA5_PHASE_LEGEND, ERA5_PROCESSING_BOUNDS, ERA5_TOTAL_PRECIPITATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, MAP_VIEW_BOUNDS, MRMS_ARCHIVE_START_INPUT, MRMS_FULL_SUITE_START_INPUT, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
-import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsFeatureCollection } from './data'
+import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoricalWarningsWindow, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsAtTime, warningsFeatureCollection } from './data'
 import { createGifFrameEncoder, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarHistoryEntry, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
 import './radar.css'
@@ -566,7 +566,7 @@ function createMapSources(map: maplibregl.Map): void {
     id: 'wallcloud-city-label',
     type: 'symbol',
     source: CITY_SOURCE_ID,
-    filter: ['!=', ['get', 'id'], 'winston-salem'],
+    filter: ['all', ['!=', ['get', 'id'], 'winston-salem'], ['!=', ['get', 'id'], 'baltimore']],
     layout: {
       'text-field': ['get', 'label'],
       'text-size': ['case', ['get', 'primary'], 11, 9],
@@ -581,7 +581,7 @@ function createMapSources(map: maplibregl.Map): void {
     id: CITY_LABEL_EXCEPTION_ID,
     type: 'symbol',
     source: CITY_SOURCE_ID,
-    filter: ['==', ['get', 'id'], 'winston-salem'],
+    filter: ['any', ['==', ['get', 'id'], 'winston-salem'], ['==', ['get', 'id'], 'baltimore']],
     layout: {
       'text-field': ['get', 'label'],
       'text-size': 11,
@@ -1510,7 +1510,7 @@ export function RadarApp() {
     surface: false,
     buoys: false,
   })
-  const [warnings, setWarnings] = useState<RadarWarning[]>([])
+  const [warningRecords, setWarningRecords] = useState<RadarWarning[]>([])
   const [warningsLoading, setWarningsLoading] = useState(false)
   const [warningErrors, setWarningErrors] = useState<string[]>([])
   const [selectedWarningId, setSelectedWarningId] = useState<string | null>(null)
@@ -1528,7 +1528,7 @@ export function RadarApp() {
   const [selectedBuoyId, setSelectedBuoyId] = useState<string | null>(null)
 
   const clearWarningState = () => {
-    setWarnings([])
+    setWarningRecords([])
     warningsRef.current.clear()
     setWarningsLoading(false)
     setWarningErrors([])
@@ -1554,7 +1554,6 @@ export function RadarApp() {
   const activeIndex = frames.length ? Math.min(Math.max(frameIndex, 0), frames.length - 1) : 0
   const activeFrame = frames[activeIndex] ?? null
   const latestFrame = frames[frames.length - 1] ?? null
-  const selectedWarning = selectedWarningId ? warnings.find((warning) => warning.id === selectedWarningId) ?? null : null
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const mapRegion = MAP_REGIONS.find((region) => region.id === mapRegionId) ?? MAP_REGIONS[0]
@@ -1580,6 +1579,13 @@ export function RadarApp() {
     ?? MAP_REGIONS.find((region) => region.id === 'north-carolina')
     ?? MAP_REGIONS[1]
   const isHistorical = ARCHIVE_ONLY || isEra5 || manifest?.mode === 'historical' || activeDatasetId !== 'live'
+  const warningWindowStart = isHistorical ? frames[0]?.valid_time ?? null : null
+  const warningWindowEnd = isHistorical ? frames.at(-1)?.valid_time ?? null : null
+  const warnings = useMemo(
+    () => isHistorical ? warningsAtTime(warningRecords, activeFrame?.valid_time) : warningRecords,
+    [activeFrame?.valid_time, isHistorical, warningRecords],
+  )
+  const selectedWarning = selectedWarningId ? warnings.find((warning) => warning.id === selectedWarningId) ?? null : null
   const mrmsFullSuiteAvailable = sourceId === 'mrms' && (
     historyEntry?.mrms_product_tier === 'full'
     || manifest?.mrms_product_tier === 'full'
@@ -1821,19 +1827,26 @@ export function RadarApp() {
   }, [activeFrame, activeIndex, frames.length, manifestPath, mapReady, playbackFps, playing])
 
   useEffect(() => {
-    if (!layers.warnings || isEra5) {
+    const historicalWindowReady = Boolean(warningWindowStart && warningWindowEnd)
+    if (!layers.warnings || isEra5 || (isHistorical && !historicalWindowReady)) {
       warningsRef.current.clear()
       return
     }
     let cancelled = false
     const controller = new AbortController()
+    const historicalWarnings = isHistorical && historicalWindowReady
+    warningsRef.current.clear()
     const load = async () => {
+      if (historicalWarnings) setWarningRecords([])
+      setWarningErrors([])
       setWarningsLoading(true)
       try {
-        const result = await fetchRegionalWarnings(controller.signal)
+        const result = historicalWarnings
+          ? await fetchHistoricalWarningsWindow(warningWindowStart!, warningWindowEnd!, controller.signal)
+          : await fetchRegionalWarnings(controller.signal)
         if (cancelled) return
         if (!result.errors.length || result.warnings.length > 0) {
-          setWarnings(result.warnings)
+          setWarningRecords(result.warnings)
           warningsRef.current = new Map(result.warnings.map((warning) => [warning.id, warning]))
         }
         setWarningErrors(result.errors)
@@ -1846,13 +1859,13 @@ export function RadarApp() {
       }
     }
     void load()
-    const refresh = window.setInterval(() => { void load() }, 60_000)
+    const refresh = historicalWarnings ? null : window.setInterval(() => { void load() }, 60_000)
     return () => {
       cancelled = true
-      window.clearInterval(refresh)
+      if (refresh !== null) window.clearInterval(refresh)
       controller.abort()
     }
-  }, [isEra5, layers.warnings])
+  }, [isEra5, isHistorical, layers.warnings, warningWindowEnd, warningWindowStart])
 
   useEffect(() => {
     let cancelled = false
@@ -2235,6 +2248,10 @@ export function RadarApp() {
   const exportGif = async () => {
     const map = mapRef.current
     if (gifExporting || !map || !frames.length) return
+    if (layers.warnings && !isEra5 && warningsLoading) {
+      setGifExportError('Warning polygons are still loading. Try saving the GIF again in a moment.')
+      return
+    }
     const limitGifFrames = frames.length > GIF_FRAME_LIMIT
     const exportFrames = limitGifFrames ? frames.slice(-GIF_FRAME_LIMIT) : frames
     const exportRegionLabel = manifest?.region_label
@@ -2250,9 +2267,12 @@ export function RadarApp() {
     try {
       let encoder: ReturnType<typeof createGifFrameEncoder> | null = null
       const loopPeriod = formatShareLoopPeriod(exportFrames[0]?.valid_time, exportFrames.at(-1)?.valid_time)
-      const exportWarnings = layers.warnings && !isEra5 ? warningsFeatureCollection(warnings) : EMPTY_STATE
       for (let index = 0; index < exportFrames.length; index += 1) {
         const frame = exportFrames[index]
+        const frameWarnings = layers.warnings && !isEra5
+          ? isHistorical ? warningsAtTime(warningRecords, frame.valid_time) : warningRecords
+          : []
+        const exportWarnings = warningsFeatureCollection(frameWarnings)
         const exportAnalysisLayers: ExportAnalysisLayer[] = manifest
           ? activeAnalysisDefinitions.flatMap((definition) => {
               const analysisFrame = productFrameForTime(productFrames(manifest, definition.productId), frame.valid_time)
@@ -2801,11 +2821,11 @@ export function RadarApp() {
             ))}
           </div>
 
-          <p className="radar-field-note">Warning polygons are current NWS alerts. When enabled, they are included as a static overlay in every GIF frame; they are not time-matched to archived radar frames.</p>
+          <p className="radar-field-note">Historical MRMS/KRAX frames use time-matched archived NWS warning polygons. Live mode uses current NWS alerts; ERA5 does not provide warning overlays.</p>
           <label className="radar-field-label" htmlFor="radar-opacity">Archive layer opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}
-          {warningErrors.length > 0 && <p className="radar-field-note error">NWS: showing the last successful regional result where available.</p>}
+          {warningErrors.length > 0 && <p className="radar-field-note error">Warning data: {warningErrors[0]}</p>}
           {surfaceError && <p className="radar-field-note error">Surface observations: {surfaceError}</p>}
           {buoyError && <p className="radar-field-note error">Buoys: {buoyError}</p>}
           <p className="radar-source-note">{isEra5 ? 'ERA5 / ECMWF · hourly 0.25° reanalysis · interpolated display · not radar' : isKrax ? 'NOAA NEXRAD Level II · KRAX' : `NOAA MRMS · ${MRMS_ARCHIVE_START_INPUT.slice(0, 10)}+ · full suite ${MRMS_FULL_SUITE_START_INPUT.slice(0, 10)}+`}</p>
@@ -2866,7 +2886,7 @@ export function RadarApp() {
               >
                 {PLAYBACK_FPS_OPTIONS.map((value) => <option key={value} value={value}>{value} fps</option>)}
               </select>
-              <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length} title="Save a share-ready GIF using the current map view and playback FPS">
+              <button type="button" className="radar-download-button" onClick={() => { void exportGif() }} disabled={gifExporting || !frames.length || (layers.warnings && !isEra5 && warningsLoading)} title={warningsLoading ? 'Wait for warning polygons to finish loading' : 'Save a share-ready GIF using the current map view and playback FPS'}>
                 {gifExporting ? `GIF ${gifExportProgress}%` : 'Save GIF'}
               </button>
               {loopDownloadUrl ? (

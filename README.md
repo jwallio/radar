@@ -77,10 +77,11 @@ Radar data is sourced only from official NOAA/NCEP or NOAA-hosted public dataset
 - [CDS API setup and current `cdsapi` client guidance](https://cds.climate.copernicus.eu/how-to-api)
 - [ECMWF ERA5 precipitation type documentation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=179741903)
 - [ECMWF accumulated-variable conversion guidance](https://confluence.ecmwf.int/spaces/CKB/pages/197702790/Conversion%2Btable%2Bfor%2Baccumulated%2Bvariables%2Btotal%2Bprecipitation%2Bfluxes)
-- [NWS API](https://www.weather.gov/documentation/services-web-api) — retained legacy warning integration
+- [NWS API](https://www.weather.gov/documentation/services-web-api) — current warning integration
+- [Iowa Environmental Mesonet warning archive](https://mesonet.agron.iastate.edu/cgi-bin/request/gis/watchwarn.py?help=) — archived NWS watch/warning/advisory polygon metadata used for historical overlays
 - [NOAA NDBC](https://www.ndbc.noaa.gov/) — retained legacy buoy integration
 
-Legacy integrations and generated share graphics include NOAA/NWS attribution where appropriate. wall.cloud is not an official government warning service; users should consult official NWS products for safety decisions.
+Historical warning polygons are retrieved from the Iowa Environmental Mesonet's archive of NWS VTEC warning data because the current NWS alert feed cannot reconstruct older events. This is an external university-processed archive, not an official government warning service. wall.cloud is not an official government warning service; users should consult official NWS products for safety decisions.
 
 ## Radar products
 
@@ -436,7 +437,7 @@ python scripts/build_national_mrms.py `
 - The public viewer is archive-only; legacy live and storm-focus processors are not exposed in the current UI.
 - Regional historical output remains image-frame based; it is intentionally cropped before browser delivery.
 - National county and highway detail is loaded only after selecting or zooming into a region to avoid expensive CONUS geometry requests.
-- Current NWS warning polygons can be enabled on demand for situational awareness. They are not time-matched to archived radar frames; when enabled, they are included as a static overlay in every historical GIF frame. Surface observations and buoy integrations remain outside public archive playback.
+- Warning polygons can be enabled on demand for situational awareness. Historical MRMS/KRAX frames use time-matched polygons from the IEM NWS warning archive, while live mode uses current NWS alerts; ERA5 does not provide warning overlays. Surface observations and buoy integrations remain outside public archive playback.
 - Census, CARTO, NOAA archive directories, CDS, and R2 can be temporarily unavailable or rate-limited.
 - PMTiles playback quality depends on network range-request latency on the first loop; visible adjacent frames are warmed in advance.
 - KRAX has normal single-radar limitations including beam height, terrain blockage, ground clutter, and range.

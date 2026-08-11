@@ -76,6 +76,7 @@ const IMAGE_PLAYBACK_READY_POLL_MS = 50
 const IMAGE_PLAYBACK_MAX_WAIT_MS = 8_000
 const MAX_COUNTY_DETAIL_LONGITUDE_SPAN = 24
 const MAX_COUNTY_DETAIL_LATITUDE_SPAN = 20
+const COUNTY_DETAIL_MIN_ZOOM = 5
 
 type PlaybackFps = typeof PLAYBACK_FPS_OPTIONS[number]
 
@@ -92,6 +93,11 @@ type FocusPollingControlState = PollingControlState & {
 }
 
 type MrmsLiveCoverage = 'national' | 'focus'
+
+type MapViewport = {
+  bounds: [number, number, number, number]
+  zoom: number
+}
 
 type HistoryJobStatus = {
   job_id: string
@@ -115,9 +121,8 @@ function shouldUseLowMemoryMapMode(): boolean {
     || window.matchMedia('(pointer: coarse)').matches
 }
 
-function supportsCountyDetail(regionId: string, bounds: readonly [number, number, number, number]): boolean {
-  return regionId !== 'conus'
-    && bounds[2] - bounds[0] <= MAX_COUNTY_DETAIL_LONGITUDE_SPAN
+function supportsCountyDetail(bounds: readonly [number, number, number, number]): boolean {
+  return bounds[2] - bounds[0] <= MAX_COUNTY_DETAIL_LONGITUDE_SPAN
     && bounds[3] - bounds[1] <= MAX_COUNTY_DETAIL_LATITUDE_SPAN
 }
 
@@ -1506,7 +1511,7 @@ export function RadarApp() {
   const [layers, setLayers] = useState({
     radar: true,
     warnings: false,
-    counties: !shouldUseLowMemoryMapMode(),
+    counties: true,
     cities: true,
     highways: false,
     rainfall: false,
@@ -1536,6 +1541,7 @@ export function RadarApp() {
   const [buoyError, setBuoyError] = useState<string | null>(null)
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null)
   const [selectedBuoyId, setSelectedBuoyId] = useState<string | null>(null)
+  const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
 
   const clearWarningState = () => {
     setWarningRecords([])
@@ -1567,7 +1573,10 @@ export function RadarApp() {
   const selectedObservation = selectedObservationId ? surfaceObservations.find((observation) => observation.id === selectedObservationId) ?? null : null
   const selectedBuoy = selectedBuoyId ? buoys.find((buoy) => buoy.id === selectedBuoyId) ?? null : null
   const mapRegion = MAP_REGIONS.find((region) => region.id === mapRegionId) ?? MAP_REGIONS[0]
-  const countyDetailAvailable = supportsCountyDetail(mapRegion.id, mapRegion.bounds)
+  const countyDetailBounds = mapViewport && mapViewport.zoom >= COUNTY_DETAIL_MIN_ZOOM && supportsCountyDetail(mapViewport.bounds)
+    ? mapViewport.bounds
+    : null
+  const countyDetailAvailable = Boolean(countyDetailBounds)
   const historyCoverageEntry = useMemo(() => {
     if (!historyStart || !historyEnd) return null
     try {
@@ -1884,7 +1893,7 @@ export function RadarApp() {
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    const countyBounds = layers.counties && countyDetailAvailable ? mapRegion.bounds : null
+    const countyBounds = layers.counties && countyDetailAvailable ? countyDetailBounds : null
     fetchRegionalGeography(controller.signal, countyBounds)
       .then((result) => {
         if (cancelled) return
@@ -1899,7 +1908,7 @@ export function RadarApp() {
       cancelled = true
       controller.abort()
     }
-  }, [countyDetailAvailable, layers.counties, mapRegion.bounds])
+  }, [countyDetailAvailable, countyDetailBounds, layers.counties])
 
   useEffect(() => {
     if (!layers.highways || mapRegion.id === 'conus') return
@@ -2011,6 +2020,13 @@ export function RadarApp() {
       collapseAttribution()
     }
     const mapElement = mapContainer.current
+    const updateMapViewport = () => {
+      const bounds = map.getBounds()
+      setMapViewport({
+        bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        zoom: map.getZoom(),
+      })
+    }
     mapElement.addEventListener('pointerdown', collapseAttributionOnInteraction, true)
     mapElement.addEventListener('wheel', collapseAttribution, { passive: true })
     window.requestAnimationFrame(collapseAttribution)
@@ -2019,9 +2035,11 @@ export function RadarApp() {
       map.jumpTo({ center: MAP_CENTER, zoom: initialMapZoom(), bearing: 0, pitch: 0 })
       map.resize()
       collapseAttribution()
+      updateMapViewport()
       setMapReady(true)
     })
     map.on('movestart', collapseAttribution)
+    map.on('moveend', updateMapViewport)
     map.on('click', WARNING_FILL_ID, (event) => {
       const feature = event.features?.[0]
       const id = feature?.properties?.id ?? feature?.id
@@ -2064,6 +2082,7 @@ export function RadarApp() {
       resizeObserver.disconnect()
       mapElement.removeEventListener('pointerdown', collapseAttributionOnInteraction, true)
       mapElement.removeEventListener('wheel', collapseAttribution)
+      map.off('moveend', updateMapViewport)
       map.remove()
       activeMapAssetUrls.clear()
       mapRef.current = null
@@ -2824,7 +2843,7 @@ export function RadarApp() {
             <div className="radar-layer-section-heading">Map overlays</div>
             {([
               ['radar', 'Archive layer'],
-              ['counties', countyDetailAvailable ? 'Counties' : 'Counties (closer regions)'],
+              ['counties', countyDetailAvailable ? 'Counties' : 'Counties (zoom in)'],
               ['cities', 'Cities'],
               ['highways', highwaysLoading ? 'Highways (loading…)' : 'Highways'],
               ['warnings', warningsLoading ? 'Warning polygons (loading…)' : warnings.length ? `Warning polygons · ${warnings.length} active` : 'Warning polygons'],

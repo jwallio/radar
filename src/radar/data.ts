@@ -255,6 +255,15 @@ function parseKmlGeometry(placemark: Element): GeoJSON.Geometry | null {
   return { type: 'MultiPolygon', coordinates: polygons.map((ring) => [ring]) }
 }
 
+function stableWarningFingerprint(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
 function parseHistoricalWarnings(kml: string, sourceUrl: string): RadarWarning[] {
   const document = new DOMParser().parseFromString(kml, 'application/xml')
   if (document.documentElement?.localName !== 'kml' || document.getElementsByTagNameNS('*', 'parsererror').length) {
@@ -265,15 +274,20 @@ function parseHistoricalWarnings(kml: string, sourceUrl: string): RadarWarning[]
     const event = WARNING_EVENTS.find((candidate) => name.toLowerCase().includes(candidate.toLowerCase()))
     const geometry = event ? parseKmlGeometry(placemark) : null
     if (!event || !geometry) return []
-    const id = name.split(/\s+/)[0] || `${event}-${index}`
-    const issuingOffice = id.split('.')[0] || 'National Weather Service'
+    const baseId = name.split(/\s+/)[0] || `${event}-${index}`
+    const effective = kmlElementText(placemark, 'begin')
+    const expires = kmlElementText(placemark, 'end')
+    // The archive can emit multiple geometry fragments for one VTEC event.
+    // Keep each distinct geometry/validity interval instead of overwriting it.
+    const id = `${baseId}-${stableWarningFingerprint(JSON.stringify({ effective, expires, geometry }))}`
+    const issuingOffice = baseId.split('.')[0] || 'National Weather Service'
     return [{
       id,
       event,
       issuingOffice,
       areaDesc: name,
-      effective: kmlElementText(placemark, 'begin'),
-      expires: kmlElementText(placemark, 'end'),
+      effective,
+      expires,
       headline: name,
       geometry,
       sourceUrl,
@@ -288,9 +302,12 @@ export async function fetchHistoricalWarningsAt(validAt: string, signal?: AbortS
 }
 
 export async function fetchHistoricalWarningsWindow(start: string, end: string, signal?: AbortSignal): Promise<WarningsResult> {
+  // IEM's start-time window does not include an event beginning exactly at its end.
+  // Query both MRMS frame boundaries so the first and final frame are complete.
   const requests = [
     { label: 'historical warning window', url: historicalWarningWindowUrl(start, end) },
     { label: 'historical warnings active at loop start', url: historicalWarningAtUrl(start) },
+    { label: 'historical warnings active at final frame', url: historicalWarningAtUrl(end) },
   ]
   const results = await Promise.allSettled(requests.map(async ({ url }) => {
     const warnings = parseHistoricalWarnings(await fetchText(url, signal), url)

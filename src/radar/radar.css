@@ -153,6 +153,12 @@
 .radar-layer-row > span:last-child { display: grid; gap: 2px; }
 .radar-layer-row strong { color: #e0ecea; font-size: 12px; font-weight: 600; }
 .radar-layer-row small { color: #9cb2b7; font-size: 9px; }
+.radar-warning-filters { display: grid; gap: 4px; margin: 1px 0 4px 23px; padding: 7px 8px 5px; border: 1px solid rgba(147,182,190,.16); border-radius: 6px; background: rgba(8, 25, 32, .72); }
+.radar-warning-filters-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: #b6cecc; font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.radar-warning-filters-head small { color: #6f898e; font-size: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.radar-warning-filters-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; }
+.radar-warning-filter-row { min-height: 31px; grid-template-columns: 14px minmax(0, 1fr); gap: 6px; }
+.radar-warning-filter-row strong { font-size: 10px; line-height: 1.15; }
 .radar-layer-section-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 9px 0 2px; padding-top: 8px; border-top: 1px solid rgba(147,182,190,.12); color: #b6cecc; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .radar-layer-section-heading:first-child { margin-top: 0; border-top: 0; }
 .radar-layer-section-heading small { color: #6f898e; font-size: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -268,6 +274,7 @@
   .radar-layer-section-heading { gap: 8px; }
   .radar-layer-section-heading small { max-width: 58%; text-align: right; white-space: normal; }
   .radar-layer-row { min-height: 44px; }
+  .radar-warning-filter-row { min-height: 36px; }
   .radar-range { min-height: 44px; margin-block: 4px; }
   .radar-warning-panel { top: 10px; right: calc(10px + var(--radar-safe-right)); width: min(310px, calc(100% - 20px - var(--radar-safe-left) - var(--radar-safe-right))); }
   .radar-observation-panel { top: 52px; right: calc(10px + var(--radar-safe-right)); bottom: auto; width: min(310px, calc(100% - 20px - var(--radar-safe-left) - var(--radar-safe-right))); }

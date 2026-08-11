@@ -210,6 +210,7 @@ function historicalWarningAtUrl(validAt: string): string {
   url.searchParams.set('at', validAt)
   url.searchParams.set('timeopt', '2')
   url.searchParams.set('limit0', '1')
+  url.searchParams.set('limit1', '1')
   return url.toString()
 }
 
@@ -220,6 +221,7 @@ function historicalWarningWindowUrl(start: string, end: string): string {
   url.searchParams.set('ets', end)
   url.searchParams.set('timeopt', '1')
   url.searchParams.set('limit0', '1')
+  url.searchParams.set('limit1', '1')
   return url.toString()
 }
 

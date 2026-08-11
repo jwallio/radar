@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import maplibregl from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, DEFAULT_ARCHIVE_REGION_ID, ERA5_PHASE_LEGEND, ERA5_PROCESSING_BOUNDS, ERA5_TOTAL_PRECIPITATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, MAP_VIEW_BOUNDS, MRMS_ARCHIVE_START_INPUT, MRMS_FULL_SUITE_START_INPUT, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, type AnalysisLayerKey } from './config'
+import { ANALYSIS_LAYER_DEFINITIONS, CARTO_LIGHT_TILES, CITIES, CITIES_GEOJSON, CORRELATION_LEGEND, DEFAULT_ARCHIVE_REGION_ID, ERA5_PHASE_LEGEND, ERA5_PROCESSING_BOUNDS, ERA5_TOTAL_PRECIPITATION_LEGEND, GRID_GEOJSON, MAP_CENTER, MAP_REGIONS, MAP_VIEW_BOUNDS, MRMS_ARCHIVE_START_INPUT, MRMS_FULL_SUITE_START_INPUT, NATIONAL_BOUNDS, PRECIP_LEGEND, PRODUCT_OPTIONS, RAINFALL_LEGEND, REFLECTIVITY_LEGEND, REGIONAL_BOUNDS, VELOCITY_LEGEND, WARNING_EVENTS, type AnalysisLayerKey } from './config'
 import { emptyFeatureCollection, fetchBuoyObservations, fetchHistoricalWarningsWindow, fetchHistoryCatalog, fetchRadarManifest, fetchRegionalGeography, fetchRegionalHighways, fetchRegionalSurfaceObservations, fetchRegionalWarnings, warningsAtTime, warningsFeatureCollection } from './data'
 import { createGifFrameEncoder, GIF_HEIGHT_LIMIT, GIF_WIDTH_LIMIT, LATEST_FRAME_HOLD_MS } from './gif'
 import type { BuoyObservation, RadarFrameManifest, RadarHistoryCatalog, RadarHistoryEntry, RadarManifest, RadarManifestProductId, RadarProductId, RadarSourceId, RadarWarning, SurfaceObservation } from './types'
@@ -415,6 +415,15 @@ function formatEasternDateTime(value: string | null | undefined): string {
   }).format(date) + ' ET'
 }
 
+function filterWarningsByEvent(warnings: RadarWarning[], enabledEvents: readonly RadarWarning['event'][]): RadarWarning[] {
+  if (enabledEvents.length === WARNING_EVENTS.length) return warnings
+  const enabled = new Set(enabledEvents)
+  return warnings.filter((warning) => enabled.has(warning.event))
+}
+
+function warningEventLabel(event: RadarWarning['event']): string {
+  return event.replace(' Warning', '')
+}
 function historyEntryLabel(entry: RadarHistoryEntry): string {
   const start = new Date(entry.start_time)
   const end = new Date(entry.end_time)
@@ -1511,6 +1520,7 @@ export function RadarApp() {
     buoys: false,
   })
   const [warningRecords, setWarningRecords] = useState<RadarWarning[]>([])
+  const [enabledWarningEvents, setEnabledWarningEvents] = useState<RadarWarning['event'][]>(() => [...WARNING_EVENTS])
   const [warningsLoading, setWarningsLoading] = useState(false)
   const [warningErrors, setWarningErrors] = useState<string[]>([])
   const [selectedWarningId, setSelectedWarningId] = useState<string | null>(null)
@@ -1581,9 +1591,13 @@ export function RadarApp() {
   const isHistorical = ARCHIVE_ONLY || isEra5 || manifest?.mode === 'historical' || activeDatasetId !== 'live'
   const warningWindowStart = isHistorical ? frames[0]?.valid_time ?? null : null
   const warningWindowEnd = isHistorical ? frames.at(-1)?.valid_time ?? null : null
+  const filteredWarningRecords = useMemo(
+    () => filterWarningsByEvent(warningRecords, enabledWarningEvents),
+    [enabledWarningEvents, warningRecords],
+  )
   const warnings = useMemo(
-    () => isHistorical ? warningsAtTime(warningRecords, activeFrame?.valid_time) : warningRecords,
-    [activeFrame?.valid_time, isHistorical, warningRecords],
+    () => isHistorical ? warningsAtTime(filteredWarningRecords, activeFrame?.valid_time) : filteredWarningRecords,
+    [activeFrame?.valid_time, filteredWarningRecords, isHistorical],
   )
   const selectedWarning = selectedWarningId ? warnings.find((warning) => warning.id === selectedWarningId) ?? null : null
   const mrmsFullSuiteAvailable = sourceId === 'mrms' && (
@@ -2270,7 +2284,7 @@ export function RadarApp() {
       for (let index = 0; index < exportFrames.length; index += 1) {
         const frame = exportFrames[index]
         const frameWarnings = layers.warnings && !isEra5
-          ? isHistorical ? warningsAtTime(warningRecords, frame.valid_time) : warningRecords
+          ? isHistorical ? warningsAtTime(filteredWarningRecords, frame.valid_time) : filteredWarningRecords
           : []
         const exportWarnings = warningsFeatureCollection(frameWarnings)
         const exportAnalysisLayers: ExportAnalysisLayer[] = manifest
@@ -2352,6 +2366,13 @@ export function RadarApp() {
   const toggleLayer = (key: keyof typeof layers) => {
     if (key === 'warnings' && layers.warnings) clearWarningState()
     setLayers((current) => ({ ...current, [key]: !current[key] }))
+  }
+
+  const toggleWarningEvent = (event: RadarWarning['event']) => {
+    setEnabledWarningEvents((current) => current.includes(event)
+      ? current.filter((candidate) => candidate !== event)
+      : [...current, event])
+    setSelectedWarningId(null)
   }
 
   const changePollingState = async (enabled: boolean) => {
@@ -2819,9 +2840,29 @@ export function RadarApp() {
                 <span><strong>{label}</strong></span>
               </label>
             ))}
+            {layers.warnings && !isEra5 && (
+              <div className="radar-warning-filters" aria-label="Warning type filters">
+                <div className="radar-warning-filters-head">
+                  <span>Warning types</span>
+                  <small>{enabledWarningEvents.length} of {WARNING_EVENTS.length} shown</small>
+                </div>
+                <div className="radar-warning-filters-grid">
+                  {WARNING_EVENTS.map((event) => (
+                    <label key={event} className="radar-layer-row radar-warning-filter-row">
+                      <input
+                        type="checkbox"
+                        checked={enabledWarningEvents.includes(event)}
+                        onChange={() => toggleWarningEvent(event)}
+                      />
+                      <span className="radar-checkbox" aria-hidden="true" />
+                      <span><strong>{warningEventLabel(event)}</strong></span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-
-          <p className="radar-field-note">Historical MRMS/KRAX frames use time-matched archived NWS warning polygons. Live mode uses current NWS alerts; ERA5 does not provide warning overlays.</p>
+          <p className="radar-field-note">Historical MRMS/KRAX frames use time-matched archived NWS warning polygons. Live mode uses current NWS alerts; selected warning types also apply to GIF exports. ERA5 does not provide warning overlays.</p>
           <label className="radar-field-label" htmlFor="radar-opacity">Archive layer opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}

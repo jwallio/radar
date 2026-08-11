@@ -1,4 +1,4 @@
-# wall.cloud Radar
+≠rá^—f•ñÿ¶{M¨y 'v√Æ∂õ≠# wall.cloud Radar
 
 wall.cloud Radar is an archive-first radar playback tool for [radar.wall.cloud](https://radar.wall.cloud). The public default frames the Atlantic and Caribbean storm corridor, preferring observed NOAA/NCEP radar products while keeping ERA5 historical reanalysis available for coverage and parameter gaps. ERA5 is a reconstruction, not observed radar.
 
@@ -313,7 +313,7 @@ Historical R2 namespaces are source-specific: MRMS uses `radar/history/catalog.j
 
 The default production profile keeps recurring cloud charges near zero while the public site remains an archive browser:
 
-- GitHub Pages serves the static archive viewer; the browser does not poll live radar, active warnings, or control status.
+- GitHub Pages serves the static archive viewer; the browser does not poll live radar or control status. Current NWS warning polygons are fetched only after a visitor explicitly enables that overlay.
 - The Cloudflare Worker and R2 serve published catalogs and immutable historical packs without a recurring national refresh loop.
 - Cloud Run stays scale-to-zero and is used when a visitor requests a bounded MRMS/ERA5 pack or the owner requests a KRAX pack.
 - ERA5 requests are public, one-at-a-time, bounded, and cache-first; repeated requests for the same source/time/region/version reuse the complete R2 dataset.
@@ -436,7 +436,7 @@ python scripts/build_national_mrms.py `
 - The public viewer is archive-only; legacy live and storm-focus processors are not exposed in the current UI.
 - Regional historical output remains image-frame based; it is intentionally cropped before browser delivery.
 - National county and highway detail is loaded only after selecting or zooming into a region to avoid expensive CONUS geometry requests.
-- NWS and buoy integrations remain in the retained legacy pipeline but are not part of public archive playback.
+- Current NWS warning polygons can be enabled on demand for situational awareness. They are not time-matched to archived radar frames; when enabled, they are included as a static overlay in every historical GIF frame. Surface observations and buoy integrations remain outside public archive playback.
 - Census, CARTO, NOAA archive directories, CDS, and R2 can be temporarily unavailable or rate-limited.
 - PMTiles playback quality depends on network range-request latency on the first loop; visible adjacent frames are warmed in advance.
 - KRAX has normal single-radar limitations including beam height, terrain blockage, ground clutter, and range.

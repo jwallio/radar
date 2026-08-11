@@ -1,15 +1,15 @@
-{
+­r‡^Ñf¥–Ø¦{M¬yÊ'vÃ®¶›­{
   "schema_version": 1,
-  "status": "unavailable",
+  "status": "ready",
   "mode": "live",
   "source": "nexrad-level2",
   "site": "KRAX",
   "dataset_id": "krax-live",
-  "label": "KRAX Level II Â· Live / recent",
-  "generated_at": null,
-  "latest_valid_time": null,
-  "start_time": null,
-  "end_time": null,
+  "label": "KRAX Level II \u00b7 Live / recent",
+  "generated_at": "2026-07-25T18:26:54Z",
+  "latest_valid_time": "2026-07-25T18:17:19Z",
+  "start_time": "2026-07-25T17:40:56Z",
+  "end_time": "2026-07-25T18:17:19Z",
   "region": {
     "west": -84.5,
     "south": 33.0,
@@ -19,20 +19,438 @@
   "product": "NEXRADLevel2BaseReflectivity",
   "products": {
     "NEXRADLevel2BaseReflectivity": {
-      "label": "KRAX Base Reflectivity",
-      "status": "unavailable",
-      "frames": [],
+      "label": "Base Reflectivity",
+      "status": "ready",
+      "frames": [
+        {
+          "id": "krax-basereflectivity-20260725T174056Z",
+          "valid_time": "2026-07-25T17:40:56Z",
+          "url": "./frames/krax-basereflectivity-20260725T174056Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174056_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T174558Z",
+          "valid_time": "2026-07-25T17:45:58Z",
+          "url": "./frames/krax-basereflectivity-20260725T174558Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174558_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T175113Z",
+          "valid_time": "2026-07-25T17:51:13Z",
+          "url": "./frames/krax-basereflectivity-20260725T175113Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175113_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T175628Z",
+          "valid_time": "2026-07-25T17:56:28Z",
+          "url": "./frames/krax-basereflectivity-20260725T175628Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175628_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T180144Z",
+          "valid_time": "2026-07-25T18:01:44Z",
+          "url": "./frames/krax-basereflectivity-20260725T180144Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180144_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T180658Z",
+          "valid_time": "2026-07-25T18:06:58Z",
+          "url": "./frames/krax-basereflectivity-20260725T180658Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180658_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T181213Z",
+          "valid_time": "2026-07-25T18:12:13Z",
+          "url": "./frames/krax-basereflectivity-20260725T181213Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181213_V06"
+        },
+        {
+          "id": "krax-basereflectivity-20260725T181719Z",
+          "valid_time": "2026-07-25T18:17:19Z",
+          "url": "./frames/krax-basereflectivity-20260725T181719Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181719_V06"
+        }
+      ],
       "source_url": "https://unidata-nexrad-level2.s3.amazonaws.com",
       "site": "KRAX",
-      "notes": "Run the KRAX Level II processor to generate recent completed volume scans."
+      "notes": "Lowest available elevation sweep from each completed KRAX Level II volume.",
+      "loop_url": "./loops/krax-level2-basereflectivity.gif?v=20260725T182654Z",
+      "loop_frame_count": 8,
+      "loop_size_bytes": 1199688
+    },
+    "NEXRADLevel2Velocity": {
+      "label": "Radial Velocity",
+      "status": "ready",
+      "frames": [
+        {
+          "id": "krax-velocity-20260725T174056Z",
+          "valid_time": "2026-07-25T17:40:56Z",
+          "url": "./frames/krax-velocity-20260725T174056Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174056_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T174558Z",
+          "valid_time": "2026-07-25T17:45:58Z",
+          "url": "./frames/krax-velocity-20260725T174558Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174558_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T175113Z",
+          "valid_time": "2026-07-25T17:51:13Z",
+          "url": "./frames/krax-velocity-20260725T175113Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175113_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T175628Z",
+          "valid_time": "2026-07-25T17:56:28Z",
+          "url": "./frames/krax-velocity-20260725T175628Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175628_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T180144Z",
+          "valid_time": "2026-07-25T18:01:44Z",
+          "url": "./frames/krax-velocity-20260725T180144Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180144_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T180658Z",
+          "valid_time": "2026-07-25T18:06:58Z",
+          "url": "./frames/krax-velocity-20260725T180658Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180658_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T181213Z",
+          "valid_time": "2026-07-25T18:12:13Z",
+          "url": "./frames/krax-velocity-20260725T181213Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181213_V06"
+        },
+        {
+          "id": "krax-velocity-20260725T181719Z",
+          "valid_time": "2026-07-25T18:17:19Z",
+          "url": "./frames/krax-velocity-20260725T181719Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181719_V06"
+        }
+      ],
+      "source_url": "https://unidata-nexrad-level2.s3.amazonaws.com",
+      "site": "KRAX",
+      "notes": "Lowest available elevation sweep from each completed KRAX Level II volume.",
+      "loop_url": "./loops/krax-level2-velocity.gif?v=20260725T182654Z",
+      "loop_frame_count": 8,
+      "loop_size_bytes": 450032
+    },
+    "NEXRADLevel2CorrelationCoefficient": {
+      "label": "Correlation Coefficient (\u03c1hv)",
+      "status": "ready",
+      "frames": [
+        {
+          "id": "krax-correlationcoefficient-20260725T174056Z",
+          "valid_time": "2026-07-25T17:40:56Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T174056Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174056_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T174558Z",
+          "valid_time": "2026-07-25T17:45:58Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T174558Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_174558_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T175113Z",
+          "valid_time": "2026-07-25T17:51:13Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T175113Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175113_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T175628Z",
+          "valid_time": "2026-07-25T17:56:28Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T175628Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_175628_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T180144Z",
+          "valid_time": "2026-07-25T18:01:44Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T180144Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180144_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T180658Z",
+          "valid_time": "2026-07-25T18:06:58Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T180658Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_180658_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T181213Z",
+          "valid_time": "2026-07-25T18:12:13Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T181213Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181213_V06"
+        },
+        {
+          "id": "krax-correlationcoefficient-20260725T181719Z",
+          "valid_time": "2026-07-25T18:17:19Z",
+          "url": "./frames/krax-correlationcoefficient-20260725T181719Z.png",
+          "bounds": [
+            -84.5,
+            33.0,
+            -74.0,
+            38.0
+          ],
+          "source_key": "2026/07/25/KRAX/KRAX20260725_181719_V06"
+        }
+      ],
+      "source_url": "https://unidata-nexrad-level2.s3.amazonaws.com",
+      "site": "KRAX",
+      "notes": "Lowest available elevation sweep from each completed KRAX Level II volume.",
+      "loop_url": "./loops/krax-level2-correlationcoefficient.gif?v=20260725T182654Z",
+      "loop_frame_count": 8,
+      "loop_size_bytes": 784476
     }
   },
-  "frames": [],
+  "frames": [
+    {
+      "id": "krax-basereflectivity-20260725T174056Z",
+      "valid_time": "2026-07-25T17:40:56Z",
+      "url": "./frames/krax-basereflectivity-20260725T174056Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_174056_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T174558Z",
+      "valid_time": "2026-07-25T17:45:58Z",
+      "url": "./frames/krax-basereflectivity-20260725T174558Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_174558_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T175113Z",
+      "valid_time": "2026-07-25T17:51:13Z",
+      "url": "./frames/krax-basereflectivity-20260725T175113Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_175113_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T175628Z",
+      "valid_time": "2026-07-25T17:56:28Z",
+      "url": "./frames/krax-basereflectivity-20260725T175628Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_175628_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T180144Z",
+      "valid_time": "2026-07-25T18:01:44Z",
+      "url": "./frames/krax-basereflectivity-20260725T180144Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_180144_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T180658Z",
+      "valid_time": "2026-07-25T18:06:58Z",
+      "url": "./frames/krax-basereflectivity-20260725T180658Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_180658_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T181213Z",
+      "valid_time": "2026-07-25T18:12:13Z",
+      "url": "./frames/krax-basereflectivity-20260725T181213Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_181213_V06"
+    },
+    {
+      "id": "krax-basereflectivity-20260725T181719Z",
+      "valid_time": "2026-07-25T18:17:19Z",
+      "url": "./frames/krax-basereflectivity-20260725T181719Z.png",
+      "bounds": [
+        -84.5,
+        33.0,
+        -74.0,
+        38.0
+      ],
+      "source_key": "2026/07/25/KRAX/KRAX20260725_181719_V06"
+    }
+  ],
+  "radar": {
+    "latitude": 35.66551971435547,
+    "longitude": -78.48975372314453,
+    "sweep_count": 18,
+    "field": "reflectivity",
+    "elevation_degrees": 0.2197265625
+  },
   "sources": {
     "nexrad_archive": "https://unidata-nexrad-level2.s3.amazonaws.com",
     "nexrad_realtime_chunks": "https://unidata-nexrad-level2-chunks.s3.amazonaws.com"
   },
-  "errors": [
-    "No generated KRAX artifact is present yet. Run python scripts/build_krax_radar.py."
-  ]
+  "errors": []
 }

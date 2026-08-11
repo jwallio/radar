@@ -72,6 +72,8 @@ const EMPTY_STATE = emptyFeatureCollection()
 const PLAYBACK_FPS_OPTIONS = [2, 4, 8, 20, 30] as const
 const GIF_FRAME_LIMIT = 60
 const LOW_MEMORY_VIEWPORT_MAX_WIDTH = 820
+const IMAGE_PLAYBACK_READY_POLL_MS = 50
+const IMAGE_PLAYBACK_MAX_WAIT_MS = 8_000
 const MAX_COUNTY_DETAIL_LONGITUDE_SPAN = 24
 const MAX_COUNTY_DETAIL_LATITUDE_SPAN = 20
 
@@ -154,7 +156,11 @@ function assetUrl(path: string, manifestPath: string): string {
 }
 
 function frameUrl(frame: RadarFrameManifest, manifestPath: string): string {
-  return assetUrl(frame.url, manifestPath)
+  const resolved = new URL(assetUrl(frame.url, manifestPath))
+  // Historical frame objects are immutable. A stable frame identifier keeps
+  // them cacheable while bypassing any stale pre-CORS response held by iOS.
+  if (!resolved.searchParams.has('v')) resolved.searchParams.set('v', frame.id)
+  return resolved.toString()
 }
 
 function framePmtilesUrl(frame: RadarFrameManifest, manifestPath: string): string | null {
@@ -922,6 +928,12 @@ function hasVisibleMapCapture(image: ImageData): boolean {
   return samples > 0 && visible / samples > 0.05 && brightness / samples > 24
 }
 
+type ExportAnalysisLayer = {
+  definition: (typeof ANALYSIS_LAYER_DEFINITIONS)[number]
+  frame: RadarFrameManifest
+  opacity: number
+}
+
 function cropExportBoundsToAspect(bounds: ExportBounds, targetAspect: number): ExportBounds {
   const [west, south, east, north] = bounds
   const width = east - west
@@ -940,6 +952,9 @@ async function captureExportMap(
   map: maplibregl.Map,
   frame: RadarFrameManifest,
   manifestPath: string,
+  includeRadar: boolean,
+  radarOpacity: number,
+  analysisLayers: ExportAnalysisLayer[],
   states: GeoJSON.FeatureCollection,
   counties: GeoJSON.FeatureCollection,
   includeCounties: boolean,
@@ -949,7 +964,13 @@ async function captureExportMap(
   warnings: GeoJSON.FeatureCollection,
   includeWarnings: boolean,
 ): Promise<ImageData> {
-  const image = await loadBrowserImage(frameUrl(frame, manifestPath))
+  const [image, analysisImages] = await Promise.all([
+    includeRadar ? loadBrowserImage(frameUrl(frame, manifestPath)) : Promise.resolve(null),
+    Promise.all(analysisLayers.map(async (layer) => ({
+      layer,
+      image: await loadBrowserImage(frameUrl(layer.frame, manifestPath)),
+    }))),
+  ])
   const width = SHARE_GIF_MAP_WIDTH
   const height = SHARE_GIF_MAP_HEIGHT
   const canvas = document.createElement('canvas')
@@ -967,20 +988,24 @@ async function captureExportMap(
   context.fillRect(0, 0, width, height)
   drawExportGeometry(context, states, viewBounds, width, height, 'rgba(32,42,49,.9)', 1.4, '#f7f8f7')
   if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
-  const [west, south, east, north] = frame.bounds
-  const viewWest = Math.max(west, viewBounds[0])
-  const viewEast = Math.min(east, viewBounds[2])
-  const viewSouth = Math.max(south, viewBounds[1])
-  const viewNorth = Math.min(north, viewBounds[3])
-  if (viewWest < viewEast && viewSouth < viewNorth) {
-    const sourceX = (viewWest - west) / (east - west) * image.naturalWidth
-    const sourceY = (north - viewNorth) / (north - south) * image.naturalHeight
-    const sourceWidth = (viewEast - viewWest) / (east - west) * image.naturalWidth
-    const sourceHeight = (viewNorth - viewSouth) / (north - south) * image.naturalHeight
-    context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height)
-  } else {
-    context.drawImage(image, 0, 0, width, height)
+  const drawRaster = (raster: HTMLImageElement, rasterFrame: RadarFrameManifest, opacity = 1) => {
+    const [west, south, east, north] = rasterFrame.bounds
+    const viewWest = Math.max(west, viewBounds[0])
+    const viewEast = Math.min(east, viewBounds[2])
+    const viewSouth = Math.max(south, viewBounds[1])
+    const viewNorth = Math.min(north, viewBounds[3])
+    if (viewWest >= viewEast || viewSouth >= viewNorth) return
+    const sourceX = (viewWest - west) / (east - west) * raster.naturalWidth
+    const sourceY = (north - viewNorth) / (north - south) * raster.naturalHeight
+    const sourceWidth = (viewEast - viewWest) / (east - west) * raster.naturalWidth
+    const sourceHeight = (viewNorth - viewSouth) / (north - south) * raster.naturalHeight
+    context.save()
+    context.globalAlpha = opacity
+    context.drawImage(raster, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height)
+    context.restore()
   }
+  if (image) drawRaster(image, frame, radarOpacity)
+  analysisImages.forEach(({ layer, image: analysisImage }) => drawRaster(analysisImage, layer.frame, layer.opacity))
   if (includeCounties) drawExportGeometry(context, counties, viewBounds, width, height, 'rgba(127,139,148,.62)', 0.65)
   if (includeWarnings) drawExportWarnings(context, warnings, viewBounds, width, height)
   if (includeHighways) drawExportLineGeometry(context, highways, viewBounds, width, height, 'rgba(132,83,36,.82)', 1.25)
@@ -1008,6 +1033,16 @@ function shareProductDetails(productId: RadarProductId): { label: string; source
   if (productId === 'ERA5PrecipitationType') return { label: 'Precipitation phase & intensity', source: 'ERA5 reanalysis · interpolated display', resolution: '0.25° native · hourly', unit: 'PHASE / RATE', legend: ERA5_PHASE_LEGEND }
   if (productId === 'ERA5TotalPrecipitation') return { label: 'Total precipitation', source: 'ERA5 reanalysis · interpolated display', resolution: '0.25° native · hourly', unit: 'mm/h', legend: ERA5_TOTAL_PRECIPITATION_LEGEND }
   return { label: 'Composite Reflectivity', source: 'MRMS', resolution: '1 km', unit: 'dBZ', legend: REFLECTIVITY_LEGEND }
+}
+
+function shareAnalysisDetails(definition: (typeof ANALYSIS_LAYER_DEFINITIONS)[number]): ReturnType<typeof shareProductDetails> {
+  return {
+    label: definition.label,
+    source: 'MRMS',
+    resolution: '1 km',
+    unit: definition.unit,
+    legend: definition.legend,
+  }
 }
 
 function formatShareValidTime(value: string): string {
@@ -1087,6 +1122,8 @@ function composeShareFrame(
   mapImage: ImageData,
   frame: RadarFrameManifest,
   productId: RadarProductId,
+  includeRadar: boolean,
+  activeAnalysisLayers: ExportAnalysisLayer[],
   regionLabel: string,
   isHistorical: boolean,
   playbackFps: number,
@@ -1094,7 +1131,9 @@ function composeShareFrame(
   frameCount: number,
   loopPeriod: string,
 ): ImageData {
-  const details = shareProductDetails(productId)
+  const details = includeRadar || !activeAnalysisLayers.length
+    ? shareProductDetails(productId)
+    : shareAnalysisDetails(activeAnalysisLayers[0].definition)
   const output = document.createElement('canvas')
   output.width = SHARE_GIF_WIDTH
   output.height = SHARE_GIF_HEADER_HEIGHT + SHARE_GIF_MAP_HEIGHT + SHARE_GIF_FOOTER_HEIGHT
@@ -1118,11 +1157,16 @@ function composeShareFrame(
   context.fillStyle = SHARE_BRAND_TEAL
   context.fillText('wall.cloud Radar', 20, 31)
   context.fillStyle = SHARE_BRAND_LIGHT
-  context.font = '700 15px Arial, sans-serif'
-  const subtitleParts = [regionLabel, details.source]
+  const viewedLabels = [
+    ...(includeRadar ? [shareProductDetails(productId).label] : []),
+    ...activeAnalysisLayers.map((layer) => layer.definition.label),
+  ]
+  if (!viewedLabels.length) viewedLabels.push(details.label)
+  const subtitleParts = [regionLabel, details.source, ...viewedLabels]
   if (details.resolution !== 'native') subtitleParts.push(details.resolution)
-  subtitleParts.push(details.label)
-  context.fillText(subtitleParts.join(' · '), 20, 63)
+  const subtitle = subtitleParts.join(' · ')
+  context.font = `${subtitle.length > 90 ? '600 12px' : '700 15px'} Arial, sans-serif`
+  context.fillText(subtitle, 20, 63)
   context.textAlign = 'right'
   context.font = '800 17px Arial, sans-serif'
   context.fillStyle = '#ffffff'
@@ -1145,7 +1189,7 @@ function composeShareFrame(
   context.drawImage(source, imageX, imageY, imageWidth, imageHeight)
   context.restore()
   context.imageSmoothingEnabled = true
-  drawShareVerticalLegend(context, details)
+  if (includeRadar || activeAnalysisLayers.length) drawShareVerticalLegend(context, details)
   context.strokeStyle = SHARE_FRAME_BORDER
   context.lineWidth = 1
   context.strokeRect(0.5, SHARE_GIF_HEADER_HEIGHT + 0.5, SHARE_GIF_MAP_WIDTH - 1, SHARE_GIF_MAP_HEIGHT - 1)
@@ -1412,6 +1456,7 @@ export function RadarApp() {
   const mapContainer = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const activeMapAssetUrlsRef = useRef<Map<string, string>>(new Map())
+  const imagePreloadCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const warningsRef = useRef<Map<string, RadarWarning>>(new Map())
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -1466,6 +1511,7 @@ export function RadarApp() {
     buoys: false,
   })
   const [warnings, setWarnings] = useState<RadarWarning[]>([])
+  const [warningsLoading, setWarningsLoading] = useState(false)
   const [warningErrors, setWarningErrors] = useState<string[]>([])
   const [selectedWarningId, setSelectedWarningId] = useState<string | null>(null)
   const [states, setStates] = useState<GeoJSON.FeatureCollection>(EMPTY_STATE)
@@ -1480,6 +1526,14 @@ export function RadarApp() {
   const [buoyError, setBuoyError] = useState<string | null>(null)
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null)
   const [selectedBuoyId, setSelectedBuoyId] = useState<string | null>(null)
+
+  const clearWarningState = () => {
+    setWarnings([])
+    warningsRef.current.clear()
+    setWarningsLoading(false)
+    setWarningErrors([])
+    setSelectedWarningId(null)
+  }
 
   const historyCatalog = historyCatalogs[sourceId]
   const historyError = historyErrors[sourceId]
@@ -1747,20 +1801,36 @@ export function RadarApp() {
   ])
 
   useEffect(() => {
-    if (!playing || frames.length < 2) return
+    if (!playing || frames.length < 2 || !mapReady) return
     const delay = 1_000 / playbackFps + (activeIndex === frames.length - 1 ? LATEST_FRAME_HOLD_MS : 0)
-    const timer = window.setTimeout(() => {
+    const startedAt = performance.now()
+    let timer = 0
+    const advanceWhenReady = () => {
+      const source = mapRef.current?.getSource(RADAR_SOURCE_ID)
+      const frameUsesImageSource = Boolean(activeFrame && !framePmtilesUrl(activeFrame, manifestPath))
+      const imageSourceIsLoading = frameUsesImageSource
+        && (source?.type !== 'image' || !(source as maplibregl.ImageSource).loaded())
+      if (imageSourceIsLoading && performance.now() - startedAt < IMAGE_PLAYBACK_MAX_WAIT_MS) {
+        timer = window.setTimeout(advanceWhenReady, IMAGE_PLAYBACK_READY_POLL_MS)
+        return
+      }
       setFrameIndex((index) => index >= frames.length - 1 ? 0 : index + 1)
-    }, delay)
+    }
+    timer = window.setTimeout(advanceWhenReady, delay)
     return () => window.clearTimeout(timer)
-  }, [activeIndex, frames.length, playbackFps, playing])
+  }, [activeFrame, activeIndex, frames.length, manifestPath, mapReady, playbackFps, playing])
 
   useEffect(() => {
-    if (ARCHIVE_ONLY) return
+    if (!layers.warnings || isEra5) {
+      warningsRef.current.clear()
+      return
+    }
     let cancelled = false
+    const controller = new AbortController()
     const load = async () => {
+      setWarningsLoading(true)
       try {
-        const result = await fetchRegionalWarnings()
+        const result = await fetchRegionalWarnings(controller.signal)
         if (cancelled) return
         if (!result.errors.length || result.warnings.length > 0) {
           setWarnings(result.warnings)
@@ -1768,9 +1838,11 @@ export function RadarApp() {
         }
         setWarningErrors(result.errors)
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !(error instanceof Error && error.name === 'AbortError')) {
           setWarningErrors([error instanceof Error ? error.message : 'NWS request failed'])
         }
+      } finally {
+        if (!cancelled) setWarningsLoading(false)
       }
     }
     void load()
@@ -1778,8 +1850,9 @@ export function RadarApp() {
     return () => {
       cancelled = true
       window.clearInterval(refresh)
+      controller.abort()
     }
-  }, [])
+  }, [isEra5, layers.warnings])
 
   useEffect(() => {
     let cancelled = false
@@ -2056,15 +2129,33 @@ export function RadarApp() {
   }, [activeFrame?.valid_time, analysisPlaybackAvailable, layers, manifest, manifestPath, mapReady])
 
   useEffect(() => {
-    if (!activeFrame || frames.length < 2 || shouldUseLowMemoryMapMode()) return
-    const preload = [1, 2]
+    const imagePreloadCache = imagePreloadCacheRef.current
+    if (!activeFrame || frames.length < 2) {
+      imagePreloadCache.forEach((image) => image.removeAttribute('src'))
+      imagePreloadCache.clear()
+      return
+    }
+    const preloadCount = shouldUseLowMemoryMapMode() ? 1 : 2
+    const preload = Array.from({ length: preloadCount }, (_, index) => index + 1)
       .map((offset) => frames[(activeIndex + offset) % frames.length])
-      .filter((frame, index, candidates) => candidates.indexOf(frame) === index)
-    const imagePreloads = preload.filter((frame) => !frame.pmtiles_url).map((frame) => {
+      .filter((frame, index, candidates) => frame !== activeFrame && candidates.indexOf(frame) === index)
+    const wantedImageUrls = new Set<string>()
+    const activeImageUrl = activeFrame.pmtiles_url ? null : frameUrl(activeFrame, manifestPath)
+    if (activeImageUrl && imagePreloadCache.has(activeImageUrl)) wantedImageUrls.add(activeImageUrl)
+    preload.filter((frame) => !frame.pmtiles_url).forEach((frame) => {
+      const url = frameUrl(frame, manifestPath)
+      wantedImageUrls.add(url)
+      if (imagePreloadCache.has(url)) return
       const image = new Image()
+      image.crossOrigin = 'anonymous'
       image.decoding = 'async'
-      image.src = frameUrl(frame, manifestPath)
-      return image
+      image.src = url
+      imagePreloadCache.set(url, image)
+    })
+    imagePreloadCache.forEach((image, url) => {
+      if (wantedImageUrls.has(url)) return
+      image.removeAttribute('src')
+      imagePreloadCache.delete(url)
     })
     const map = mapRef.current
     if (map) {
@@ -2072,10 +2163,15 @@ export function RadarApp() {
         .filter((frame) => Boolean(frame.pmtiles_url))
         .forEach((frame) => { void preloadPmtilesFrame(frame, manifestPath, map).catch(() => undefined) })
     }
-    return () => {
-      imagePreloads.forEach((image) => image.removeAttribute('src'))
-    }
   }, [activeFrame, activeIndex, frames, manifestPath])
+
+  useEffect(() => {
+    const imagePreloadCache = imagePreloadCacheRef.current
+    return () => {
+      imagePreloadCache.forEach((image) => image.removeAttribute('src'))
+      imagePreloadCache.clear()
+    }
+  }, [])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2089,14 +2185,14 @@ export function RadarApp() {
     setLayerVisibility(map, ['wallcloud-county-line'], layers.counties && countyDetailAvailable)
     setLayerVisibility(map, ['wallcloud-city-dot', 'wallcloud-city-label', CITY_LABEL_EXCEPTION_ID], layers.cities)
     setLayerVisibility(map, ['wallcloud-highway-line', 'wallcloud-highway-label'], layers.highways && mapRegion.id !== 'conus')
-    setLayerVisibility(map, [WARNING_FILL_ID, WARNING_CASING_ID, WARNING_LINE_ID], layers.warnings && !isHistorical)
+    setLayerVisibility(map, [WARNING_FILL_ID, WARNING_CASING_ID, WARNING_LINE_ID], layers.warnings && !isEra5)
     setLayerVisibility(map, [SURFACE_DOT_ID, SURFACE_LABEL_ID], layers.surface && !isHistorical)
     setLayerVisibility(map, [BUOY_DOT_ID, BUOY_LABEL_ID], layers.buoys && !isHistorical)
     ANALYSIS_LAYER_DEFINITIONS.forEach((definition) => {
       const frame = productFrameForTime(productFrames(manifest, definition.productId), activeFrame?.valid_time)
       setLayerVisibility(map, [analysisLayerId(definition.productId)], layers[definition.key] && analysisPlaybackAvailable && Boolean(frame))
     })
-  }, [activeFrame, analysisPlaybackAvailable, countyDetailAvailable, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
+  }, [activeFrame, analysisPlaybackAvailable, countyDetailAvailable, isEra5, isHistorical, layers, manifest, mapReady, mapRegion.id, radarOpacity])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2129,6 +2225,12 @@ export function RadarApp() {
   const selectedProduct = manifest?.products[productId]
   const dataUnavailable = !manifestLoading && (!manifest || manifest.status !== 'ready' || !activeFrame)
   const loopDownloadUrl = selectedProduct?.loop_url ? assetUrl(selectedProduct.loop_url, manifestPath) : null
+  const activeAnalysisDefinitions = useMemo(() => {
+    if (sourceId !== 'mrms' || !analysisPlaybackAvailable || !manifest) return []
+    return ANALYSIS_LAYER_DEFINITIONS.filter((definition) => (
+      layers[definition.key] && productFrames(manifest, definition.productId).length > 0
+    ))
+  }, [analysisPlaybackAvailable, layers, manifest, sourceId])
 
   const exportGif = async () => {
     const map = mapRef.current
@@ -2148,9 +2250,15 @@ export function RadarApp() {
     try {
       let encoder: ReturnType<typeof createGifFrameEncoder> | null = null
       const loopPeriod = formatShareLoopPeriod(exportFrames[0]?.valid_time, exportFrames.at(-1)?.valid_time)
-      const exportWarnings = layers.warnings && !isHistorical ? warningsFeatureCollection(warnings) : EMPTY_STATE
+      const exportWarnings = layers.warnings && !isEra5 ? warningsFeatureCollection(warnings) : EMPTY_STATE
       for (let index = 0; index < exportFrames.length; index += 1) {
         const frame = exportFrames[index]
+        const exportAnalysisLayers: ExportAnalysisLayer[] = manifest
+          ? activeAnalysisDefinitions.flatMap((definition) => {
+              const analysisFrame = productFrameForTime(productFrames(manifest, definition.productId), frame.valid_time)
+              return analysisFrame ? [{ definition, frame: analysisFrame, opacity: radarOpacity }] : []
+            })
+          : []
         let mapImage: ImageData
         try {
           // Build the export from the source raster and local vector layers. A
@@ -2160,6 +2268,9 @@ export function RadarApp() {
             map,
             frame,
             manifestPath,
+            layers.radar,
+            radarOpacity,
+            exportAnalysisLayers,
             states,
             counties,
             layers.counties,
@@ -2167,7 +2278,7 @@ export function RadarApp() {
             highways,
             layers.highways,
             exportWarnings,
-            layers.warnings && !isHistorical,
+            layers.warnings && !isEra5,
           )
         } catch {
           // Keep a last-resort browser capture for transient source failures;
@@ -2179,7 +2290,7 @@ export function RadarApp() {
           if (!hasVisibleMapCapture(mapCapture)) throw new Error('Unable to render a shareable radar frame')
           mapImage = mapCapture
         }
-        const shareFrame = composeShareFrame(mapImage, frame, productId, exportRegionLabel, isHistorical, playbackFps, index, exportFrames.length, loopPeriod)
+        const shareFrame = composeShareFrame(mapImage, frame, productId, layers.radar, exportAnalysisLayers, exportRegionLabel, isHistorical, playbackFps, index, exportFrames.length, loopPeriod)
         encoder ??= createGifFrameEncoder(shareFrame, playbackFps)
         encoder.writeFrame(shareFrame, index === exportFrames.length - 1)
         setGifExportProgress(Math.round((index + 1) / exportFrames.length * 100))
@@ -2189,7 +2300,8 @@ export function RadarApp() {
       const zoom = Math.round(map.getZoom() * 10) / 10
       const safeDataset = (manifest?.dataset_id ?? 'live').replace(/[^a-z0-9-]+/gi, '-')
       const safeProduct = productId.replace(/[^a-z0-9-]+/gi, '-')
-      const filename = `wall-cloud-${safeDataset}-${safeProduct}-share-z${zoom.toFixed(1).replace('.', 'p')}-${playbackFps}fps.gif`
+      const safeOverlays = activeAnalysisDefinitions.map((definition) => definition.productId.replace(/[^a-z0-9-]+/gi, '-')).join('-')
+      const filename = `wall-cloud-${safeDataset}-${safeProduct}${safeOverlays ? `-${safeOverlays}` : ''}-share-z${zoom.toFixed(1).replace('.', 'p')}-${playbackFps}fps.gif`
       const downloadUrl = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = downloadUrl
@@ -2218,6 +2330,7 @@ export function RadarApp() {
   }
 
   const toggleLayer = (key: keyof typeof layers) => {
+    if (key === 'warnings' && layers.warnings) clearWarningState()
     setLayers((current) => ({ ...current, [key]: !current[key] }))
   }
 
@@ -2423,7 +2536,7 @@ export function RadarApp() {
                   : nextSource === 'era5' ? 'ERA5PrecipitationType' : 'MergedReflectivityQCComposite')
                 setFrameIndex(0)
                 setPlaying(false)
-                setSelectedWarningId(null)
+                clearWarningState()
                 setLayers((current) => ({
                   ...current,
                   warnings: false,
@@ -2495,8 +2608,8 @@ export function RadarApp() {
                 setDatasetId(nextDatasetId)
                 setManifestLoading(true)
                 setSourceFallbackNotice(null)
-                 setLayers((current) => ({ ...current, warnings: false }))
-                setSelectedWarningId(null)
+                clearWarningState()
+                setLayers((current) => ({ ...current, warnings: false }))
                 setProductId(isKrax
                   ? 'NEXRADLevel2BaseReflectivity'
                   : isEra5 ? 'ERA5PrecipitationType' : 'MergedReflectivityQCComposite')
@@ -2673,13 +2786,14 @@ export function RadarApp() {
               ['counties', countyDetailAvailable ? 'Counties' : 'Counties (closer regions)'],
               ['cities', 'Cities'],
               ['highways', highwaysLoading ? 'Highways (loading…)' : 'Highways'],
+              ['warnings', warningsLoading ? 'Warning polygons (loading…)' : warnings.length ? `Warning polygons · ${warnings.length} active` : 'Warning polygons'],
             ] as Array<[keyof typeof layers, string]>).map(([key, label]) => (
               <label key={key} className="radar-layer-row">
                 <input
                   type="checkbox"
-                  checked={key === 'counties' && !countyDetailAvailable ? false : layers[key]}
+                  checked={(key === 'counties' && !countyDetailAvailable) || (key === 'warnings' && isEra5) ? false : layers[key]}
                   onChange={() => toggleLayer(key)}
-                  disabled={key === 'counties' && !countyDetailAvailable}
+                  disabled={(key === 'counties' && !countyDetailAvailable) || (key === 'warnings' && isEra5)}
                 />
                 <span className="radar-checkbox" aria-hidden="true" />
                 <span><strong>{label}</strong></span>
@@ -2687,6 +2801,7 @@ export function RadarApp() {
             ))}
           </div>
 
+          <p className="radar-field-note">Warning polygons are current NWS alerts. When enabled, they are included as a static overlay in every GIF frame; they are not time-matched to archived radar frames.</p>
           <label className="radar-field-label" htmlFor="radar-opacity">Archive layer opacity <output>{Math.round(radarOpacity * 100)}%</output></label>
           <input id="radar-opacity" className="radar-range" type="range" min="0.2" max="1" step="0.05" value={radarOpacity} onChange={(event) => setRadarOpacity(Number(event.target.value))} />
           {highwaysError && <p className="radar-field-note error">Highway overlay unavailable: {highwaysError}</p>}
